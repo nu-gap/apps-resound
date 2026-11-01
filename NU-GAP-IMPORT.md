@@ -6,7 +6,7 @@ Imported on November 1, 2026 from [IOOI-SqAR/Resound](https://github.com/IOOI-Sq
 - Upstream branch: `main`
 - Upstream commit: `48ffb8bbdea85b515597089702c9262d16cf5f77`
 - All three upstream commits, their authors and timestamps, and the `Resound-3.0-P-bs` tag are preserved without rewriting.
-- The upstream source, bundled application, modules, API documentation, and original archive are unchanged. This provenance file is the only added file.
+- At import, the upstream source, bundled application, modules, API documentation, and original archive were unchanged; this provenance file was the only added file. The root `README.md` was subsequently expanded with nu-gap project documentation.
 
 ## Status and build requirements
 
