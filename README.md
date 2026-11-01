@@ -2,6 +2,8 @@
 
 Resound 3.0 is Sean Luke’s sound editor for Rhapsody, preserved by the [New GNUstep Application Project (nu-gap)](https://nu-gap.github.io/) as a starting point for future GNUstep work.
 
+See also: [https://nu-gap.github.io/apps-resound/README.html](https://nu-gap.github.io/apps-resound/README.html)
+
 **Status:** historical source import. A GNUstep port has not yet been completed, and builds and runtime behavior have not been verified. The included application and module binaries target Rhapsody on PowerPC and Intel, rather than current GNUstep or macOS systems.
 
 ## Features
