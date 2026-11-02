@@ -1,0 +1,48 @@
+{
+    ApplicationDescription = "an OpenStep/GNUstep sound editor";
+    ApplicationIcon = Resound.tiff;
+    ApplicationName = Resound;
+    ApplicationRelease = 3;
+    URL = "https://github.com/nu-gap/apps-resound";
+    Authors = (
+	"Sean Luke"
+    );
+    Copyright = (
+	"Copyright \U00a9 1998 Sean Luke"
+    );
+    NSExtensions = {
+	wav = {
+	    NSIcon = wav.tiff;
+	};
+	aif = {
+	    NSIcon = aiff.tiff;
+	};
+	aiff = {
+	    NSIcon = aiff.tiff;
+	};
+	au = {
+	    NSIcon = au.tiff;
+	};
+	iff = {
+	    NSIcon = iff.tiff;
+	};
+	mp = {
+	    NSIcon = mp2.tiff;
+	};
+	mp1 = {
+	    NSIcon = mp2.tiff;
+	};
+	mp2 = {
+	    NSIcon = mp2.tiff;
+	};
+	rmod = {
+	    NSIcon = rmod.tiff;
+	};
+	voc = {
+	    NSIcon = voc.tiff;
+	};
+	"~snd" = {
+	    NSIcon = backupsnd.tiff;
+	};
+    };
+}

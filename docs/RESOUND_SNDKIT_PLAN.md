@@ -117,8 +117,10 @@ Rationale (evidence gathered during evaluation):
 ### Phase 4 — Build system and packaging
 
 - [ ] Update `Source/PB.project`: replace `SoundKit.framework` with `SndKit.framework`; resolve `SYSTEMEXTENSIONS = (snd)` (SoundKit was a system extension in Rhapsody; SndKit is a regular framework → remove/adjust).
+- [x] **DONE (2026-11-02):** Bootstrap the GNUstep build system: root `GNUmakefile` (gnustep-make `application.make` rules) + `GNUmakefile.preamble/postamble` + `ResoundInfo.plist` added; legacy `Resound.app/Resources` moved to the canonical `Resources/` app-root location; in-tree `Resound.app` bundle now the build output (git-ignored); the old tracked Rhapsody binary untracked (kept on disk, in history and `original-archive/`). Verified on the Gershwin system: builds and the app launches. See `docs/GNUSTEP_BUILD.md` — sources are added step by step (currently ready: `Resound_main.m`, `Extra.m`, `ModuleMenuNode.m`, `fft.c`; 24 files blocked on the SoundKit→SndKit migration).
+- [ ] ~~Convert/adapt `Source/Makefile` …~~ **Superseded** by the root `GNUmakefile` bootstrap above; the Rhapsody `Source/Makefile` is kept for reference/history only.
+- [ ] Convert the module build scripts (`Source/BuildModules`, `BuildFatModules`, per-module `PB.project`) toward GNUstep makefiles (together with the module port, Phase 3).
 - [ ] Update module `PB.project` files under `Source/Modules/*/PB.project` (or convert to GNUstep makefiles).
-- [ ] Convert/adapt `Source/Makefile`, `Makefile.preamble`, `Makefile.postamble`, `Source/Build`, `Source/BuildFat`, `Source/BuildModules`, `Source/BuildFatModules`, `Source/Clean`, `Source/FinallyInstall`, `Source/OpenAllProjects` from Rhapsody Project Builder makefiles toward GNUstep `GNUmakefile` conventions.
 - [ ] Handle `Source/streams/streams.h` (NXStream patch) against the SndKit stream API.
 - [ ] Update `Resound.app/Resources/Info-nextstep.plist` / entitlements as needed for the new framework.
 - [ ] Re-check `Resound.app` nibs: SndKit provides an `SndView` IB plugin (`SndViewIBPlugin`) — Resound's `*.nib` files reference the old `SoundView` class; may need re-nibbing or class-name adaptation.
