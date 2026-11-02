@@ -115,6 +115,25 @@ Rationale (evidence gathered during evaluation):
 - [ ] Update `Resound.app/Resources/Info-nextstep.plist` / entitlements as needed for the new framework.
 - [ ] Re-check `Resound.app` nibs: SndKit provides an `SndView` IB plugin (`SndViewIBPlugin`) — Resound's `*.nib` files reference the old `SoundView` class; may need re-nibbing or class-name adaptation.
 
+### NIB / Interface Builder file migration — substantial remarks
+
+Yes, the NIB migration was considered only in passing and warrants a dedicated work package:
+
+1. **Inventory of affected NIB files.** The distribution contains many legacy NeXT-style NIB files that must be migrated, converted, or re-authored for a SndKit/GNUstep/modern-Interface-Builder port:
+   - `Resound.app/Resources/*.nib` (Console, Edit, Preferences, Volume, File, Inspector, Module, …)
+   - `Source/*.nib` (Resound, AttributesInspector, Console, Edit, File, MarksInspector, Module, Preferences, SelectionInspector, …)
+   - `Source/Modules/*/*.nib` (e.g. FFT).
+
+2. **Format incompatibility.** Older NIB files use the legacy NeXT/OpenStep Interface Builder format; modern Interface Builder versions (Xcode 8 and later) use the XIB/XML format and generally cannot open the old NIBs. Recent OpenStep 4.2 support reportedly allows conversion of such NIB files into GNUstep-specific formats — this is the likely conversion path for a source-preserving port, and it should be verified against the actual toolchain before relying on it.
+
+3. **Class-name divergence.** NIBs wire up legacy classes — most importantly `SoundView` and derived custom views (`MiscSoundView`, `ResoundMiscSoundView`) plus controller classes. With SndKit the equivalent class is `SndView`; nibs and any Interface Builder plugins must be migrated accordingly (SndKit ships an `SndView` IB plugin, `SndViewIBPlugin`, which the port must account for).
+
+4. **Outlets/actions.** Custom NIBs reference IBActions/IBOutlets by selector; as controller/view code is ported to SndKit-based selectors, nib wiring must stay in sync or nibs must be recompiled.
+
+5. **Practical migration paths.** (a) convert legacy NIBs via GNUstep tooling (using recent OpenStep 4.2 conversion capability), (b) recompile/re-target nibs, or (c) re-author nibs — with (a)/(b) preferred for a source-preserving port.
+
+6. **Recommendation.** Treat NIB migration as a first-class work package parallel to (or preceding) deep audio-core porting, since UI-layer breakage may block end-to-end validation of the ported application.
+
 ### Phase 5 — Validation and target platforms
 
 - [ ] **GNUstep/Linux**: build SndKit + `MKPerformSndMIDI_portaudio` backend; build Resound against it; verify playback/recording, modules, file I/O.
