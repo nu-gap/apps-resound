@@ -73,9 +73,17 @@ Rationale (evidence gathered during evaluation):
 ### Phase 0 — Prerequisites & decisions (before touching code)
 
 - [ ] **Confirm SndKit source/version**: use `github.com/leighsmith/MusicKit` master; build required frameworks in order (`MKPerformSndMIDI` [portaudio or MacOSX] → `SndKit` → `MKDSP_Native` → `MusicKit`), or use binary distributions.
+- [ ] **DECISION (user, 2026-11-02):** Future versions of Resound shall use the **most recent git version of SndKit** (github.com/leighsmith/MusicKit master) — for the Mac OS X Server 1.2 / Rhapsody target, the GNUstep target, and the modern macOS future version.
 - [ ] **License compatibility review**: MusicKit / SndKit / libsndfile / portaudio / lame terms vs Resound's existing mixed licensing (Sean Luke, MiscKit, Jerome Genest `FileType.subproj` readers — non-profit restriction). Document decisions before redistribution.
 - [ ] **Decide scope of file-format handling**: rely on SndKit/libsndfile readers (`.wav`, `.aiff`, `.au`, …) vs keep Jerome Genest's legacy readers in `Source/FileType.subproj` (GPL/non-profit constraints).
+- [ ] **DECISION (user, 2026-11-02):** Use the **native readers of SndKit/libsndfile** (`.wav`, `.aiff`, `.au`, …) for sound file reading; **do not** keep Jerome Genest's legacy readers in `Source/FileType.subproj`. Replace the legacy readers when the time comes (licensing: GPL/non-profit constraints).
 - [ ] **Decide DSP architecture**: modules (FFT, EchoChamber, Filter, Gate, Math, Mix, WaveBuilder, Zero, Envelope, Channel) — offline buffer processing vs hooking into `SndAudioProcessorChain` / `SndAudioUnitProcessor` for real-time effects.
+
+  **DSP architecture remarks (user decision context, 2026-11-02):** It would be desirable to run these modules on Audio Units (`SndAudioUnitProcessor` via SndKit's `SndAudioProcessorChain`, incl. Apple AudioUnits). It would be undesirable to lose the existing offline module processing completely.
+
+  - **Feasibility of porting modules to Audio Units:** porting is *feasible* for real-time playback-time effects (e.g., EchoChamber→`AUReverb`/`AUReverb2`, Filter, Gate, Math, Mix, Envelope, Channel can map to AU processors; FFT would require a custom/third-party FFT AU or offline rendering). It is *not* a clean 1:1 port for all modules: in particular FFT (arbitrary-selection spectrum computation) and the offline-processing design (modules transform whole sound buffers; WaveBuilder generates sound data) do not map naturally onto streaming real-time Audio Units.
+
+  - **Recommended hybrid:** use Audio Units (via SndKit's processor chain) for real-time effects, while retaining buffer-based offline processing for FFT/generation/offline transformations, or implement custom `AUBase` subclasses where needed.
 
 ### Phase 1 — Audio core: sound objects and file I/O
 
@@ -166,6 +174,45 @@ Proceed with **SndKit as the replacement for the defunct NeXT SoundKit** in Reso
 - **First milestone:** minimal port — get `Snd`/`SndView` playback + file I/O + one module (e.g. FFT or EchoChamber) compiling and running under GNUstep (Linux) and MacOS X.
 - **Subsequent milestones:** full migration of SoundManager, meters/tapper/trackers, volume/mute, modules, build system, validation.
 - **Long-term:** maintain SndKit's CoreAudio backend for modern macOS; use portaudio backend for GNUstep/Linux.
+
+---
+
+## 7. Strategic decision: keep SoundKit (Rhapsody-only) vs. move fully to SndKit
+
+**Question raised by the user (2026-11-02):** Since the current Source is supposed to build on Mac OS X Server 1.2 (Rhapsody) via SoundKit, should Resound keep its SoundKit-based implementation for Rhapsody, or should the whole codebase be moved over to SndKit?
+
+### Option A — Keep the SoundKit-based codebase (Rhapsody-only / historical preservation)
+
+**Pros:**
+- No audio-core porting effort; original behavior preserved as-is.
+- Existing Rhapsody build (`./Build`, `BuildFat`) and bundled binaries remain authoritative.
+- Lowest immediate risk; fastest path to a working historical Rhapsody app.
+
+**Cons:**
+- SoundKit is defunct and no longer available → no GNUstep path, no modern macOS path, no future extension capability.
+- Conflicts with the purpose of the nu-gap import (future GNUstep work).
+- The user already frames SoundKit as "no longer available in any form and probably should be replaced."
+
+### Option B — Move the whole codebase over to SndKit (full migration)
+
+**Pros:**
+- Open-source successor with ongoing maintenance (MusicKit/SndKit project).
+- Portable across GNUstep (portaudio backend, Linux), MacOS X / X Server 1.2 (CoreAudio), MacOS X, Windows; modern macOS is the eventual target.
+- High OO-design compatibility with the old SoundKit design; C-compatibility layer retained (`SndSoundError`, `SND_ERR_*`, `SndSwap*`, `SndMuLaw*`, `SND_FORMAT_*`, `writeSoundfile:fileFormat:dataFormat:`, `convertToSampleFormat:…`).
+- Effects can hook into `SndAudioProcessorChain` / `SndAudioUnitProcessor` (incl. AudioUnits) — architecturally superior for future DSP.
+
+**Cons:**
+- Large migration effort: app sources (~30 files) + modules + build system (PB→GNUstep) + nibs (SoundView→SndView) + DSP loops + metering/recording/playback state.
+- Not source-compatible → behavior changes (performance-based playback/recording, fader-based volume/mute, libsndfile file formats, NSString info strings).
+- Regression risk in historically-working behavior (workarounds: info-string bug, paste bug, compaction, play marks).
+- SndKit's own modern-macOS support may itself need maintenance.
+
+### Assessment
+
+For the stated goal — a future version that runs on **GNUstep**, **Mac OS X Server 1.2**, and **modern macOS** — **Option B (full move to SndKit) is the recommended direction**.
+
+- Option A would freeze development at Rhapsody and forfeit the future-version goal.
+- Option B subsumes Option A functionally, while the original SoundKit implementation remains preserved in `original-archive/` and upstream history.
 
 ---
 
