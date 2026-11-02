@@ -43,3 +43,18 @@
 
 # Things to do after checking
 # after-check::
+
+#
+# The makefiles generate $(APP_DIR)/Resources/$(GNUSTEP_INSTANCE).desktop
+# with 'pl2link', which is not shipped by the current tools-make source
+# releases nor by the Debian/Ubuntu gnustep-make packages.  The standard
+# rule is not failure-guarded, so where the tool is absent we build the
+# .desktop launcher from the Info plist instead (identical build behaviour
+# apart from the file's content; the app itself never reads the .desktop).
+#
+ifeq ($(shell command -v pl2link 2>/dev/null),)
+$(APP_DIR)/Resources/$(GNUSTEP_INSTANCE).desktop: $(APP_INFO_PLIST_FILE)
+	$(MKDIRS) $(dir $@)
+	cp $(APP_INFO_PLIST_FILE) $@
+	chmod a+x $@
+endif
