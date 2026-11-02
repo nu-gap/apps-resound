@@ -25,14 +25,40 @@ env:
   GNUSTEP_PREFIX: ${{ github.workspace }}/gnustep
 
 jobs:
+  # The GNUmakefile-based build system only exists on branches that
+  # contain the port.  The usual way to test for a file in an "if"
+  # condition - hashFiles() - is a runner-side function and is only
+  # permitted in step-level "if" conditions, not in a job-level one, so
+  # this cheap gate job does the check on the runner and exposes the
+  # result as an output.  The build job then skips itself where the
+  # build system is absent (e.g. a pull request from a pre-port branch)
+  # instead of spending the 20-35 minute stack build only to fail at
+  # 'make -f GNUmakefile'.
+  check:
+    name: Detect the GNUstep build system
+    runs-on: ubuntu-24.04
+    outputs:
+      has_build_system: ${{ steps.detect.outputs.has_build_system }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Look for the GNUmakefile
+        id: detect
+        run: |
+          if [ -f GNUmakefile ]; then
+            echo "has_build_system=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_build_system=false" >> "$GITHUB_OUTPUT"
+            echo "No GNUmakefile - this branch predates the GNUstep port; skipping the build."
+          fi
+
   build:
     name: Resound (GNUstep, clang/libobjc2)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    # The GNUmakefile-based build system only exists on branches that
-    # contain the port; skip the rest (e.g. if this file is ever merged
-    # without the build system).
-    if: hashFiles('GNUmakefile') != ''
+    needs: check
+    if: needs.check.outputs.has_build_system == 'true'
     env:
       # Bump when the pinned commits below change (invalidates the cache).
       GNUSTEP_STACK_REV: "1"
