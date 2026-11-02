@@ -64,6 +64,41 @@ Run the built app from the tree:
 ./Resound.app/Resound          # needs a display
 ```
 
+## Continuous integration (GitHub Actions)
+
+`.github/workflows/build.yml` builds the app on every push. Because the
+packaged GNUstep (apt) is built against GCC's `libobjc` - which lacks the
+libobjc2/`gnustep-2.2` non-fragile ABI that the port (and SndKit) targets -
+CI instead installs the GNUstep **stack from source** into a hermetic prefix
+(`$GITHUB_WORKSPACE/gnustep`), the same combination as the Gershwin `/System`
+reference install:
+
+| component | source (pinned commit, see workflow) | build system |
+|---|---|---|
+| libobjc2 | `gnustep/libobjc2` @ `c9f4002a…` | CMake (`-DGNUSTEP_INSTALL_TYPE=SYSTEM`) |
+| gnustep-make | `gnustep/tools-make` @ `4e31a031…` | autoconf (`--with-library-combo=ng-gnu-gnu --with-runtime-abi=gnustep-2.2`) |
+| gnustep-base | `gnustep/libs-base` @ `5bda5222…` | autoconf (`--disable-libdispatch`) |
+| gnustep-gui | `gnustep/libs-gui` @ `8f804fd5…` | autoconf |
+| gnustep-back | `gnustep/libs-back` @ `bbcc3de7…` | autoconf |
+
+These are the exact commits of the Gershwin reference install (see
+`/Developer/Library/Repositories.csv` on the dev machine). The stack is
+cached with `actions/cache` keyed on `GNUSTEP_STACK_REV`, so only the first
+run per rev builds it (~20-30 min); later runs take a couple of minutes.
+To update the stack: bump the pinned commits **and** `GNUSTEP_STACK_REV`
+(invalidates the cache).
+
+Build order matters: libobjc2 is built **first** (gnustep-make's configure
+detects it, selects the `ng` runtime and links its blocks test against it);
+the other components configure against the installed prefix via its
+`GNUstep.sh` (export `GNUSTEP_CONFIG_FILE` to point at the prefix's
+`etc/GNUstep/GNUstep.conf` on machines without a stock GNUstep).
+
+The job then runs `make -f GNUmakefile` (in-tree, as locally) and finishes
+with a non-fatal launch check under `xvfb` (the app has no main nib yet, so
+"ran until the 10 s timer" counts as a pass). The built `Resound.app` is
+uploaded as a workflow artifact.
+
 ## Adding sources step by step
 
 The bootstrap intentionally builds only the sources that are already
@@ -149,3 +184,9 @@ ZoomInspector
   main window.
 - The Rhapsody `Source/Makefile` (Project Builder) is kept for reference and
   history; it is superseded by this build system on this branch.
+- `GNUmakefile.postamble` carries a fallback for the bundle's `.desktop`
+  file: the makefiles generate it with `pl2link`, which the current
+  tools-make source releases and the Debian/Ubuntu packages do not ship.
+  Where the tool is missing, the `.desktop` is produced from the Info plist
+  instead (on systems with `pl2link`, such as the Gershwin `/System`
+  install, the stock rule is used unchanged).

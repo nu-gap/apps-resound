@@ -1,0 +1,189 @@
+#
+# Continuous build of the GNUstep port of Resound (branch gnustep-port).
+#
+# The app is built with the same toolchain the port targets:
+#   clang + libobjc2 (gnustep-2.2, non-fragile ABI), library combo
+#   ng-gnu-gnu, on a source-built GNUstep stack (gnustep-make,
+#   gnustep-base, gnustep-gui, gnustep-back) installed into a hermetic
+#   prefix - mirroring the Gershwin /System reference install on the
+#   developer machine, which the packaged GNUstep (apt) cannot provide,
+#   as it is built against GCC's libobjc instead of libobjc2.
+#
+# The stack versions are pinned to the same source commits as the
+# Gershwin install (see /Developer/Library/Repositories.csv on the dev
+# box).  To update the stack, bump the pins and GNUSTEP_STACK_REV
+# (which invalidates the cache).
+#
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GNUSTEP_PREFIX: ${{ github.workspace }}/gnustep
+
+jobs:
+  build:
+    name: Resound (GNUstep, clang/libobjc2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    # The GNUmakefile-based build system only exists on branches that
+    # contain the port; skip the rest (e.g. if this file is ever merged
+    # without the build system).
+    if: hashFiles('GNUmakefile') != ''
+    env:
+      # Bump when the pinned commits below change (invalidates the cache).
+      GNUSTEP_STACK_REV: "1"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Restore GNUstep stack (cache)
+        id: gnustep-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.GNUSTEP_PREFIX }}
+          key: gnustep-stack-${{ env.GNUSTEP_STACK_REV }}-noble
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang llvm \
+            autoconf automake libtool pkg-config \
+            libfontconfig-dev libfreetype-dev \
+            libx11-dev libxext-dev libxmu-dev libxft-dev \
+            libxcursor-dev libxrandr-dev libxfixes-dev \
+            libicu-dev \
+            libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
+            xvfb
+
+      - name: Build GNUstep stack from source
+        if: steps.gnustep-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          PREFIX="$GNUSTEP_PREFIX"
+          SRC="$RUNNER_TEMP/gnustep-sources"
+          rm -rf "$PREFIX" "$SRC"
+          mkdir -p "$PREFIX" "$SRC"
+          cd "$SRC"
+
+          fetch() {
+            local repo="$1" sha="$2"
+            curl -fsSL -o "$repo.tar.gz" "https://github.com/$repo/archive/$sha.tar.gz"
+            tar xzf "$repo.tar.gz"
+          }
+
+          # 1. libobjc2 - the GNUstep Objective-C runtime (CMake build).
+          #    Built first so that gnustep-make's configure can detect it
+          #    (ng runtime) and link its blocks test against it.
+          fetch gnustep/libobjc2 c9f4002ade04d755f2a0e6c83daf2738dca03759
+          cd libobjc2-c9f4002ade04d755f2a0e6c83daf2738dca03759
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DGNUSTEP_INSTALL_TYPE=SYSTEM \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DTESTS=OFF
+          cmake --build build -j"$(nproc)"
+          cmake --install build
+          cd "$SRC"
+
+          # 2. gnustep-make (the makefiles, GNUstep.sh, gnustep-config,
+          #    plmerge, pl2link, ...).  ng-gnu-gnu = gnustep (libobjc2)
+          #    runtime + GNUstep base + GNUstep gui.
+          fetch gnustep/tools-make 4e31a0310df5f0aa96ccd816d3b626e67c36f535
+          cd tools-make-4e31a0310df5f0aa96ccd816d3b626e67c36f535
+          aclocal
+          autoconf
+          ./configure \
+            --prefix="$PREFIX" \
+            --with-library-combo=ng-gnu-gnu \
+            --with-runtime-abi=gnustep-2.2 \
+            CC=clang CXX=clang++ \
+            CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib"
+          make -j"$(nproc)"
+          make install
+          cd "$SRC"
+
+          # From here on, everything configures against the freshly
+          # installed stack: its GNUstep.sh points at the prefix.
+          export GNUSTEP_CONFIG_FILE="$PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          export GNUSTEP_INSTALLATION_DOMAIN=SYSTEM
+
+          # 3. gnustep-base (Foundation).
+          fetch gnustep/libs-base 5bda52220a6d67382c9851cdfd91d459bfd2b489
+          cd libs-base-5bda52220a6d67382c9851cdfd91d459bfd2b489
+          aclocal
+          autoconf
+          ./configure --disable-libdispatch CC=clang CXX=clang++
+          make -j"$(nproc)"
+          make install
+          cd "$SRC"
+
+          # 4. gnustep-gui (AppKit).
+          fetch gnustep/libs-gui 8f804fd520c60800961e0bee072066f4bbadca94
+          cd libs-gui-8f804fd520c60800961e0bee072066f4bbadca94
+          aclocal
+          autoconf
+          ./configure CC=clang CXX=clang++
+          make -j"$(nproc)"
+          make install
+          cd "$SRC"
+
+          # 5. gnustep-back (X11 backend; needed for the launch check).
+          fetch gnustep/libs-back bbcc3de7cab63b6e65944edf02f2bbef9d8a7bbd
+          cd libs-back-bbcc3de7cab63b6e65944edf02f2bbef9d8a7bbd
+          aclocal
+          autoconf
+          ./configure CC=clang CXX=clang++
+          make -j"$(nproc)"
+          make install
+
+          # Sanity: the runtime pieces must be in the prefix.
+          ls "$PREFIX/lib" | grep -E "^(libobjc|libgnustep)" | sort
+
+      - name: Save GNUstep stack (cache)
+        if: steps.gnustep-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.GNUSTEP_PREFIX }}
+          key: gnustep-stack-${{ env.GNUSTEP_STACK_REV }}-noble
+
+      - name: Build the app
+        run: |
+          set -eux
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          export GNUSTEP_INSTALLATION_DOMAIN=SYSTEM
+          make -j"$(nproc)" -f GNUmakefile
+          find Resound.app -maxdepth 3 | sort
+
+      - name: Upload app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resound.app
+          path: Resound.app
+
+      - name: Launch check (non-fatal)
+        # The app has no main nib yet, so a healthy launch just sits in
+        # its event loop until the timer fires: exit 124 is a pass.
+        # Non-fatal for now so that a flaky display environment can not
+        # mask a build result; the build step is the hard gate.
+        continue-on-error: true
+        run: |
+          EXE=$(find Resound.app -type f -name Resound | head -n 1)
+          test -n "$EXE"
+          export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          rc=0
+          timeout 10 xvfb-run -a "$EXE" || rc=$?
+          if [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ]; then
+            echo "launch check passed (rc=$rc)"
+          else
+            echo "launch check failed (rc=$rc)"
+            exit "$rc"
+          fi
