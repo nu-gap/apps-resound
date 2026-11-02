@@ -68,7 +68,7 @@ jobs:
 
       - name: Restore GNUstep stack (cache)
         id: gnustep-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.GNUSTEP_PREFIX }}
           key: gnustep-stack-${{ env.GNUSTEP_STACK_REV }}-noble
@@ -77,14 +77,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang llvm \
+            clang llvm cmake git \
             autoconf automake libtool pkg-config \
             libfontconfig-dev libfreetype-dev \
             libx11-dev libxext-dev libxmu-dev libxft-dev \
             libxcursor-dev libxrandr-dev libxfixes-dev \
             libicu-dev \
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
-            xvfb
+            xvfb fonts-dejavu-core
 
       - name: Build GNUstep stack from source
         if: steps.gnustep-cache.outputs.cache-hit != 'true'
@@ -96,10 +96,14 @@ jobs:
           mkdir -p "$PREFIX" "$SRC"
           cd "$SRC"
 
+          # $1 = owner/repo, $2 = full commit sha.  The download name is
+          # the bare repo name: '-o' does not create parent directories,
+          # so the 'owner/repo' path form would fail with a curl write
+          # error.  (tar extracts to '<repo>-<sha>/' regardless.)
           fetch() {
             local repo="$1" sha="$2"
-            curl -fsSL -o "$repo.tar.gz" "https://github.com/$repo/archive/$sha.tar.gz"
-            tar xzf "$repo.tar.gz"
+            curl -fsSL -o "${repo##*/}.tar.gz" "https://github.com/$repo/archive/$sha.tar.gz"
+            tar xzf "${repo##*/}.tar.gz"
           }
 
           # 1. libobjc2 - the GNUstep Objective-C runtime (CMake build).
@@ -123,8 +127,9 @@ jobs:
           #    runtime + GNUstep base + GNUstep gui.
           fetch gnustep/tools-make 4e31a0310df5f0aa96ccd816d3b626e67c36f535
           cd tools-make-4e31a0310df5f0aa96ccd816d3b626e67c36f535
-          aclocal
-          autoconf
+          # Release trees ship the prebuilt configure that Gershwin's build
+          # (and the sandbox rehearsal) ran; regenerate only if missing.
+          [ -f configure ] || { aclocal && autoconf; }
           ./configure \
             --prefix="$PREFIX" \
             --with-library-combo=ng-gnu-gnu \
@@ -144,8 +149,9 @@ jobs:
           # 3. gnustep-base (Foundation).
           fetch gnustep/libs-base 5bda52220a6d67382c9851cdfd91d459bfd2b489
           cd libs-base-5bda52220a6d67382c9851cdfd91d459bfd2b489
-          aclocal
-          autoconf
+          # Release trees ship the prebuilt configure that Gershwin's build
+          # (and the sandbox rehearsal) ran; regenerate only if missing.
+          [ -f configure ] || { aclocal && autoconf; }
           ./configure --disable-libdispatch CC=clang CXX=clang++
           make -j"$(nproc)"
           make install
@@ -154,8 +160,9 @@ jobs:
           # 4. gnustep-gui (AppKit).
           fetch gnustep/libs-gui 8f804fd520c60800961e0bee072066f4bbadca94
           cd libs-gui-8f804fd520c60800961e0bee072066f4bbadca94
-          aclocal
-          autoconf
+          # Release trees ship the prebuilt configure that Gershwin's build
+          # (and the sandbox rehearsal) ran; regenerate only if missing.
+          [ -f configure ] || { aclocal && autoconf; }
           ./configure CC=clang CXX=clang++
           make -j"$(nproc)"
           make install
@@ -164,8 +171,9 @@ jobs:
           # 5. gnustep-back (X11 backend; needed for the launch check).
           fetch gnustep/libs-back bbcc3de7cab63b6e65944edf02f2bbef9d8a7bbd
           cd libs-back-bbcc3de7cab63b6e65944edf02f2bbef9d8a7bbd
-          aclocal
-          autoconf
+          # Release trees ship the prebuilt configure that Gershwin's build
+          # (and the sandbox rehearsal) ran; regenerate only if missing.
+          [ -f configure ] || { aclocal && autoconf; }
           ./configure CC=clang CXX=clang++
           make -j"$(nproc)"
           make install
@@ -175,7 +183,7 @@ jobs:
 
       - name: Save GNUstep stack (cache)
         if: steps.gnustep-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ env.GNUSTEP_PREFIX }}
           key: gnustep-stack-${{ env.GNUSTEP_STACK_REV }}-noble
@@ -190,7 +198,7 @@ jobs:
           find Resound.app -maxdepth 3 | sort
 
       - name: Upload app bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Resound.app
           path: Resound.app
