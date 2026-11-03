@@ -1,0 +1,17 @@
+diff --git a/MusicKit/Frameworks/SndKit/vDSP.c b/MusicKit/Frameworks/SndKit/vDSP.c
+index b7bcbbb..779dfdf 100644
+--- a/MusicKit/Frameworks/SndKit/vDSP.c
++++ b/MusicKit/Frameworks/SndKit/vDSP.c
+@@ -9,6 +9,7 @@
+ 
+   Copyright (c) 2010 The MusicKit Project. All Rights Reserved.
+ */
++#if defined(__i386__) || defined(__x86_64__)
+ #include "vDSP.h"
+ #include <xmmintrin.h>
+ 
+@@ -226,3 +227,4 @@ void vDSP_dotpr(const float input1[],
+ #ifdef __cplusplus
+ }
+ #endif
++#endif /* defined(__i386__) || defined(__x86_64__) */
