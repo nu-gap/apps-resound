@@ -136,6 +136,13 @@ jobs:
           #    runtime + GNUstep base + GNUstep gui.
           fetch gnustep/tools-make 4e31a0310df5f0aa96ccd816d3b626e67c36f535
           cd tools-make-4e31a0310df5f0aa96ccd816d3b626e67c36f535
+          # Make the just-installed libobjc2 discoverable to configure:
+          # its run tests need the shared library at runtime, and its
+          # pkg-config probe needs the .pc file.  (Later components get
+          # this automatically from the prefix's GNUstep.sh, which does
+          # not exist yet - it is installed by this very step.)
+          export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           # Release trees ship the prebuilt configure that Gershwin's build
           # (and the sandbox rehearsal) ran; regenerate only if missing.
           [ -f configure ] || { aclocal && autoconf; }
