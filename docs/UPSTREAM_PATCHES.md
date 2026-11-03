@@ -18,6 +18,8 @@ patch -p1 < patches/MusicKit-0002-portmidi-timeproc-cast.diff
 
 ## 1. `SndKit/vDSP.c`: guard the x86-only SSE file (patch 0001)
 
+**Submitted upstream:** leighsmith/MusicKit issue [#2](https://github.com/leighsmith/MusicKit/issues/2) (2026-11-03).  When it lands, drop `patches/MusicKit-0001-vdsp-arch-guard.diff` on the submodule bump.
+
 **Suggested issue title:** *SndKit fails to build on non-x86
 architectures: `vDSP.c` unconditionally includes the x86 SSE intrinsics*
 
@@ -75,6 +77,8 @@ matches the consumers' existing `__i386__` condition.)
 ---
 
 ## 2. `MKPerformSndMIDI_portaudio/PerformMIDI.m`: incompatible function pointer type (patch 0002)
+
+**Submitted upstream:** leighsmith/MusicKit issue [#3](https://github.com/leighsmith/MusicKit/issues/3) (2026-11-03).  When it lands, drop `patches/MusicKit-0002-portmidi-timeproc-cast.diff` on the submodule bump.
 
 **Suggested issue title:** *`MKPerformSndMIDI_portaudio` fails with
 Clang 16+: `TIME_PROC` is an incompatible function pointer type
@@ -136,7 +140,10 @@ two ways before landing here:
   profile of the modern-Clang GNUstep stack (where patch 0002 bites)
   with the promoted diagnostics forced to errors.
 
-The Resound project (nu-gap/apps-resound, branch `gnustep-port`)
-vendors MusicKit as a pinned submodule and carries these as
-`patches/MusicKit-0001-…` / `patches/MusicKit-0002-…`; happy to drop
-them on whichever side the fixes land upstream.
+Both were submitted upstream on 2026-11-03: issue [#2](https://github.com/leighsmith/MusicKit/issues/2)
+(vDSP arch guard) and issue [#3](https://github.com/leighsmith/MusicKit/issues/3)
+(TIME_PROC cast).  The Resound project (nu-gap/apps-resound, branch
+`gnustep-port`) vendors MusicKit as a pinned submodule and carries the
+fixes in the meantime as `patches/MusicKit-0001-…` /
+`patches/MusicKit-0002-…`; each is dropped on the submodule bump once
+its issue lands.
