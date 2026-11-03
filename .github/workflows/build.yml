@@ -89,7 +89,12 @@ jobs:
       - name: Build GNUstep stack from source
         if: steps.gnustep-cache.outputs.cache-hit != 'true'
         run: |
-          set -euxo pipefail
+          # set -e/-x/pipefail, but deliberately NOT -u: the GNUstep
+          # scripts sourced below (GNUstep.sh & co.) reference
+          # shell-variant variables like $ZSH_VERSION that are unset
+          # under bash, and are not hardened for 'set -u'.  (Gershwin's
+          # own install scripts source them under plain 'set -e'.)
+          set -exo pipefail
           PREFIX="$GNUSTEP_PREFIX"
           SRC="$RUNNER_TEMP/gnustep-sources"
           rm -rf "$PREFIX" "$SRC"
@@ -206,7 +211,9 @@ jobs:
 
       - name: Build the app
         run: |
-          set -eux
+          # Not -u: GNUstep.sh references unset shell-variant variables
+          # (see the stack build step).
+          set -ex
           export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
           . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
           export GNUSTEP_INSTALLATION_DOMAIN=SYSTEM
