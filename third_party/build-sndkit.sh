@@ -62,14 +62,22 @@ echo "==> configure"
 
 NPROC=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
 
+# The backend must be *installed* (headers + shared library) before
+# SndKit is built: SndFormat.h imports <MKPerformSndMIDI/PerformSound.h>
+# and SndKit prelinks -lMKPerformSndMIDI into its framework binary.
+# On a prefix without a previous install, building everything first and
+# installing afterwards (as the upstream Frameworks aggregate does)
+# fails at the SndKit compile; the install-in-between order is the one
+# that works from a clean state.
+
 echo "==> building MKPerformSndMIDI (portaudio backend)"
 ( cd "$SRC" && make -C Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio -j"$NPROC" )
 
-echo "==> building SndKit"
-( cd "$SRC" && make -C Frameworks/SndKit -j"$NPROC" )
-
 echo "==> installing MKPerformSndMIDI"
 ( cd "$SRC" && make -C Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio install )
+
+echo "==> building SndKit"
+( cd "$SRC" && make -C Frameworks/SndKit -j"$NPROC" )
 
 echo "==> installing SndKit"
 ( cd "$SRC" && make -C Frameworks/SndKit install )
