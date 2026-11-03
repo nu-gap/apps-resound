@@ -16,6 +16,11 @@ apps-resound/
 ├── ResoundInfo.plist         # custom Info.plist, merged at build time
 ├── Source/                   # sources (the Rhapsody-era code, being ported)
 ├── Resources/                # resources (nibs, tiffs, Documentation)
+├── third_party/              # vendored dependencies
+│   ├── MusicKit/             # git submodule (pinned), the SndKit source
+│   └── build-sndkit.sh       # builds + installs the SndKit chain
+├── patches/                  # port patches for the pinned submodule
+├── test/                     # sndsmoke SndKit smoke test (+ Tone.wav input)
 ├── Resound.app/              # IN-TREE BUILD BUNDLE (generated, git-ignored)
 │   ├── Resound               # generated executable
 │   ├── stamp.make
@@ -64,6 +69,68 @@ Run the built app from the tree:
 ./Resound.app/Resound          # needs a display
 ```
 
+## SndKit (MusicKit)
+
+The audio framework. Resound's original code is written against the
+defunct NeXT/Rhapsody `SoundKit.framework`; the port replaces it with
+[SndKit](https://github.com/leighsmith/MusicKit) (the open-source
+successor, part of the MusicKit distribution). See
+`docs/RESOUND_SNDKIT_PLAN.md` for the migration plan and API mapping.
+
+The source is vendored as the `third_party/MusicKit` git submodule,
+**pinned to the commit recorded in the index** (currently the
+`leighsmith/MusicKit` master tip `9683c76a`, 2026-02-22). To update
+SndKit, bump the submodule (`git -C third_party/MusicKit fetch && git -C
+third_party/MusicKit checkout <commit> && git add third_party/MusicKit`);
+the port patches in `patches/` must then be re-checked against the new
+tip (the build script refuses to continue if a patch no longer applies).
+
+Resound needs only two of the four MusicKit frameworks:
+
+| framework | role |
+|---|---|
+| `MKPerformSndMIDI` (portaudio backend) | the performance engine SndKit plays through (MIDI half unused by Resound) |
+| `SndKit` | `Snd`, `SndView`, `SndFormat`, file I/O, processors, … |
+
+(`MKDSP`/`MusicKit` are the synthesizer half and are not built.)
+
+Build and install into the active GNUstep prefix:
+
+```sh
+. <prefix>/share/GNUstep/Makefiles/GNUstep.sh
+export GNUSTEP_CONFIG_FILE=<prefix>/etc/GNUstep/GNUstep.conf
+git submodule update --init          # once, after a fresh clone
+third_party/build-sndkit.sh          # idempotent; rebuilds incrementally
+```
+
+This installs `SndKit.framework` and `MKPerformSndMIDI.framework` into
+`<prefix>/lib/GNUstep/Frameworks/` **and** the flat `libSndKit.so` /
+`libMKPerformSndMIDI.so` into `<prefix>/lib/` plus the headers into
+`<prefix>/include/`, so application makefiles link with plain
+`-lSndKit` and include with `#import <SndKit/SndKit.h>`.
+
+System package dependencies: `portaudio19-dev` (the audio I/O backend),
+`libsndfile1-dev` (sound file formats), `libportmidi-dev` (headers for
+the unused-by-Resound MIDI half). `libasound2-dev` is used by
+portaudio's own build, not needed when linking the distro package.
+
+Port patches: `patches/MusicKit-0001-vdsp-arch-guard.diff` wraps
+`Frameworks/SndKit/vDSP.c` (an x86-only SSE2 file) in an
+`__i386__`/`__x86_64__` guard so it compiles to an empty unit on other
+architectures (e.g. aarch64).
+
+Smoke test (`test/`):
+
+```sh
+make -C test                                   # builds test/obj/sndsmoke
+LD_LIBRARY_PATH=<prefix>/lib \
+  ./test/obj/sndsmoke test/Tone.wav /tmp/out.au   # .wav -> .au round trip
+```
+
+`sndsmoke` exercises SndKit's libsndfile file I/O (load, write, reload)
+without any audio device or display, so it is safe to run headless; it
+fails the build (CI) if the framework is broken.
+
 ## Continuous integration (GitHub Actions)
 
 `.github/workflows/build.yml` builds the app on every push. Because the
@@ -94,10 +161,16 @@ the other components configure against the installed prefix via its
 `GNUstep.sh` (export `GNUSTEP_CONFIG_FILE` to point at the prefix's
 `etc/GNUstep/GNUstep.conf` on machines without a stock GNUstep).
 
-The job then runs `make -f GNUmakefile` (in-tree, as locally) and finishes
-with a non-fatal launch check under `xvfb` (the app has no main nib yet, so
-"ran until the 10 s timer" counts as a pass). The built `Resound.app` is
-uploaded as a workflow artifact.
+The job then builds the SndKit chain from the `third_party/MusicKit`
+submodule (`third_party/build-sndkit.sh`; the frameworks are installed
+into the hermetic prefix **after** the stack is saved to the cache, so
+every run rebuilds them fresh from the pinned submodule instead of
+trusting a stale cached copy — a couple of minutes, while the expensive
+stack stays cached), runs the `test/sndsmoke` SndKit smoke test (fatal),
+runs `make -f GNUmakefile` (in-tree, as locally), and finishes with a
+non-fatal launch check under `xvfb` + `openbox` (the app has no main
+nib yet, so "ran until the 10 s timer" counts as a pass). The built
+`Resound.app` is uploaded as a workflow artifact.
 
 ## Adding sources step by step
 

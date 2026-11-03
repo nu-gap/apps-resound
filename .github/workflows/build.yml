@@ -65,6 +65,10 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
+        with:
+          # third_party/MusicKit (the SndKit source) is a pinned
+          # submodule.
+          submodules: true
 
       - name: Restore GNUstep stack (cache)
         id: gnustep-cache
@@ -85,6 +89,7 @@ jobs:
             libicu-dev \
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
             libgnutls28-dev libxslt1-dev \
+            portaudio19-dev libsndfile1-dev libportmidi-dev libasound2-dev \
             xvfb openbox fonts-dejavu-core
 
       - name: Build GNUstep stack from source
@@ -209,6 +214,41 @@ jobs:
         with:
           path: ${{ env.GNUSTEP_PREFIX }}
           key: gnustep-stack-${{ env.GNUSTEP_STACK_REV }}-noble
+
+      - name: Build SndKit frameworks (MusicKit)
+        # SndKit + its portaudio performance backend, from the pinned
+        # third_party/MusicKit submodule (see docs/GNUSTEP_BUILD.md).
+        #
+        # This runs *after* the cache save on purpose: the frameworks
+        # install into the same hermetic prefix, and keeping them out of
+        # the cached prefix means every run builds them fresh from the
+        # pinned submodule (a couple of minutes) instead of trusting a
+        # cached copy that would go stale when the submodule is bumped.
+        # The expensive stack (above) stays cached.
+        run: |
+          # Not -u: GNUstep.sh references unset shell-variant variables
+          # (see the stack build step).
+          set -ex
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          export GNUSTEP_INSTALLATION_DOMAIN=SYSTEM
+          bash third_party/build-sndkit.sh
+
+      - name: SndKit smoke test
+        # Functional check of the freshly built frameworks: load a
+        # .wav, write an .au, reload it - pure libsndfile file I/O, no
+        # audio device or display needed, so it is safe to make fatal.
+        run: |
+          set -ex
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          make -C test -j"$(nproc)"
+          TOOL=$(find test -type f -name sndsmoke | head -n 1)
+          test -n "$TOOL"
+          export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          OUT="$RUNNER_TEMP/sndsmoke-out.au"
+          "$TOOL" test/Tone.wav "$OUT"
+          ls -la "$OUT"
 
       - name: Build the app
         run: |
