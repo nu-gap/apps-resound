@@ -84,6 +84,7 @@ jobs:
             libxcursor-dev libxrandr-dev libxfixes-dev \
             libicu-dev \
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
+            libgnutls28-dev libxslt1-dev \
             xvfb fonts-dejavu-core
 
       - name: Build GNUstep stack from source
