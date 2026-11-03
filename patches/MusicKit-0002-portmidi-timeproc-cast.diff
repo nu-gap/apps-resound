@@ -1,0 +1,13 @@
+diff --git a/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformMIDI.m b/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformMIDI.m
+index ad36c0dd..b47aee02 100644
+--- a/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformMIDI.m
++++ b/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformMIDI.m
+@@ -45,7 +45,7 @@ static PortMidiStream *inputStream;
+ static PortMidiStream *outputStream;
+ static long outputLatency = 10;
+ 
+-#define TIME_PROC ((long (*)(void *)) Pt_Time)
++#define TIME_PROC ((PmTimeProcPtr) Pt_Time)
+ #define TIME_INFO NULL
+ 
+ PERFORM_API MKMDPort MKMDGetMIDIDeviceOnHost(const char *hostname)

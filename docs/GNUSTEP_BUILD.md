@@ -118,10 +118,16 @@ System package dependencies: `portaudio19-dev` (the audio I/O backend),
 the unused-by-Resound MIDI half). `libasound2-dev` is used by
 portaudio's own build, not needed when linking the distro package.
 
-Port patches: `patches/MusicKit-0001-vdsp-arch-guard.diff` wraps
-`Frameworks/SndKit/vDSP.c` (an x86-only SSE2 file) in an
-`__i386__`/`__x86_64__` guard so it compiles to an empty unit on other
-architectures (e.g. aarch64).
+Port patches (see `patches/`):
+- `MusicKit-0001-vdsp-arch-guard.diff` wraps
+  `Frameworks/SndKit/vDSP.c` (an x86-only SSE2 file) in an
+  `__i386__`/`__x86_64__` guard so it compiles to an empty unit on other
+  architectures (e.g. aarch64).
+- `MusicKit-0002-portmidi-timeproc-cast.diff` casts the MIDI time
+  callback to `PmTimeProcPtr` directly: the original cast to
+  `long (*)(void *)` is an incompatible function pointer type, which
+  clang 16+ rejects as an error (the developer machine's clang 14 only
+  warned about it, which is how it slipped past the sandbox build).
 
 Smoke test (`test/`):
 
