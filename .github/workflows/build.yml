@@ -85,7 +85,7 @@ jobs:
             libicu-dev \
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
             libgnutls28-dev libxslt1-dev \
-            xvfb fonts-dejavu-core
+            xvfb openbox fonts-dejavu-core
 
       - name: Build GNUstep stack from source
         if: steps.gnustep-cache.outputs.cache-hit != 'true'
@@ -232,13 +232,22 @@ jobs:
         # its event loop until the timer fires: exit 124 is a pass.
         # Non-fatal for now so that a flaky display environment can not
         # mask a build result; the build step is the hard gate.
+        #
+        # openbox provides the window manager that bare xvfb lacks:
+        # gnustep-back waits for the WM to map the window (and queries
+        # its _NET_WORKAREA), logging a warning per second without one.
+        # With a minimal WM the check measures what a real desktop does
+        # (a mapped, visible window) - what will matter once the app
+        # has its main nib.  Killing the app from the outside (timeout)
+        # always leaves a cosmetic 'XIO: fatal IO error' line from
+        # libX11; that is teardown noise, not a failure.
         continue-on-error: true
         run: |
           EXE=$(find Resound.app -type f -name Resound | head -n 1)
           test -n "$EXE"
           export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           rc=0
-          timeout 10 xvfb-run -a "$EXE" || rc=$?
+          timeout 10 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$EXE" || rc=$?
           if [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ]; then
             echo "launch check passed (rc=$rc)"
           else
