@@ -109,12 +109,21 @@ jobs:
           # 1. libobjc2 - the GNUstep Objective-C runtime (CMake build).
           #    Built first so that gnustep-make's configure can detect it
           #    (ng runtime) and link its blocks test against it.
+          #
+          #    GNUSTEP_INSTALL_TYPE=NONE, deliberately not SYSTEM: the
+          #    SYSTEM domain asks 'gnustep-config' (from gnustep-make,
+          #    built next - it does not exist yet) for the install paths,
+          #    and when the program is missing CMake 3.28+ fails with
+          #    "install FILES given no DESTINATION".  NONE installs
+          #    relative to CMAKE_INSTALL_PREFIX (bin/, lib/, include/) -
+          #    exactly the same hermetic layout the SYSTEM domain would
+          #    give once this prefix is in place.
           fetch gnustep/libobjc2 c9f4002ade04d755f2a0e6c83daf2738dca03759
           cd libobjc2-c9f4002ade04d755f2a0e6c83daf2738dca03759
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-            -DGNUSTEP_INSTALL_TYPE=SYSTEM \
+            -DGNUSTEP_INSTALL_TYPE=NONE \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DTESTS=OFF
