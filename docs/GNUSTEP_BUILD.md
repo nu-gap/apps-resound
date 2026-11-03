@@ -84,6 +84,10 @@ SndKit, bump the submodule (`git -C third_party/MusicKit fetch && git -C
 third_party/MusicKit checkout <commit> && git add third_party/MusicKit`);
 the port patches in `patches/` must then be re-checked against the new
 tip (the build script refuses to continue if a patch no longer applies).
+After a build, the submodule's working tree shows the applied patch (and
+build artifacts) - expected; restore the pristine state with
+`git -C third_party/MusicKit checkout -- . && git -C third_party/MusicKit
+clean -fdx`.
 
 Resound needs only two of the four MusicKit frameworks:
 
