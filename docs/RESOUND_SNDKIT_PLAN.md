@@ -64,6 +64,10 @@ Rationale (evidence gathered during evaluation):
 - Recording is format-based (`initWithFormat:channelCount:frames:samplingRate:` / `initWithAudioBuffer:`) instead of `setDataSize:...` + `record:`.
 - Volume/mute moved from `Sound` methods to `SndAudioFader` / static `+[Snd …]` API.
 - File writing is libsndfile-backed (`writeSoundfile:fileFormat:dataFormat:`) with modern format extensions (`.au`, `.snd`, `.wav`, `.aiff`, …) rather than Rhapsody-only `.snd`.
+- **File writing is format-restricted (verified 2026-11-05):** the SndKit writer only emits `SND_FORMAT_FLOAT`, `SND_FORMAT_LINEAR_16` and `SND_FORMAT_LINEAR_32` data; any other in-memory format is written as an *empty file while returning success*. The ResoundSound category normalises to 16-bit first (see `test/resoundio.m` B10-B12).
+- **Info comments are container-dependent (verified 2026-11-05, libsndfile 1.2):** the Snd's `NSString` info is written via the container's comment field, which libsndfile supports for aiff/wav/snd/ogg but **not for `.au`** ("File type does not support string data"). The info is kept in the Snd/view regardless; only its persistence to `.au` files is lost.
+- **`SND_RATE_*` exist in SndKit** (in `MKPerformSndMIDI/SndStruct.h`, reachable via `<SndKit/SndKit.h>`): `SND_RATE_CODEC` 8012.82, `SND_RATE_LOW` 22050, `SND_RATE_HIGH` 44100, `SND_RATE_LOW_PC` 11025 — so the Rhapsody rate constants keep working unchanged (they match the values in the Rhapsody headers the app was written against).
+- **Loading always yields `SND_FORMAT_FLOAT`** (libsndfile decodes to float); format is normalised on read, so a sound loaded from any container is 32-bit float until converted.
 - Audio units: SndKit supports `SndAudioUnitProcessor` (Apple) — relevant for future macOS and module effects.
 
 ---
@@ -87,16 +91,35 @@ Rationale (evidence gathered during evaluation):
 
 ### Phase 1 — Audio core: sound objects and file I/O
 
-- [ ] Replace all `#import <SoundKit/SoundKit.h>` with SndKit framework imports in:
-  - `Source/SoundManager.{h,m}`, `Source/FileController.{h,m}`
+Progress (2026-11-05): the testable core of this phase is done,
+test-first:
+
+- [x] **`Snd (ResoundSound)` file-I/O category** — extracted from
+  `FileController.{h,m}` into `Source/Sound-ResoundSound.{h,m}` and
+  migrated to SndKit. Contract pinned test-first by
+  `test/resoundio.m` (44 checks: load .wav/.au/.aiff/.snd/uppercase/
+  renamed-.voc, the convertOnOpen normalisation, save + `.~snd` backup +
+  info-string round trips, the writer-format guard, the failure paths);
+  fatal in CI. The legacy `FileType.subproj` reader dispatch was dropped
+  (SndKit/libsndfile reads the formats and sniffs content); the Rhapsody
+  `SNDSoundStruct` info-string hack is replaced by Snd's `NSString` info;
+  the category is in the app build (`Resound_OBJC_LIBS` links SndKit).
+  One deliberate divergence: unreadable files return `nil` (Rhapsody
+  returned an empty sound) — the Phase 2 `open:` flow must guard for it.
+- [ ] Replace all `#import <SoundKit/SoundKit.h>` with SndKit framework imports in the remaining files:
+  - `Source/SoundManager.{h,m}`, `Source/FileController.{h,m}` (class part)
   - `Source/MiscSoundView.{h,m}`, `Source/ResoundMiscSoundView.{h,m}`, `Source/ResoundMiscVolumeMeter.{h,m}`
   - `Source/ModuleSound.{h,m}`, `Source/ModuleSoundView.{h,m}`
   - `Source/ConsoleManager.{h,m}`, `Source/MiscTapper.{h,m}`, `Source/MiscVolumeMeter.{h,m}`, `Source/MiscSoundTracker.{h,m}`, `Source/VolumeController.{h,m}`
   - `Source/Modules/**` (all module implementations + controllers)
   - inspectors (`AttributesInspector`, `InfoStringInspector`, `SelectionInspector`, `ZoomInspector`, `MarksInspector`, …)
-- [ ] Migrate `Sound` → `Snd` types: ivars, `SNDSoundStruct*` → `SndFormat`, sample-size helpers → `SndSampleWidth`/`SndFrameSize`/`SndDataSize`, `sampleCount` → `lengthInSampleFrames`, `samplingRate` (double), `dataFormat` (`SndSampleFormat`).
-- [ ] Update info-string handling: `Snd info` (`NSString *`) replaces the `SNDSoundStruct` info-string hack (`ResoundMiscSoundView` comment: info strings not handled correctly by SNDSoundStructs).
-- [ ] Update `FileController saveToSoundFile:` → `[snd writeSoundfile:... fileFormat:dataFormat:]` (+ error handling via `SND_ERR_*`/`SndSoundError:`); update `initFromForeignSoundFile:` paths.
+
+  (These are GUI-heavy and untestable headless; they belong with the
+  Phase 2 playback/view chain and will be ported file by file with
+  `Sound` → `Snd`, `SoundView` → `SndView` renames rather than new tests.)
+- [ ] Migrate `Sound` → `Snd` types in the above: ivars, `SNDSoundStruct*` → `SndFormat`, sample-size helpers → `SndSampleWidth`/`SndFrameSize`/`SndDataSize`, `sampleCount` → `lengthInSampleFrames`, `samplingRate` (double), `dataFormat` (`SndSampleFormat`).
+- [ ] Update info-string handling in the views/inspector: `Snd info` (`NSString *`) replaces the `SNDSoundStruct` info-string hack (category side done; `ResoundMiscSoundView`'s `char* info`/`loadInfo:` become `NSString`).
+- [x] `FileController saveToSoundFile:` → `[snd writeSoundfile:…]` (+ error handling via `SND_ERR_*`/`SndSoundError`, which returns an `NSString` under SndKit) and `initFromForeignSoundFile:` — done in the category above.
 
 ### Phase 2 — Playback / recording / monitoring / volume
 

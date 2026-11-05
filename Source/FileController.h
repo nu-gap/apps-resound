@@ -20,16 +20,13 @@ IMPLIED WARRANTIES.
 #import <Foundation/Foundation.h>
 #import <AppKit/NSWindow.h>
 #include <sys/param.h>		// MAXPATHLEN
-#import <SoundKit/SoundKit.h>
-#import "ResoundMiscSoundView.h"
 #import "SoundDocumentTable.h"
 
-@interface Sound (ResoundSound)
-
-- saveToSoundFile:(NSString*) fn:(ResoundMiscSoundView*)sv:(BOOL) backup;	
-- initFromForeignSoundFile:(NSString*) filename:(BOOL) convert;
-
-@end
+/*
+  The Sound (ResoundSound) file-I/O category that used to be
+  declared here moved to Source/Sound-ResoundSound.h with the SndKit
+  migration (see docs/RESOUND_SNDKIT_PLAN.md, Phase 1).
+*/
 
 
 

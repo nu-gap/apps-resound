@@ -63,11 +63,21 @@ Resound_RESOURCE_FILES= \
 # Classification of the original app sources against the GNUstep
 # toolchain (Gershwin /System) - see docs/GNUSTEP_BUILD.md for details.
 #
-# READY (compiles and links unmodified):
+# SndKit and its portaudio performance backend, from the pinned
+# third_party/MusicKit submodule (see docs/GNUSTEP_BUILD.md, SndKit).
+# Needed by the file-I/O category (Source/Sound-ResoundSound.m) and,
+# as the migration progresses, by everything that touches sound objects.
+# (Strict v2: per-product libraries for an app's ObjC code go into
+# $(INSTANCE)_OBJC_LIBS, which feeds ADDITIONAL_OBJC_LIBS and hence
+# the app link line; $(INSTANCE)_LIBS is for library products.)
+Resound_OBJC_LIBS = -lSndKit -lMKPerformSndMIDI -lstdc++ -lm
+
+# READY (compiles and links against the GNUstep toolchain):
 Resound_OBJC_FILES= \
 	Source/Resound_main.m \
 	Source/Extra.m \
-	Source/ModuleMenuNode.m
+	Source/ModuleMenuNode.m \
+	Source/Sound-ResoundSound.m
 
 Resound_C_FILES= \
 	Source/fft.c

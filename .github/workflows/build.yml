@@ -250,6 +250,25 @@ jobs:
           "$TOOL" test/Tone.wav "$OUT"
           ls -la "$OUT"
 
+      - name: File I/O contract tests (Phase 1)
+        # The Sound (ResoundSound) category's intended behaviour, pinned
+        # test-first by test/resoundio.m (the Rhapsody original cannot
+        # run, so the tests define the SndKit contract; see
+        # docs/RESOUND_SNDKIT_PLAN.md, Phase 1): loading every format,
+        # the convertOnOpen normalisation, save/backup/info-string
+        # round trips and the failure paths.  Headless and fatal.
+        run: |
+          set -ex
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          make -C test -j"$(nproc)"
+          TOOL=$(find test -type f -name resoundio | head -n 1)
+          test -n "$TOOL"
+          export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          WORK="$RUNNER_TEMP/resoundio"
+          mkdir -p "$WORK"
+          "$TOOL" test/Tone.wav "$WORK"
+
       - name: Build the app
         run: |
           # Not -u: GNUstep.sh references unset shell-variant variables

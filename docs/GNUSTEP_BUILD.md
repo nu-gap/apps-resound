@@ -224,6 +224,7 @@ against the GNUstep toolchain:
 | `Source/Extra.m` | compiles; one pre-existing warning (missing `%s` in a format string at line 49) |
 | `Source/ModuleMenuNode.m` | compiles; one pre-existing selector-name warning |
 | `Source/fft.c` | pure C, compiles (referenced by the FFT module, Phase 3) |
+| `Source/Sound-ResoundSound.{h,m}` | **first SndKit-port file (2026-11-05, Phase 1, test-first)**: the `Snd (ResoundSound)` file-I/O category, extracted from `FileController.{h,m}` and migrated to SndKit (`initFromSoundfile:`-based loading, `setInfo:`/`writeSoundfile:`-based saving, `.~snd` backups, writer-format guard). Its intended behaviour is pinned by `test/resoundio.m` (44 checks, fatal in CI). The app links SndKit for it via `Resound_OBJC_LIBS`. |
 
 ### Blocked by SoundKit (24 files, not in the build yet)
 
@@ -242,6 +243,11 @@ ModuleController, ModuleSound, ModuleSoundView, PreferencesManager,
 ResoundMiscSoundView, ResoundMiscVolumeMeter, ResoundScrollView,
 SelectionInspector, SoundDocumentTable, SoundManager, VolumeController,
 ZoomInspector
+
+(FileController no longer contains the `Snd (ResoundSound)` category or
+the legacy reader imports; those moved to
+`Source/Sound-ResoundSound.{h,m}` / were dropped with the SndKit port —
+the class itself remains blocked with the Phase 2 GUI chain.)
 
 ### Not part of the app
 
