@@ -132,7 +132,7 @@ index ad36c0dd..b47aee02 100644
 
 ## 3. `MKPerformSndMIDI_portaudio/PerformSound.m`: infinite loop in `retrieveDriverList` with half-duplex devices (patch 0003)
 
-**Submitted upstream:** not yet — candidate for a leighsmith/MusicKit issue alongside #2/#3 (this is a genuine upstream bug: unbounded CPU spin, not a build issue).
+**Submitted upstream:** leighsmith/MusicKit issue [#4](https://github.com/leighsmith/MusicKit/issues/4) (2026-11-06).  When it lands, drop `patches/MusicKit-0003-retrievedriverlist-advance.diff` on the submodule bump.
 
 **Suggested issue title:** *`SNDInit` hangs forever (100% CPU) when PortAudio enumerates a playback-only or capture-only device*
 
@@ -231,11 +231,13 @@ format, played through the PipeWire/Pulse device, and both delegate
 messages (`willPlay:… duringPerformance:`, `didPlay:… duringPerformance:`)
 observed at the Snd's delegate on the main run loop.
 
-0001 and 0002 were submitted upstream on 2026-11-03: issue [#2](https://github.com/leighsmith/MusicKit/issues/2)
-(vDSP arch guard) and issue [#3](https://github.com/leighsmith/MusicKit/issues/3)
-(TIME_PROC cast); 0003 is still to be filed.  The Resound project
-(nu-gap/apps-resound, branch `gnustep-port`) vendors MusicKit as a
-pinned submodule and carries the fixes in the meantime as
-`patches/MusicKit-0001-…` / `MusicKit-0002-…` /
-`MusicKit-0003-…`; each is dropped on the submodule bump once its
-issue lands.
+0001 and 0002 were submitted upstream on 2026-11-03 as issue
+[#2](https://github.com/leighsmith/MusicKit/issues/2) (vDSP arch guard) and
+issue [#3](https://github.com/leighsmith/MusicKit/issues/3) (TIME_PROC cast);
+0003 followed on 2026-11-06 as issue
+[#4](https://github.com/leighsmith/MusicKit/issues/4) (the
+retrieveDriverList hang).  The Resound project (nu-gap/apps-resound, branch
+`gnustep-port`) vendors MusicKit as a pinned submodule and carries the fixes
+in the meantime as `patches/MusicKit-0001-…` / `MusicKit-0002-…` /
+`MusicKit-0003-…`; each is dropped on the submodule bump once its issue
+lands.
