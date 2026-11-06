@@ -1,0 +1,32 @@
+diff --git a/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformSound.m b/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformSound.m
+index 63e0e804..bcaa9ee7 100644
+--- a/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformSound.m
++++ b/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformSound.m
+@@ -70,6 +70,7 @@ static float *lastRecvdInputBuffer = NULL;
+ static const char **retrieveDriverList(BOOL forOutputDevices)
+ {
+     int driverIndex = 0;
++    int deviceIndex = 0;
+     numOfDevices = Pa_GetDeviceCount();
+     char **driverList;
+ 
+@@ -83,8 +84,9 @@ static const char **retrieveDriverList(BOOL forOutputDevices)
+           return NULL;
+     }
+     driverIndex = 0;
+-    while (driverIndex < numOfDevices) {
+-	const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(driverIndex);
++    deviceIndex = 0;
++    while (deviceIndex < numOfDevices) {
++	const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(deviceIndex);
+         const char *name = deviceInfo->name;
+         char *deviceName;
+ 
+@@ -104,6 +106,7 @@ static const char **retrieveDriverList(BOOL forOutputDevices)
+ 	    driverList[driverIndex] = deviceName;
+ 	    driverIndex++;
+ 	}
++        deviceIndex++;
+     }
+     driverList[driverIndex] = NULL;
+     return (const char **) driverList;

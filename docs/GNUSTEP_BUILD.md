@@ -128,6 +128,13 @@ Port patches (see `patches/`):
   `long (*)(void *)` is an incompatible function pointer type, which
   clang 16+ rejects as an error (the developer machine's clang 14 only
   warned about it, which is how it slipped past the sandbox build).
+- `MusicKit-0003-retrievedriverlist-advance.diff` fixes an upstream
+  infinite loop: `retrieveDriverList` reuses one variable as both the
+  device-table loop counter and the output-array write position, and
+  only advances it for matching devices — so the first SndKit audio
+  init hangs forever (100% CPU) on any machine with a playback-only
+  or capture-only device (e.g. the Pi's HDMI cards). Full diagnosis in
+  `docs/UPSTREAM_PATCHES.md` §3.
 
 Smoke test (`test/`):
 
@@ -208,7 +215,11 @@ Guidelines:
 - Do **not** reference files from the legacy `Resound.app/` directory; it is
   the build bundle now.
 - After adding sources, rebuild and verify the app still launches
-  (`./Resound.app/Resound` with a display attached).
+  (`./Resound.app/Resound` with a display attached). For any exercise
+  of the audio path (play/record) from a non-session shell, also set
+  `XDG_RUNTIME_DIR=/run/user/1000` so PortAudio reaches the desktop
+  session's PipeWire/Pulse socket; the launch check itself does not
+  need it (nothing initialises audio until a sound is played).
 
 ## Source classification status (2026-11-02)
 

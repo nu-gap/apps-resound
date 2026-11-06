@@ -38,6 +38,15 @@ IMPLIED WARRANTIES.
     unbounded NSString.)
   - The playback-complete delegate message gains the SndKit
     duringPerformance: argument (see the header for details).
+  - SndKit's Snd record: is a stub: it logs "Not yet implemented!" and
+    isRecording is hard-wired NO, so the [newSound record:] call below
+    starts no actual recording and the didRecord: completion that ends
+    the flow never arrives.  SndView documents recording into the sound
+    as unsupported on any platform; the working SndKit recorder is
+    SndStreamRecorder (record to a file).  The call is a dormant
+    placeholder for now (no app code reaches it until the console unit
+    is ported) and is re-routed through SndStreamRecorder in Phase 2
+    unit 1b (see docs/RESOUND_SNDKIT_PLAN.md).
   - The FileController/ConsoleManager/ModuleController imports were
     dropped: those headers still import <SoundKit/SoundKit.h> (they are
     later Phase 2 units).  SoundManager holds only id references to them
@@ -191,6 +200,10 @@ IMPLIED WARRANTIES.
                                samplingRate: soundRate];
 	[newSound setDelegate:self];
 	
+	/* SndKit's Snd record: is a stub (logs "Not yet implemented!"), so
+	   this call starts no recording and no didRecord: completion ever
+	   arrives.  Dormant until the console unit is ported; the recording
+	   re-route is Phase 2 unit 1b (see the notes at the top). */
 	[newSound record:self];
 	[consoleManager setDefaultChannelCount:channels]; // for ResoundMiscVolumeMeter 
 	[consoleManager setMeterTo: newSound];

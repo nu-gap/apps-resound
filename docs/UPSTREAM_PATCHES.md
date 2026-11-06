@@ -1,17 +1,19 @@
 # Upstream patches for leighsmith/MusicKit (SndKit)
 
 The vendored snapshot (`third_party/MusicKit`, pinned at `9683c76a`,
-master 2026-02-22) needs two small fixes to build on modern toolchains
-and non-x86 architectures.  Both are kept as patches in `patches/`
-(applied by `third_party/build-sndkit.sh`) so the submodule stays
-pristine.  When either fix lands upstream, drop the corresponding patch
-when bumping the submodule.
+master 2026-02-22) needs three small fixes to build on modern toolchains
+and non-x86 architectures, and to run on machines with half-duplex audio
+devices.  All are kept as patches in `patches/` (applied by
+`third_party/build-sndkit.sh`) so the submodule stays pristine.  When a
+fix lands upstream, drop the corresponding patch when bumping the
+submodule.
 
-Both patches apply from the repository root:
+All patches apply from the repository root:
 
 ```sh
 patch -p1 < patches/MusicKit-0001-vdsp-arch-guard.diff
 patch -p1 < patches/MusicKit-0002-portmidi-timeproc-cast.diff
+patch -p1 < patches/MusicKit-0003-retrievedriverlist-advance.diff
 ```
 
 ---
@@ -128,10 +130,87 @@ index ad36c0dd..b47aee02 100644
 
 ---
 
+## 3. `MKPerformSndMIDI_portaudio/PerformSound.m`: infinite loop in `retrieveDriverList` with half-duplex devices (patch 0003)
+
+**Submitted upstream:** not yet — candidate for a leighsmith/MusicKit issue alongside #2/#3 (this is a genuine upstream bug: unbounded CPU spin, not a build issue).
+
+**Suggested issue title:** *`SNDInit` hangs forever (100% CPU) when PortAudio enumerates a playback-only or capture-only device*
+
+**Symptom** (any machine whose PortAudio device list contains a device with
+zero channels on the side being queried — e.g. the Raspberry Pi 500, whose
+two HDMI `vc4-hdmi` cards are playback-only): the first SndKit audio
+initialisation (`SNDInit` → `retrieveDriverList(FALSE)` for the input list)
+never returns; one thread spins at 100% CPU forever. During
+`Pa_Initialize` the log first shows the usual harmless
+`jack server is not running or cannot be started` messages, then goes
+silent. Any code path that triggers a native-format query
+(`+[Snd nativeFormat]`, `convertToNativeFormat`, …) hangs with it.
+
+**Explanation.** `retrieveDriverList` reuses one variable, `driverIndex`,
+for two roles: the loop counter over the device table *and* the write
+position in the returned `driverList` array. The `driverIndex++` sits
+inside the `if` that tests whether a device matches (output channels for
+the output list, input channels for the input list), so a non-matching
+device — e.g. a playback-only HDMI card in the *input* list — is tested
+forever: the compiled loop jumps back to the condition without advancing.
+On machines where every enumerated device is full-duplex (typical laptops
+with mic + speaker, where the ALSA hw device and the Pulse/PipeWire
+"pulse"/"default" devices all have both) the two roles happen to agree
+and the bug is invisible, which is why the 2001-vintage code shipped.
+
+The sibling MIDI code in the same backend (`PerformMIDI.m`,
+`SNDGetAvailableDriverNames`) already uses the correct two-variable
+pattern (`deviceIndex` for the loop, `availableDriverIndex` for the
+array); the sound side simply never got the same treatment.
+
+**Proposed fix** — split the two roles: loop with a `deviceIndex` that
+always advances, write matches into `driverList[driverIndex]` as before.
+The returned array is byte-for-byte identical to before on any machine
+where the old code worked (the match set is unchanged); the only
+behavioural change is that the loop now terminates on machines with
+half-duplex devices.
+
+```diff
+diff --git a/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformSound.m b/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformSound.m
+index 63e0e804..bcaa9ee7 100644
+--- a/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformSound.m
++++ b/MusicKit/Frameworks/PlatformDependent/MKPerformSndMIDI_portaudio/PerformSound.m
+@@ -70,6 +70,7 @@ static float *lastRecvdInputBuffer = NULL;
+ static const char **retrieveDriverList(BOOL forOutputDevices)
+ {
+     int driverIndex = 0;
++    int deviceIndex = 0;
+     numOfDevices = Pa_GetDeviceCount();
+     char **driverList;
+ 
+@@ -83,8 +84,9 @@ static const char **retrieveDriverList(BOOL forOutputDevices)
+           return NULL;
+     }
+     driverIndex = 0;
+-    while (driverIndex < numOfDevices) {
+-	const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(driverIndex);
++    deviceIndex = 0;
++    while (deviceIndex < numOfDevices) {
++	const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(deviceIndex);
+         const char *name = deviceInfo->name;
+         char *deviceName;
+ 
+@@ -104,6 +106,7 @@ static const char **retrieveDriverList(BOOL forOutputDevices)
+ 	    driverList[driverIndex] = deviceName;
+ 	    driverIndex++;
+ 	}
++        deviceIndex++;
+     }
+     driverList[driverIndex] = NULL;
+     return (const char **) driverList;
+```
+
+---
+
 ## Verified
 
-Both patches were developed against the pinned snapshot and verified
-two ways before landing here:
+The build-fix patches (0001, 0002) were developed against the pinned
+snapshot and verified two ways before landing here:
 
 - full build of `MKPerformSndMIDI` + `SndKit` against a
   clang/libobjc2 GNUstep stack on aarch64 (where patch 0001 bites)
@@ -140,10 +219,23 @@ two ways before landing here:
   profile of the modern-Clang GNUstep stack (where patch 0002 bites)
   with the promoted diagnostics forced to errors.
 
-Both were submitted upstream on 2026-11-03: issue [#2](https://github.com/leighsmith/MusicKit/issues/2)
+Patch 0003 was developed against the same snapshot by instrumenting the
+hang on the Raspberry Pi 500 (gdb backtraces of the spinning thread,
+disassembly of `retrieveDriverList` in the built framework, a `strace`
+of the initialisation sequence, and a PortAudio-only control binary that
+proves the platform stack itself is healthy). After the fix the same
+machine initialises the audio engine, enumerates its three devices
+(HDMI card, Pulse/PipeWire `pulse` and `default`), and the end-to-end
+playback path was verified: a one-second tone converted to the native
+format, played through the PipeWire/Pulse device, and both delegate
+messages (`willPlay:… duringPerformance:`, `didPlay:… duringPerformance:`)
+observed at the Snd's delegate on the main run loop.
+
+0001 and 0002 were submitted upstream on 2026-11-03: issue [#2](https://github.com/leighsmith/MusicKit/issues/2)
 (vDSP arch guard) and issue [#3](https://github.com/leighsmith/MusicKit/issues/3)
-(TIME_PROC cast).  The Resound project (nu-gap/apps-resound, branch
-`gnustep-port`) vendors MusicKit as a pinned submodule and carries the
-fixes in the meantime as `patches/MusicKit-0001-…` /
-`patches/MusicKit-0002-…`; each is dropped on the submodule bump once
-its issue lands.
+(TIME_PROC cast); 0003 is still to be filed.  The Resound project
+(nu-gap/apps-resound, branch `gnustep-port`) vendors MusicKit as a
+pinned submodule and carries the fixes in the meantime as
+`patches/MusicKit-0001-…` / `MusicKit-0002-…` /
+`MusicKit-0003-…`; each is dropped on the submodule bump once its
+issue lands.
