@@ -225,13 +225,14 @@ against the GNUstep toolchain:
 | `Source/ModuleMenuNode.m` | compiles; one pre-existing selector-name warning |
 | `Source/fft.c` | pure C, compiles (referenced by the FFT module, Phase 3) |
 | `Source/Sound-ResoundSound.{h,m}` | **first SndKit-port file (2026-11-05, Phase 1, test-first)**: the `Snd (ResoundSound)` file-I/O category, extracted from `FileController.{h,m}` and migrated to SndKit (`initFromSoundfile:`-based loading, `setInfo:`/`writeSoundfile:`-based saving, `.~snd` backups, writer-format guard). Its intended behaviour is pinned by `test/resoundio.m` (44 checks, fatal in CI). The app links SndKit for it via `Resound_OBJC_LIBS`. |
+| `Source/SoundManager.{h,m}` | **Phase 2, unit 1 (2026-11-06)**: the playback/recording manager, migrated to SndKit (`Sound` → `Snd`; performance-based `play`/`stop`/`pause`/`resume`/`record`; recording buffer sized at init via `initWithFormat:channelCount:frames:samplingRate:`; delegate `didPlay:` gains the SndKit `duringPerformance:` argument, new `hadError:`). Self-contained: the view ivar is `id` and the three app-header imports were dropped (those headers still import legacy SoundKit; re-add as they are ported), with file-scoped pragmas for the two warning classes the `id` dispatch produces. Eight **pre-existing** `-Wmissing-selector-name` warnings remain, from Sean Luke's 1998 `- record: (double) SoundRate: …` declaration idiom (verbatim from the original; the header/.m capitalisation difference proves the Rhapsody compiler used the same parameter-name reading as clang, so the runtime selector `record:::::` is preserved exactly — kept visible per the `Extra.m` precedent). Verified by build + local launch; its runtime behaviour (play/record) is exercised from the view/console units that follow. |
 
-### Blocked by SoundKit (24 files, not in the build yet)
+### Blocked by SoundKit (23 files, not in the build yet)
 
-All 24 fail with `fatal error: 'SoundKit/SoundKit.h' file not found`
+All 23 fail with `fatal error: 'SoundKit/SoundKit.h' file not found`
 (directly or via their headers: `FileController.h`, `ConsoleManager.h`,
 `MiscSoundView.h`, `MiscVolumeMeter.h`, `MiscSoundTracker.h`,
-`SoundManager.h`, `SelectionInspector.h`, `SoundDocumentTable.h`,
+`SelectionInspector.h`, `SoundDocumentTable.h`,
 `VolumeController.h`, `ModuleProtocol.h`, `ModuleSound.h`,
 `ModuleSoundView.h`). They unblock with the SndKit migration
 (`docs/RESOUND_SNDKIT_PLAN.md`, phases 1-3):
@@ -241,7 +242,7 @@ InfoStringInspector, InspectorManager, MarksInspector, MiscSoundTracker,
 MiscSoundView, MiscSoundViewRuler, MiscVolumeMeter, Module,
 ModuleController, ModuleSound, ModuleSoundView, PreferencesManager,
 ResoundMiscSoundView, ResoundMiscVolumeMeter, ResoundScrollView,
-SelectionInspector, SoundDocumentTable, SoundManager, VolumeController,
+SelectionInspector, SoundDocumentTable, VolumeController,
 ZoomInspector
 
 (FileController no longer contains the `Snd (ResoundSound)` category or

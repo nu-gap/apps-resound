@@ -77,7 +77,8 @@ Resound_OBJC_FILES= \
 	Source/Resound_main.m \
 	Source/Extra.m \
 	Source/ModuleMenuNode.m \
-	Source/Sound-ResoundSound.m
+	Source/Sound-ResoundSound.m \
+	Source/SoundManager.m
 
 Resound_C_FILES= \
 	Source/fft.c
@@ -89,7 +90,7 @@ Resound_C_FILES= \
 # MiscSoundViewRuler, MiscVolumeMeter, Module, ModuleController,
 # ModuleSound, ModuleSoundView, PreferencesManager, ResoundMiscSoundView,
 # ResoundMiscVolumeMeter, ResoundScrollView, SelectionInspector,
-# SoundDocumentTable, SoundManager, VolumeController, ZoomInspector
+# SoundDocumentTable, VolumeController, ZoomInspector
 
 -include GNUmakefile.preamble
 

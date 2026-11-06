@@ -107,7 +107,8 @@ test-first:
   One deliberate divergence: unreadable files return `nil` (Rhapsody
   returned an empty sound) — the Phase 2 `open:` flow must guard for it.
 - [ ] Replace all `#import <SoundKit/SoundKit.h>` with SndKit framework imports in the remaining files:
-  - `Source/SoundManager.{h,m}`, `Source/FileController.{h,m}` (class part)
+  - ~~`Source/SoundManager.{h,m}`~~ — done 2026-11-06 (Phase 2, unit 1)
+  - `Source/FileController.{h,m}` (class part)
   - `Source/MiscSoundView.{h,m}`, `Source/ResoundMiscSoundView.{h,m}`, `Source/ResoundMiscVolumeMeter.{h,m}`
   - `Source/ModuleSound.{h,m}`, `Source/ModuleSoundView.{h,m}`
   - `Source/ConsoleManager.{h,m}`, `Source/MiscTapper.{h,m}`, `Source/MiscVolumeMeter.{h,m}`, `Source/MiscSoundTracker.{h,m}`, `Source/VolumeController.{h,m}`
@@ -123,8 +124,8 @@ test-first:
 
 ### Phase 2 — Playback / recording / monitoring / volume
 
-- [ ] Port `SoundManager` to `Snd(Playing)`: `play`, `play:`, `stop`, `stop:`, `pause`, `pause:`, `resume`, `resume`, `record`, `isPlaying`, `isRecording`, `isPlayable`, error returns.
-- [ ] Port delegates to `SndDelegate`: `willPlay:duringPerformance:`, `didPlay:duringPerformance:`, `willRecord:`, `didRecord:`, `hadError:` (replaces `didPlay:sender` / `didRecord:sender`).
+- [x] **Port `SoundManager` (done 2026-11-06, unit 1).** `Sound` → `Snd` throughout; `play`/`stop`/`pause`/`resume`/`record`/`isPlaying`/`isRecording` now use SndKit's performance-based `Snd` APIs (the plan's `Snd(Playing)` category does not exist — the methods live directly on `Snd`, alongside `SndPerformance`). The recording buffer is sized at init via `initWithFormat:channelCount:frames:samplingRate:` (SndKit has no `setDataSize:…`; the frame count is derived from the byte size the console panel passes; the old `infoSize:` has no counterpart — Snd's info is an `NSString`). The view ivar is typed `id` until the view chain is ported (its headers still import legacy SoundKit); the three app-header imports (`FileController`/`ConsoleManager`/`ModuleController`) were dropped for the same reason — all references are dynamic `id` dispatch, so the class is a self-contained SndKit-only unit. In the build since 2026-11-06.
+- [x] **Port delegates to the SndKit delegate set (same unit).** `didPlay:sender` → `didPlay:sender duringPerformance:` (SndKit's performance-based signature; the view forwards its Snd's completion with the extra argument), `didRecord:sender` unchanged, **new** `hadError:sender` (SndKit notifies the delegate of playback/recording errors; the legacy app had no error path — it cleans up as in `stop:`). `willPlay:`/`willRecord:` are deliberately *not* implemented: SndKit only sends them if the delegate implements them, and the legacy app derived its state from the manager's own flags, not from these.
 - [ ] Port `SndView` usage in `MiscSoundView`/`ResoundMiscSoundView`/`ModuleSoundView`: `setSound:`, `soundBeingProcessed`, selection APIs, play marks (`playInFuture:beginSample:sampleCount:`), cursor/scroll APIs, `drawRect:`, pasteboard.
 - [ ] Port console/tapper/volume-meter/sound-tracker from `NXSoundIn`/`NXSoundOut`/`NX_SoundDevice*`/`NX_SoundStreamDataEncoding*`/`NX_Sound*` status to `SndStreamManager`/`SndStreamRecorder`/`SndStreamPlayer`/`SndStreamMixer`/`SndStreamInput` + `SndMeter`; port volume/mute to `SndAudioFader` / `+[Snd isMuted]` / `+setMute:`.
 - [ ] Port `VolumeController` accordingly.

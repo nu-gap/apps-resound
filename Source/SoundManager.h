@@ -16,23 +16,33 @@ NO REPRESENTATIONS ABOUT THE ACCURACY OR SUITABILITY OF THIS MATERIAL
 FOR ANY PURPOSE.  IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR
 IMPLIED WARRANTIES.
 
+This file was migrated from the defunct NeXT SoundKit to SndKit as part
+of the GNUstep port (see docs/RESOUND_SNDKIT_PLAN.md, Phase 2, unit 1).
+The Sound -> Snd rename and the performance-based delegate signatures
+(below) are the substantive changes; the behaviour is unchanged.
 */
 
 
 #import <Foundation/Foundation.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <AppKit/NSWindow.h>
-#import "ResoundMiscSoundView.h"
 
 @interface SoundManager:NSObject
     {
     id  consoleManager;
     id  fileController;
     
-    Sound*	currentPlayingOrRecordingSound;
-    ResoundMiscSoundView*	currentPlayingOrRecordingSoundView;
+    Snd*	currentPlayingOrRecordingSound;
+    /* Typed as id for now: the soundview chain (MiscSoundView /
+       ResoundMiscSoundView, hence SoundView -> SndView) is not yet
+       migrated, so its headers still import <SoundKit/SoundKit.h> and
+       cannot be used here.  All uses of the view below are dynamic
+       message sends (play:/stop:/pause:/resume:/setPlayMark:), so the
+       id type is safe.  Tighten to ResoundMiscSoundView* once the view
+       chain is ported (Phase 2, next unit). */
+    id	currentPlayingOrRecordingSoundView;
     NSWindow*	currentPlayingOrRecordingWindow;
-    Sound*   newSound;
+    Snd*   newSound;
     BOOL paused;
     BOOL playing;
     BOOL recording;
@@ -57,7 +67,14 @@ IMPLIED WARRANTIES.
 
 /*---IMPLEMENTED AS A DELEGATE OF SOUND AND SOUNDVIEW-----*/
 
-- didPlay:sender;
+/* SndKit's delegate protocol (the SndDelegate class in Snd.h) differs
+   from the old SoundKit in two ways: the playback-complete message
+   gains a duringPerformance: argument (SndKit plays through
+   SndPerformance objects), and an error message hadError: is added.
+   didRecord: keeps its one-argument form in both. */
+
+- didPlay:sender duringPerformance:performance;
 - didRecord:sender;
+- hadError:sender;
 
 @end
