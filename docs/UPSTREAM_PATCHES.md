@@ -213,11 +213,7 @@ index 63e0e804..bcaa9ee7 100644
 
 ## 4. `SndKit/SndStreamRecorder.{h,m}`: expose the recorder's trigger threshold (patch 0004)
 
-**Upstream status:** not yet submitted (candidate; the SndStreamRecorder
-facade has no other Resound-relevant gaps — see
-`docs/RESOUND_SNDKIT_PLAN.md`, Phase 2 unit 1b).  When it lands, drop
-`patches/MusicKit-0004-streamrecorder-threshold.diff` on the submodule
-bump.
+**Submitted upstream:** leighsmith/MusicKit issue [#5](https://github.com/leighsmith/MusicKit/issues/5) (2026-11-06).  When it lands, drop `patches/MusicKit-0004-streamrecorder-threshold.diff` on the submodule bump.
 
 **Suggested issue title:** *`SndStreamRecorder` offers no way to set the
 recording start-trigger threshold; a non-positive threshold (record from
@@ -288,9 +284,7 @@ index 10ee8fe0..c5d75b66 100644
 
 ## 5. `SndKit/SndConvert.m`: temp buffer overflow in cross-rate `convertToSampleFormat:` (patch 0005)
 
-**Upstream status:** not yet submitted (candidate).  When it lands, drop
-`patches/MusicKit-0005-sndconvert-resample-buffer.diff` on the submodule
-bump.
+**Submitted upstream:** leighsmith/MusicKit issue [#6](https://github.com/leighsmith/MusicKit/issues/6) (2026-11-06).  When it lands, drop `patches/MusicKit-0005-sndconvert-resample-buffer.diff` on the submodule bump.
 
 **Suggested issue title:** *`free(): invalid pointer` abort in
 `SndChangeSampleRate`/`resample`: the cross-rate conversion's temporary
@@ -416,9 +410,12 @@ unchanged.
 issue [#3](https://github.com/leighsmith/MusicKit/issues/3) (TIME_PROC cast);
 0003 followed on 2026-11-06 as issue
 [#4](https://github.com/leighsmith/MusicKit/issues/4) (the
-retrieveDriverList hang).  0004 and 0005 are not submitted yet; they
-will follow the same pattern (file the issue, drop the patch on the
-submodule bump once it lands).  The Resound project (nu-gap/apps-resound,
-branch `gnustep-port`) vendors MusicKit as a pinned submodule and carries
-the fixes in the meantime as `patches/MusicKit-0001-…` through
-`MusicKit-0005-…`.
+retrieveDriverList hang); 0004 and 0005 followed the same day as issue
+[#5](https://github.com/leighsmith/MusicKit/issues/5) (the recorder
+threshold) and issue
+[#6](https://github.com/leighsmith/MusicKit/issues/6) (the resample
+temp-buffer overflow).  The Resound project (nu-gap/apps-resound, branch
+`gnustep-port`) vendors MusicKit as a pinned submodule and carries the
+fixes in the meantime as `patches/MusicKit-0001-…` through
+`MusicKit-0005-…`; each is dropped on the submodule bump once its issue
+lands.
