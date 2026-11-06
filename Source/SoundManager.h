@@ -20,6 +20,11 @@ This file was migrated from the defunct NeXT SoundKit to SndKit as part
 of the GNUstep port (see docs/RESOUND_SNDKIT_PLAN.md, Phase 2, unit 1).
 The Sound -> Snd rename and the performance-based delegate signatures
 (below) are the substantive changes; the behaviour is unchanged.
+Phase 2 unit 1b re-routed the recording flow: SndKit's Snd record: is
+a stub and SndView documents recording as unsupported on any platform,
+so record: now captures through SndStreamRecorder to a temp sound file
+(unit 1b, see the notes in SoundManager.m); the Snd newSound is kept
+only as the console meter's token object.
 */
 
 
@@ -43,17 +48,33 @@ The Sound -> Snd rename and the performance-based delegate signatures
     id	currentPlayingOrRecordingSoundView;
     NSWindow*	currentPlayingOrRecordingWindow;
     Snd*   newSound;
+    /* Unit 1b: the capture itself runs through SndStreamRecorder (SndKit
+       has no Snd-style capture); newSound above is only the console
+       meter's token object.  These remember the capture so
+       _finishRecording can close it, convert it to the requested
+       format, and hand it off. */
+    SndStreamRecorder* recorder;
+    NSString* recordTempPath;
+    int recordDataFormat;
+    double recordSoundRate;
+    int recordChannels;
+    NSTimer* recordTimer;
     BOOL paused;
     BOOL playing;
     BOOL recording;
     }
 
 - init;
-- (void)stop:(id)sender;				// Stop playing.
+- dealloc;
+- (void)stop:(id)sender;				// Stop playing or recording.
 - play:sender;		// Play the current sound.  Returns NULL if unable.
 - record: (double) SoundRate: 
 (int) channels: (int) DataSize: 
 (int) dataFormat: sender;	      // Record a new sound.  Returns NULL if unable.
+- (void) _finishRecording;           // Close the capture, convert, hand off.
+                                     // Called by the duration timer and by
+                                     // stop:; idempotent via the recording
+                                     // flag.
 
 - (int) togglePaused:sender;	    // Turns Pause on or off.  Returns 1 if now paused,
                                     // 2 if now not paused, or 0 if cannot toggle.
@@ -76,5 +97,14 @@ The Sound -> Snd rename and the performance-based delegate signatures
 - didPlay:sender duringPerformance:performance;
 - didRecord:sender;
 - hadError:sender;
+
+/* SndStreamRecorderDelegate (SndStreamRecorder.h): the capture-side
+   analogue.  didStartRecording: is implemented as a no-op -- record:
+   is synchronous, so no state change is needed (and it has not been
+   observed to fire on this platform in the first place; see
+   SoundManager.m).  didFinishRecording: is declared by SndKit but
+   never sent, so there is nothing to implement. */
+
+- didStartRecording:sender;
 
 @end

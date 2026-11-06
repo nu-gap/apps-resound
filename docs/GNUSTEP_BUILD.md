@@ -135,6 +135,15 @@ Port patches (see `patches/`):
   init hangs forever (100% CPU) on any machine with a playback-only
   or capture-only device (e.g. the Pi's HDMI cards). Full diagnosis in
   `docs/UPSTREAM_PATCHES.md` §3.
+- `MusicKit-0004-streamrecorder-threshold.diff` re-exports
+  `setStartTriggerThreshold:` on the `SndStreamRecorder` facade (it
+  lived only on the internal processor): the recording flow needs a
+  non-positive threshold to record from the first buffer.
+- `MusicKit-0005-sndconvert-resample-buffer.diff` sizes the
+  cross-rate conversion's temporary buffer for `resample()`'s
+  `+ 1` output frame: the original expression truncates below the
+  write for some input durations, overrunning the buffer and aborting
+  in `free()`. Full diagnosis in `docs/UPSTREAM_PATCHES.md` §5.
 
 Smoke test (`test/`):
 
@@ -236,7 +245,7 @@ against the GNUstep toolchain:
 | `Source/ModuleMenuNode.m` | compiles; one pre-existing selector-name warning |
 | `Source/fft.c` | pure C, compiles (referenced by the FFT module, Phase 3) |
 | `Source/Sound-ResoundSound.{h,m}` | **first SndKit-port file (2026-11-05, Phase 1, test-first)**: the `Snd (ResoundSound)` file-I/O category, extracted from `FileController.{h,m}` and migrated to SndKit (`initFromSoundfile:`-based loading, `setInfo:`/`writeSoundfile:`-based saving, `.~snd` backups, writer-format guard). Its intended behaviour is pinned by `test/resoundio.m` (44 checks, fatal in CI). The app links SndKit for it via `Resound_OBJC_LIBS`. |
-| `Source/SoundManager.{h,m}` | **Phase 2, unit 1 (2026-11-06)**: the playback/recording manager, migrated to SndKit (`Sound` → `Snd`; performance-based `play`/`stop`/`pause`/`resume`/`record`; recording buffer sized at init via `initWithFormat:channelCount:frames:samplingRate:`; delegate `didPlay:` gains the SndKit `duringPerformance:` argument, new `hadError:`). Self-contained: the view ivar is `id` and the three app-header imports were dropped (those headers still import legacy SoundKit; re-add as they are ported), with file-scoped pragmas for the two warning classes the `id` dispatch produces. Eight **pre-existing** `-Wmissing-selector-name` warnings remain, from Sean Luke's 1998 `- record: (double) SoundRate: …` declaration idiom (verbatim from the original; the header/.m capitalisation difference proves the Rhapsody compiler used the same parameter-name reading as clang, so the runtime selector `record:::::` is preserved exactly — kept visible per the `Extra.m` precedent). Verified by build + local launch; its runtime behaviour (play/record) is exercised from the view/console units that follow. |
+| `Source/SoundManager.{h,m}` | **Phase 2, unit 1 (2026-11-06)**: the playback/recording manager, migrated to SndKit (`Sound` → `Snd`; performance-based `play`/`stop`/`pause`/`resume`/`record`; recording buffer sized at init via `initWithFormat:channelCount:frames:samplingRate:`; delegate `didPlay:` gains the SndKit `duringPerformance:` argument, new `hadError:`). Self-contained: the view ivar is `id` and the three app-header imports were dropped (those headers still import legacy SoundKit; re-add as they are ported), with file-scoped pragmas for the two warning classes the `id` dispatch produces. Eight **pre-existing** `-Wmissing-selector-name` warnings remain, from Sean Luke's 1998 `- record: (double) SoundRate: …` declaration idiom (verbatim from the original; the header/.m capitalisation difference proves the Rhapsody compiler used the same parameter-name reading as clang, so the runtime selector `record:::::` is preserved exactly — kept visible per the `Extra.m` precedent). **Phase 2, unit 1b (2026-11-06):** the recording flow is re-routed to `SndStreamRecorder` (SndKit's `Snd record:` is a stub): the capture runs to a temp `.wav` with a -1.0 trigger threshold (patch 0004), an app `NSTimer` enforces the legacy buffer-full duration (SndKit has no auto-stop), and `_finishRecording` (timer or `stop:`) reads the file back, converts it to the console-requested format (needs patch 0005 — the resample temp-buffer overflow), and does the legacy `didRecord:` handoff; `newSound` is now only the meter token. Verified at engine level (probe on the Pi) + app launch check; the flow is still not reached in-app until the console unit. |
 
 ### Blocked by SoundKit (23 files, not in the build yet)
 

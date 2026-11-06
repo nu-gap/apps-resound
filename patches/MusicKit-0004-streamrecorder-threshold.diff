@@ -1,0 +1,44 @@
+diff --git a/MusicKit/Frameworks/SndKit/SndStreamRecorder.h b/MusicKit/Frameworks/SndKit/SndStreamRecorder.h
+index 1835b010..cfa26090 100644
+--- a/MusicKit/Frameworks/SndKit/SndStreamRecorder.h
++++ b/MusicKit/Frameworks/SndKit/SndStreamRecorder.h
+@@ -78,6 +78,15 @@
+ */
+ - (BOOL) startRecording;
+ 
++/*! 
++  @brief   Sets the amplitude threshold the recorder waits for before it
++           starts saving buffers.  Passed through to the internal recording
++           processor; a non-positive threshold records from the first
++           buffer unconditionally.
++  @param      amplitudeThreshold
++*/
++- (void) setStartTriggerThreshold: (float) amplitudeThreshold;
++
+ /*! 
+   @brief   Starts the record-to-disk routines.
+   @param      filename
+diff --git a/MusicKit/Frameworks/SndKit/SndStreamRecorder.m b/MusicKit/Frameworks/SndKit/SndStreamRecorder.m
+index 10ee8fe0..c5d75b66 100644
+--- a/MusicKit/Frameworks/SndKit/SndStreamRecorder.m
++++ b/MusicKit/Frameworks/SndKit/SndStreamRecorder.m
+@@ -66,6 +66,19 @@
+     return [recorder startRecording];
+ }
+ 
++////////////////////////////////////////////////////////////////////////////////
++// setStartTriggerThreshold:
++//
++// Pass-through to the internal recording processor: the amplitude a sample
++// must exceed before the recorder starts saving buffers.  A non-positive
++// threshold records from the first buffer unconditionally.
++////////////////////////////////////////////////////////////////////////////////
++
++- (void) setStartTriggerThreshold: (float) amplitudeThreshold
++{
++    [recorder setStartTriggerThreshold: amplitudeThreshold];
++}
++
+ ////////////////////////////////////////////////////////////////////////////////
+ // stopRecordingAndDisconnectFromStream:
+ ////////////////////////////////////////////////////////////////////////////////

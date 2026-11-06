@@ -38,15 +38,25 @@ IMPLIED WARRANTIES.
     unbounded NSString.)
   - The playback-complete delegate message gains the SndKit
     duringPerformance: argument (see the header for details).
-  - SndKit's Snd record: is a stub: it logs "Not yet implemented!" and
-    isRecording is hard-wired NO, so the [newSound record:] call below
-    starts no actual recording and the didRecord: completion that ends
-    the flow never arrives.  SndView documents recording into the sound
-    as unsupported on any platform; the working SndKit recorder is
-    SndStreamRecorder (record to a file).  The call is a dormant
-    placeholder for now (no app code reaches it until the console unit
-    is ported) and is re-routed through SndStreamRecorder in Phase 2
-    unit 1b (see docs/RESOUND_SNDKIT_PLAN.md).
+  - Recording is re-routed through SndStreamRecorder (Phase 2 unit 1b):
+    SndKit's Snd record: is a stub (it logs "Not yet implemented!") and
+    SndView documents recording into the sound as unsupported on any
+    platform, but SndStreamRecorder captures the native input stream to
+    a file.  record: starts it with a -1.0 trigger threshold (the
+    SndKit default 0.002 would wait for non-silence; the legacy
+    SoundKit recorded whatever came in) into a temp .wav in the native
+    input format, and an NSTimer enforces the legacy buffer-full
+    duration (SndKit has no auto-stop: its
+    prepareToRecordForDuration: ignores the duration, and the delegate's
+    didFinishRecording: is declared but never sent).  _finishRecording
+    (timer expiry or stop:) closes the file, reads it back with
+    initFromSoundfile:, converts it to the console-requested format,
+    and performs the legacy didRecord: handoff.  One deliberate
+    behaviour change: a user stop during recording now hands off the
+    partial capture (the legacy stop: discarded it).
+    The newSound allocation stays: SndKit never fills it, so it serves
+    as the console meter's token object (the meter shows a zero buffer,
+    as in unit 1; the real meter re-work is a later unit).
   - The FileController/ConsoleManager/ModuleController imports were
     dropped: those headers still import <SoundKit/SoundKit.h> (they are
     later Phase 2 units).  SoundManager holds only id references to them
@@ -70,6 +80,8 @@ IMPLIED WARRANTIES.
 
 #import "SoundManager.h"
 
+#import <unistd.h>	/* getpid, for the capture temp file name */
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wobjc-method-access"
 #pragma clang diagnostic ignored "-Wobjc-multiple-method-names"
@@ -86,6 +98,12 @@ IMPLIED WARRANTIES.
     currentPlayingOrRecordingSoundView=nil;
     currentPlayingOrRecordingSound=nil;
     currentPlayingOrRecordingWindow=nil;
+    recorder=nil;
+    recordTempPath=nil;
+    recordDataFormat=SND_FORMAT_UNSPECIFIED;
+    recordSoundRate=0.0;
+    recordChannels=0;
+    recordTimer=nil;
     playing=NO;
     recording=NO;
     paused=NO;
@@ -94,8 +112,46 @@ IMPLIED WARRANTIES.
 
 
 
+/*** dealloc:
+  Releases the capture resources.  The app holds the SoundManager for
+  the whole session, so this only runs on abnormal teardown (for
+  instance the console window closing mid-capture): stop the recorder
+  (which flushes the buffer queue and closes the file) and delete the
+  temp file.  No handoff happens here -- the objects that would receive
+  the sound are being torn down as well.
+*/
+
+- (void) dealloc
+    {
+    if (recordTimer)
+	{
+	[recordTimer invalidate];
+	[recordTimer release];
+	recordTimer=nil;
+	}
+    if (recording&&recorder)
+	[recorder stopRecording];
+    if (recorder)
+	{
+	[recorder release];
+	recorder=nil;
+	}
+    if (recordTempPath)
+	{
+	[[NSFileManager defaultManager] removeFileAtPath: recordTempPath handler: nil];
+	[recordTempPath release];
+	recordTempPath=nil;
+	}
+    [newSound release];
+    newSound=nil;
+    [super dealloc];
+    }
+
+
+
 /*** Stop:
-  Stops the currently-playing sound.
+  Stops the currently-playing sound or, if recording, finishes the
+  capture (see _finishRecording).
  */
 
 - (void)stop:(id)sender;
@@ -108,8 +164,13 @@ IMPLIED WARRANTIES.
 	}
     else if (recording)
 	{
-	[newSound stop:self];
-	[[fileController getModuleController] soundDidRecord];
+	/* The capture runs through the SndStreamRecorder (newSound is
+	   only the meter token), so stopping it is a recorder
+	   operation; _finishRecording does the stop, the read-back
+	   conversion, and the legacy didRecord: handoff in one pass.
+	   (Behaviour note: the legacy stop: discarded a partial
+	   capture; the port hands it off -- see the notes at the top.) */
+	[self _finishRecording];
 	}
     
     [consoleManager stopMeter];
@@ -184,27 +245,62 @@ IMPLIED WARRANTIES.
     {
     if (!playing&&!recording)
 	{
-	/* SndKit sizes the recording buffer at init time (the legacy
-	   Sound built it with setDataSize:dataFormat:samplingRate:
-	   channelCount:infoSize:).  The console passes the buffer size
-	   in bytes; the corresponding frame count is the byte count
-	   divided by the per-frame size (channels * sample width). */
+	/* SndKit has no Sound-style capture (Snd record: is a stub and
+	   SndView documents recording into the sound as unsupported), so the
+	   capture runs through the SndStreamRecorder (unit 1b, see the notes
+	   at the top).  The newSound allocation stays: SndKit never fills
+	   it, so it is the console meter's token object.  As in unit 1 the
+	   buffer is sized at init (the legacy Sound built it with
+	   setDataSize:dataFormat:samplingRate:channelCount:infoSize:); the
+	   console passes the buffer size in bytes, so the frame count is
+	   the byte count over the per-frame size (channels * sample width). */
 	int sampleWidth = SndSampleWidth ((SndSampleFormat) dataFormat);
 	unsigned long frames = 0;
 	if (channels > 0 && sampleWidth > 0)
 	    frames = (unsigned long) dataSize / ((unsigned long) channels * (unsigned long) sampleWidth);
 	
 	newSound = [[Snd alloc] initWithFormat: (SndSampleFormat) dataFormat
-                                 channelCount: channels
-                                       frames: frames
-                               samplingRate: soundRate];
-	[newSound setDelegate:self];
+                                  channelCount: channels
+                                        frames: frames
+                                samplingRate: soundRate];
 	
-	/* SndKit's Snd record: is a stub (logs "Not yet implemented!"), so
-	   this call starts no recording and no didRecord: completion ever
-	   arrives.  Dormant until the console unit is ported; the recording
-	   re-route is Phase 2 unit 1b (see the notes at the top). */
-	[newSound record:self];
+	/* The real capture.  No +streamRecorder factory exists in SndKit
+	   (doc comment only), hence alloc/init. */
+	recorder = [[SndStreamRecorder alloc] init];
+	[recorder setDelegate: self];
+	/* The recorder starts writing only when a sample exceeds the
+	   trigger threshold (SndKit default 0.002f); the legacy SoundKit
+	   recorded whatever came in for the buffer duration, so a
+	   non-positive threshold preserves that (and is what lets a
+	   digital-silence input record at all). */
+	[recorder setStartTriggerThreshold: -1.0f];
+	
+	/* The capture file, in the native input format.  .wav keeps the
+	   temp file openable by other tools (.aiff is 1-2 channel capped
+	   through libsndfile; .snd is SndKit's own container). */
+	recordTempPath = [[NSTemporaryDirectory()
+	    stringByAppendingPathComponent:
+		[NSString stringWithFormat: @"resound-record-%d.wav", (int) getpid()]] retain];
+	
+	if (![recorder startRecordingToFile: recordTempPath])
+	    {
+	    /* No usable input: roll back and report "cannot record" the
+	       same way the legacy guard does. */
+	    [recordTempPath release];
+	    recordTempPath=nil;
+	    [recorder release];
+	    recorder=nil;
+	    [newSound release];
+	    newSound=nil;
+	    return nil;
+	    }
+	
+	/* Remember the console-requested format; the capture itself is in
+	   the native input format and is converted in _finishRecording. */
+	recordDataFormat = dataFormat;
+	recordSoundRate = soundRate;
+	recordChannels = channels;
+	
 	[consoleManager setDefaultChannelCount:channels]; // for ResoundMiscVolumeMeter 
 	[consoleManager setMeterTo: newSound];
 	[consoleManager startMeter];
@@ -212,6 +308,21 @@ IMPLIED WARRANTIES.
 	playing=NO;
 	paused=NO;
 	[[fileController getModuleController] soundNowRecording];
+	
+	/* SndKit has no buffer-full auto-stop, so the app enforces the
+	   legacy capture duration: the console's buffer byte size is the
+	   legacy full-capture size, hence the timer interval is the byte
+	   count over the per-second byte rate. */
+	if (frames > 0 && soundRate > 0 && channels > 0)
+	    {
+	    double duration = (double) dataSize / ((double) channels * (double) sampleWidth * soundRate);
+	    if (duration > 0.0)
+		recordTimer = [NSTimer scheduledTimerWithTimeInterval: duration
+		                                               target: self
+		                                             selector: @selector(_finishRecording)
+		                                             userInfo: nil
+		                                              repeats: NO];
+	    }
 	return self;
 	}
     return nil;
@@ -296,9 +407,11 @@ IMPLIED WARRANTIES.
     }
 
 /*** didRecord:
-  Cleans up after a sound finished recording.  Informs the Console Manager, 
-  Module Controller, etc.  Hands the sound to the fileController to pop up on
-  the screen.
+  Legacy SoundKit completion: the sound finished recording into its
+  buffer.  Vestigial since unit 1b -- SndKit's Snd record: is a stub
+  and SoundManager no longer calls it, so Snd never sends this (the
+  capture now completes through _finishRecording).  Kept so the
+  delegate surface still matches the legacy class.
 */
 
 - didRecord:sender
@@ -309,6 +422,22 @@ IMPLIED WARRANTIES.
     [consoleManager stopDown:self];
     [fileController newRecordedSound: [newSound autorelease]];
     [[fileController getModuleController] soundDidRecord];
+    return self;
+    }
+
+
+/*** didStartRecording:
+  SndStreamRecorderDelegate (SndStreamRecorder.h): sent from the
+  stream thread when the recorder is about to start capturing.
+  Implemented as a no-op: record: is synchronous (recording is set
+  there), so no state change is needed.  It has not been observed to
+  fire on this platform in probe runs, which is why completion is
+  timer/stop-driven, not delegate-driven (SndKit's
+  didFinishRecording: is declared but never sent).
+*/
+
+- didStartRecording:sender
+    {
     return self;
     }
 

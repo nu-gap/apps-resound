@@ -1,0 +1,23 @@
+diff --git a/MusicKit/Frameworks/SndKit/SndConvert.m b/MusicKit/Frameworks/SndKit/SndConvert.m
+index d9d44c06..25f75226 100644
+--- a/MusicKit/Frameworks/SndKit/SndConvert.m
++++ b/MusicKit/Frameworks/SndKit/SndConvert.m
+@@ -684,8 +684,16 @@ int SndChangeSampleType(void *fromPtr, void *toPtr, SndSampleFormat fromDataForm
+     if (format.sampleRate != toSampleRate) {
+ 	double stretchFactor = toSampleRate / format.sampleRate;
+ 	long sampleFrames = [self lengthInSampleFrames];
+-	long numOfSamples = sampleFrames * format.channelCount;
+-	NSMutableData *toData = [NSMutableData dataWithLength: numOfSamples * stretchFactor * SndSampleWidth(SND_FORMAT_LINEAR_16)];
++	/* SndChangeSampleRate() below requests (floor(stretchFactor * sampleFrames) + 1)
++	 * output frames and resample() writes up to that many, so the temporary
++	 * buffer must be sized for that worst case.  The original expression
++	 * (sampleFrames * channelCount * stretchFactor * 16-bit width) truncates
++	 * below the write for some input durations; the few-byte overflow then
++	 * lands in the header of the malloc chunk directly after it (the
++	 * resample()'s own X1S/Y1S buffers) and the subsequent free() aborts
++	 * with "free(): invalid pointer".  See docs/UPSTREAM_PATCHES.md. */
++	long toNumOfSamples = ((long)(sampleFrames * stretchFactor) + 1) * format.channelCount;
++	NSMutableData *toData = [NSMutableData dataWithLength: toNumOfSamples * SndSampleWidth(SND_FORMAT_LINEAR_16)];
+ 	void *fromDataPtr = [data mutableBytes];
+ 	void *toDataPtr = [toData mutableBytes];
+ 	SndFormat toSoundFormat = { SND_FORMAT_LINEAR_16, 0, format.channelCount, toSampleRate };

@@ -1,9 +1,11 @@
 # Upstream patches for leighsmith/MusicKit (SndKit)
 
 The vendored snapshot (`third_party/MusicKit`, pinned at `9683c76a`,
-master 2026-02-22) needs three small fixes to build on modern toolchains
-and non-x86 architectures, and to run on machines with half-duplex audio
-devices.  All are kept as patches in `patches/` (applied by
+master 2026-02-22) needs five small fixes: three to build on modern
+toolchains and non-x86 architectures and to run on machines with
+half-duplex audio devices, and two for runtime correctness of the
+recording and conversion paths that the port exercises (0004, 0005).
+All are kept as patches in `patches/` (applied by
 `third_party/build-sndkit.sh`) so the submodule stays pristine.  When a
 fix lands upstream, drop the corresponding patch when bumping the
 submodule.
@@ -14,6 +16,8 @@ All patches apply from the repository root:
 patch -p1 < patches/MusicKit-0001-vdsp-arch-guard.diff
 patch -p1 < patches/MusicKit-0002-portmidi-timeproc-cast.diff
 patch -p1 < patches/MusicKit-0003-retrievedriverlist-advance.diff
+patch -p1 < patches/MusicKit-0004-streamrecorder-threshold.diff
+patch -p1 < patches/MusicKit-0005-sndconvert-resample-buffer.diff
 ```
 
 ---
@@ -207,6 +211,171 @@ index 63e0e804..bcaa9ee7 100644
 
 ---
 
+## 4. `SndKit/SndStreamRecorder.{h,m}`: expose the recorder's trigger threshold (patch 0004)
+
+**Upstream status:** not yet submitted (candidate; the SndStreamRecorder
+facade has no other Resound-relevant gaps — see
+`docs/RESOUND_SNDKIT_PLAN.md`, Phase 2 unit 1b).  When it lands, drop
+`patches/MusicKit-0004-streamrecorder-threshold.diff` on the submodule
+bump.
+
+**Suggested issue title:** *`SndStreamRecorder` offers no way to set the
+recording start-trigger threshold; a non-positive threshold (record from
+the first buffer) is unreachable*
+
+**Explanation.** `SndStreamRecorder` is a thin facade over the internal
+`SndAudioProcessorRecorder`, and the one knob a caller needs is not
+re-exported: `setStartTriggerThreshold:` exists only on the internal
+processor.  The default is `0.002f` — the recorder waits for a sample
+above that amplitude before it starts saving buffers.  A caller that
+wants the classic "record whatever comes in for the duration" behaviour
+(what the legacy NeXT SoundKit `Sound record:` did, and what Resound
+needs on a silent or quiet input) cannot express it: there is no way to
+reach the internal processor through the facade.
+
+**Proposed fix** — re-export the existing setter as a pass-through on
+the facade (matching the way the facade already forwards
+`startRecording`/`stopRecording`/`delegate`):
+
+```diff
+diff --git a/MusicKit/Frameworks/SndKit/SndStreamRecorder.h b/MusicKit/Frameworks/SndKit/SndStreamRecorder.h
+index 1835b010..cfa26090 100644
+--- a/MusicKit/Frameworks/SndKit/SndStreamRecorder.h
++++ b/MusicKit/Frameworks/SndKit/SndStreamRecorder.h
+@@ -78,6 +78,15 @@
+ */
+ - (BOOL) startRecording;
+ 
++/*! 
++  @brief   Sets the amplitude threshold the recorder waits for before it
++           starts saving buffers.  Passed through to the internal recording
++           processor; a non-positive threshold records from the first
++           buffer unconditionally.
++  @param      amplitudeThreshold
++*/
++- (void) setStartTriggerThreshold: (float) amplitudeThreshold;
++
+ /*! 
+   @brief   Starts the record-to-disk routines.
+   @param      filename
+diff --git a/MusicKit/Frameworks/SndKit/SndStreamRecorder.m b/MusicKit/Frameworks/SndKit/SndStreamRecorder.m
+index 10ee8fe0..c5d75b66 100644
+--- a/MusicKit/Frameworks/SndKit/SndStreamRecorder.m
++++ b/MusicKit/Frameworks/SndKit/SndStreamRecorder.m
+@@ -66,6 +66,19 @@
+     return [recorder startRecording];
+ }
+ 
++////////////////////////////////////////////////////////////////////////////////
++// setStartTriggerThreshold:
++//
++// Pass-through to the internal recording processor: the amplitude a sample
++// must exceed before the recorder starts saving buffers.  A non-positive
++// threshold records from the first buffer unconditionally.
++////////////////////////////////////////////////////////////////////////////////
++
++- (void) setStartTriggerThreshold: (float) amplitudeThreshold
++{
++    [recorder setStartTriggerThreshold: amplitudeThreshold];
++}
++
+ ////////////////////////////////////////////////////////////////////////////////
+ // stopRecordingAndDisconnectFromStream:
+ ////////////////////////////////////////////////////////////////////////////////
+```
+
+---
+
+## 5. `SndKit/SndConvert.m`: temp buffer overflow in cross-rate `convertToSampleFormat:` (patch 0005)
+
+**Upstream status:** not yet submitted (candidate).  When it lands, drop
+`patches/MusicKit-0005-sndconvert-resample-buffer.diff` on the submodule
+bump.
+
+**Suggested issue title:** *`free(): invalid pointer` abort in
+`SndChangeSampleRate`/`resample`: the cross-rate conversion's temporary
+buffer is sized a few bytes too small*
+
+**Symptom.** A sample-rate conversion
+(`-[Snd convertToSampleFormat:samplingRate:channelCount:]` on a
+non-empty sound) aborts the process with `free(): invalid pointer`
+(SIGABRT) in `free()` from inside `resample()` (SndResample.m) —
+deterministically for some input lengths and clean for others (on the
+Raspberry Pi: an 8.0 s 2-ch/44.1 kHz float capture converted to
+8 kHz mono aborts 3/3; 6 s of the same capture converts fine).  The
+abort reproduces for any cross-rate conversion of a sound whose
+in-memory data is float32 — SndKit's in-memory format for both
+file-loaded and freshly recorded sounds — and the crash only became
+visible once recording produced such sounds (Resound Phase 2 unit 1b).
+
+**Explanation.** In the six-argument
+`-[SndAudioBuffer(SampleConversion) convertToSampleFormat:channelCount:
+samplingRate:useLargeFilter:interpolateFilter:useLinearInterpolation:]`,
+the temporary output buffer is sized from the input:
+
+```objc
+long numOfSamples = sampleFrames * format.channelCount;
+NSMutableData *toData = [NSMutableData dataWithLength:
+    numOfSamples * stretchFactor * SndSampleWidth(SND_FORMAT_LINEAR_16)];
+```
+
+but the consumer, `SndChangeSampleRate()`, requests
+`(int)(stretchFactor * fromSound.frameCount) + 1` output frames and
+`resample()` writes up to exactly that many — one *more* frame than the
+buffer expression rounds to (and the `dataWithLength:` truncation
+shaves the fractional samples off the allocation as well).  The write
+therefore overruns `toData` by a few bytes; the run-away bytes land in
+the header of the malloc chunk that `resample()` allocates directly
+after it (its own `X1S`/`Y1S` filter buffers, malloc'd immediately after
+`toData`), and the subsequent `free()` of that chunk aborts the
+process.  Whether a given conversion trips it depends on how the
+double multiply rounds for its particular frame count, which is why the
+crash looked duration-dependent.  Same-rate conversions are unaffected:
+they take the `memmove` branch of `SndChangeSampleRate` and never
+allocate this buffer, which is why same-rate-only file round-trip tests
+never caught it.
+
+Note the 16-bit width in the expression is *correct* — `resample()`
+always reads the source in its native format and writes 16-bit linear
+out, so the buffer must be sized in 16-bit samples; only the frame
+count term was wrong.
+
+**Proposed fix** — size the buffer from the same expression
+`SndChangeSampleRate()` uses to request output frames:
+
+```diff
+diff --git a/MusicKit/Frameworks/SndKit/SndConvert.m b/MusicKit/Frameworks/SndKit/SndConvert.m
+index d9d44c06..25f75226 100644
+--- a/MusicKit/Frameworks/SndKit/SndConvert.m
++++ b/MusicKit/Frameworks/SndKit/SndConvert.m
+@@ -684,8 +684,16 @@ int SndChangeSampleType(void *fromPtr, void *toPtr, SndSampleFormat fromDataForm
+     if (format.sampleRate != toSampleRate) {
+ 	double stretchFactor = toSampleRate / format.sampleRate;
+ 	long sampleFrames = [self lengthInSampleFrames];
+-	long numOfSamples = sampleFrames * format.channelCount;
+-	NSMutableData *toData = [NSMutableData dataWithLength: numOfSamples * stretchFactor * SndSampleWidth(SND_FORMAT_LINEAR_16)];
++	/* SndChangeSampleRate() below requests (floor(stretchFactor * sampleFrames) + 1)
++	 * output frames and resample() writes up to that many, so the temporary
++	 * buffer must be sized for that worst case.  The original expression
++	 * (sampleFrames * channelCount * stretchFactor * 16-bit width) truncates
++	 * below the write for some input durations; the few-byte overflow then
++	 * lands in the header of the malloc chunk directly after it (the
++	 * resample()'s own X1S/Y1S buffers) and the subsequent free() aborts
++	 * with "free(): invalid pointer".  See docs/UPSTREAM_PATCHES.md. */
++	long toNumOfSamples = ((long)(sampleFrames * stretchFactor) + 1) * format.channelCount;
++	NSMutableData *toData = [NSMutableData dataWithLength: toNumOfSamples * SndSampleWidth(SND_FORMAT_LINEAR_16)];
+ 	void *fromDataPtr = [data mutableBytes];
+ 	void *toDataPtr = [toData mutableBytes];
+```
+
+The same `+ 1` pattern exists in the streaming path
+(`convertBytes:intoFrameRange:fromFormat:channelCount:samplingRate:`,
+used when a sound plays through a buffer at a different rate); Resound
+never reaches it (playback is same-rate) and it writes into the sound's
+own buffer rather than a malloc'd temp, so it is left alone here.
+
+---
+
 ## Verified
 
 The build-fix patches (0001, 0002) were developed against the pinned
@@ -231,13 +400,25 @@ format, played through the PipeWire/Pulse device, and both delegate
 messages (`willPlay:… duringPerformance:`, `didPlay:… duringPerformance:`)
 observed at the Snd's delegate on the main run loop.
 
+Patches 0004 and 0005 were developed against the same snapshot for the
+Phase 2 unit 1b recording re-route (see
+`docs/RESOUND_SNDKIT_PLAN.md`): 0004 was verified with a standalone
+probe on the Raspberry Pi 500 running the full
+`SndStreamRecorder` flow (start-to-file, threshold, user stop,
+read-back, conversion) with a silent virtual input, and 0005 with an
+8-second capture converted 44.1 kHz -> 8 kHz, which aborted 3/3 before
+the fix and completed 3/3 (plus a 1/2/4/6/10/15 s duration matrix)
+after it, with the file-I/O contract tests (`resoundio`, `sndsmoke`)
+unchanged.
+
 0001 and 0002 were submitted upstream on 2026-11-03 as issue
 [#2](https://github.com/leighsmith/MusicKit/issues/2) (vDSP arch guard) and
 issue [#3](https://github.com/leighsmith/MusicKit/issues/3) (TIME_PROC cast);
 0003 followed on 2026-11-06 as issue
 [#4](https://github.com/leighsmith/MusicKit/issues/4) (the
-retrieveDriverList hang).  The Resound project (nu-gap/apps-resound, branch
-`gnustep-port`) vendors MusicKit as a pinned submodule and carries the fixes
-in the meantime as `patches/MusicKit-0001-…` / `MusicKit-0002-…` /
-`MusicKit-0003-…`; each is dropped on the submodule bump once its issue
-lands.
+retrieveDriverList hang).  0004 and 0005 are not submitted yet; they
+will follow the same pattern (file the issue, drop the patch on the
+submodule bump once it lands).  The Resound project (nu-gap/apps-resound,
+branch `gnustep-port`) vendors MusicKit as a pinned submodule and carries
+the fixes in the meantime as `patches/MusicKit-0001-…` through
+`MusicKit-0005-…`.
