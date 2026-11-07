@@ -65,7 +65,7 @@ only as the console meter's token object.
     }
 
 - init;
-- dealloc;
+- (void) dealloc;
 - (void)stop:(id)sender;				// Stop playing or recording.
 - play:sender;		// Play the current sound.  Returns NULL if unable.
 - record: (double) SoundRate: 

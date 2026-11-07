@@ -330,6 +330,72 @@ IMPLIED WARRANTIES.
 
 
 
+/*** _finishRecording:
+  Completes the SndStreamRecorder capture (unit 1b, see the notes at
+  the top): stops the recorder (which flushes and closes the temp file),
+  reads the capture back, converts it to the console-requested format,
+  and does the legacy didRecord: handoff (consoleManager stopDown:
+  drives the shared stop: cleanup; fileController newRecordedSound:
+  takes the sound; the module is told).  Called by the duration timer
+  and by stop:.  Idempotent via the recording flag, which is cleared
+  first, so the other entry point -- and a late-firing one-shot timer --
+  is a no-op.
+*/
+
+- (void) _finishRecording
+    {
+    if (!recording)
+	return;
+    recording=NO;
+    
+    if (recorder)
+	[recorder stopRecording];
+    
+    /* Read the capture back and convert it from the native input
+       format to the console-requested format (the only conversion the
+       flow needs; a same-rate convert takes the cheap memmove path).
+       If the read-back fails, the newSound token stays the object the
+       legacy didRecord: handed off. */
+    Snd* recorded=nil;
+    if (recordTempPath)
+	recorded = [[Snd alloc] initFromSoundfile: recordTempPath];
+    if (recorded)
+	{
+	[recorded convertToSampleFormat: (SndSampleFormat) recordDataFormat
+			  samplingRate: recordSoundRate
+			  channelCount: recordChannels];
+	[newSound release];
+	newSound = recorded;
+	}
+    
+    playing=NO;
+    paused=NO;
+    [consoleManager stopDown: self];
+    [fileController newRecordedSound: [newSound autorelease]];
+    [[fileController getModuleController] soundDidRecord];
+    
+    if (recordTempPath)
+	{
+	[[NSFileManager defaultManager] removeFileAtPath: recordTempPath handler: nil];
+	[recordTempPath release];
+	recordTempPath=nil;
+	}
+    if (recorder)
+	{
+	[recorder release];
+	recorder=nil;
+	}
+    if (recordTimer)
+	{
+	[recordTimer invalidate];
+	[recordTimer release];
+	recordTimer=nil;
+	}
+    //return self;
+    }
+
+
+
 /*** isPlaying
   Returns true if a sound is playing.
 */
