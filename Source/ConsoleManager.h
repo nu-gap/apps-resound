@@ -18,11 +18,24 @@ IMPLIED WARRANTIES.
 
 */
 
+/*
+ Migrated from the defunct NeXT SoundKit to SndKit as part of the
+ GNUstep port (see docs/RESOUND_SNDKIT_PLAN.md, Phase 2, unit 1c).
+ The legacy NXSoundIn sound_device ivar is replaced by the SndFormat
+ input_format ivar ([Snd nativeInputFormat]); SndKit has no per-device
+ gain, source, rate, or encoding APIs, so those console controls are
+ display-only/dormant.  The __BUILDING_RHAPSODY define is kept from
+ the 1998 file: the #ifndef blocks it guards (the app-icon Light and
+ hidden window) were already dead in the 1998 Rhapsody build and
+ stay dead.  The light ivar is declared unconditionally (the 1998
+ nib's class description lists it).
+ */
+
 #define __BUILDING_RHAPSODY
 
 
 #import <Foundation/Foundation.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 
 @interface ConsoleManager:NSObject
     {
@@ -31,9 +44,7 @@ IMPLIED WARRANTIES.
     
     id  console;		
     id	meter;
-#ifndef __BUILDING_RHAPSODY
     id  light;
-#endif
 
     id	stopButton;				// interface objects.
     id	playButton;
@@ -55,7 +66,7 @@ IMPLIED WARRANTIES.
     id	recordLengthField;
     id  hidden_window;                   // for the app icon
     
-    NXSoundIn* sound_device;
+    SndFormat input_format;  // capture format from [Snd nativeInputFormat]
     }
 
 - init;

@@ -22,6 +22,33 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 #import "MiscSoundTracker.h"
 #import <stdio.h>
 
+// SndKit has no Sound-style status enum (the NX_Sound* codes): the
+// legacy stopped/initialized/freed group maps to "the sound has no
+// active performance" (SndPerformance isPlaying covers the playing
+// and pending members; isPaused the paused ones).  Snd's isRecording
+// is a stub hard-wired NO, so there is no separate recording state
+// to check.
+static BOOL SOUNDTRACKER_sound_idle(Snd *snd)
+	{
+	NSArray* performances=[snd performances];
+	int i;
+	if ([snd isPlaying]) return NO;
+	for (i=0;i<[performances count];i++)
+		if ([[performances objectAtIndex:i] isPaused]) return NO;
+	return YES;
+	}
+
+// SndKit has no samplesProcessed: the samples a performance has
+// processed is its playIndex, exposed through
+// samplesPerformedOfPerformance:.  A sound with no performance
+// has processed none.
+static int SOUNDTRACKER_samplesProcessed(Snd *snd)
+	{
+	SndPerformance* performance=[[snd performances] lastObject];
+	if (performance==nil) return 0;
+	return [snd samplesPerformedOfPerformance:performance];
+	}
+
 @implementation MiscSoundTracker
 
 // KNOWN BUGS:  NeXT's sound object does not release sampling rate information
@@ -58,19 +85,18 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 			send_type==SOUNDTRACKER_SEND_TYPE_SECONDS))
 			{
 			id actual_sound;
-			int status;
 			
-			if ([sound isKindOfClass:[Sound class]]) 
+			
+			if ([sound isKindOfClass:[Snd class]])
 				{actual_sound=sound;}
-			else if ([sound isKindOfClass:[SoundView class]])
+			else if ([sound isKindOfClass:[SndView class]])
 				{actual_sound=[sound soundBeingProcessed];}
 			else return nil;		// not a sound or soundview!!!
 			
-                        status=[(Sound*)actual_sound status];	// TypeCast for OS X server
-			if (status==NX_SoundStopped||
-				status==NX_SoundInitialized||
-				status==NX_SoundFreed) return self;		
-					// sound's not doing anything...
+			// SndKit has no Sound-style status enum; the legacy
+			// stopped/initialized/freed group maps to "no active
+			// performance" (see the static above).
+			if (SOUNDTRACKER_sound_idle((Snd*)actual_sound)) return self;
 			}
 	
 	if (target!=nil)
@@ -91,18 +117,13 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 		else if (send_type==SOUNDTRACKER_SEND_TYPE_RATIO||
 				send_type==SOUNDTRACKER_SEND_TYPE_PERCENT)
 			{
-                	int status=[(Sound*)sound status];	// TypeCast for OS X server
-			if (status==NX_SoundRecording||
-				status==NX_SoundRecordingPaused)
-				{
-				[self clearTarget];
-				}
-			else
-				{
-				if (![target respondsToSelector:@selector(takeFloatValueFrom:)])
-					return nil;
-				[target takeFloatValueFrom:self];
-				}
+			// SndKit has no recording status on Snd (isRecording is a
+			// stub hard-wired NO), so the legacy "clear the target
+			// while recording" branch cannot fire; the target gets
+			// the (zero) value as usual.
+			if (![target respondsToSelector:@selector(takeFloatValueFrom:)])
+				return nil;
+			[target takeFloatValueFrom:self];
 			}
 		else if (send_type==SOUNDTRACKER_SEND_TYPE_SECONDS||
 				send_type==SOUNDTRACKER_SEND_TYPE_LEFT||
@@ -155,7 +176,6 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 
 - (void)dealloc
 	{
-	if (output_device!=nil) [output_device release];
 	if (teNum) [teNum invalidate]; [teNum release];
 	if (sound!=nil) [sound release];
 	if (target!=nil) [target release];
@@ -163,7 +183,7 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 	}
 
 
-- (void)setSound:(Sound *)this_sound_or_soundview
+- (void)setSound:(id)this_sound_or_soundview
 	{
 	if (sound!=nil) [sound release];
 	sound=[this_sound_or_soundview retain];
@@ -388,20 +408,20 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 		{
 		if (sound!=nil)
 			{
-			if ([sound isKindOfClass:[Sound class]])
+			if ([sound isKindOfClass:[Snd class]])
 				{
-				float n=[sound samplingRate];
+				float n=[(Snd*)sound samplingRate];
 				//printf ("%f\n",n);
 				if (n==0.0) n=default_sampling_rate;
-				return ((float)[sound samplesProcessed])/n;
+				return (float)SOUNDTRACKER_samplesProcessed((Snd*)sound)/n;
 				}
-			else if ([sound isKindOfClass:[SoundView class]])
+			else if ([sound isKindOfClass:[SndView class]])
 				{
 				id snd1=[sound soundBeingProcessed];
-				float n=[snd1 samplingRate];
+				float n=[(Snd*)snd1 samplingRate];
 				//printf ("%f\n",n);
 				if (n==0.0) n=default_sampling_rate;
-				return ((float)[snd1 samplesProcessed])/n;
+				return (float)SOUNDTRACKER_samplesProcessed((Snd*)snd1)/n;
 				}
 			}
 		}
@@ -409,20 +429,18 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 		{
 		if (sound!=nil)
 			{
-			if ([sound isKindOfClass:[Sound class]])
+			if ([sound isKindOfClass:[Snd class]])
 				{
-				//int status=[sound status];  // no use right now
-									
-				return ((float)[sound samplesProcessed])/
-					((float)[sound sampleCount]);
+				// SndKit: no status to gate on (see _update).
+				return (float)SOUNDTRACKER_samplesProcessed((Snd*)sound)/
+					(float)[(Snd*)sound lengthInSampleFrames];
 				}
-			else if ([sound isKindOfClass:[SoundView class]])
+			else if ([sound isKindOfClass:[SndView class]])
 				{
 				id snd1=[sound soundBeingProcessed];
-				//int status=[snd1 status];  // no use right now
-					
-				return ((float)[snd1 samplesProcessed])/
-					((float)[snd1 sampleCount]);
+				// SndKit: no status to gate on (see _update).
+				return (float)SOUNDTRACKER_samplesProcessed((Snd*)snd1)/
+					(float)[(Snd*)snd1 lengthInSampleFrames];
 				}
 			}
 		}
@@ -430,94 +448,65 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 		{
 		if (sound!=nil)
 			{
-			if ([sound isKindOfClass:[Sound class]])
+			if ([sound isKindOfClass:[Snd class]])
 				{
-				//int status=[sound status];  // no use right now
-									
-				return ((float)[sound samplesProcessed])/
-					((float)[sound sampleCount])*100;
+				// SndKit: no status to gate on (see _update).
+				return (float)SOUNDTRACKER_samplesProcessed((Snd*)sound)/
+					(float)[(Snd*)sound lengthInSampleFrames]*100;
 				}
-			else if ([sound isKindOfClass:[SoundView class]])
+			else if ([sound isKindOfClass:[SndView class]])
 				{
 				id snd1=[sound soundBeingProcessed];
-				//int status=[snd1 status];  // no use right now
-					
-				return ((float)[snd1 samplesProcessed])/
-					((float)[snd1 sampleCount])*100;
+				// SndKit: no status to gate on (see _update).
+				return (float)SOUNDTRACKER_samplesProcessed((Snd*)snd1)/
+					(float)[(Snd*)snd1 lengthInSampleFrames]*100;
 				}
 			}
 		}
 	else if (send_type==SOUNDTRACKER_SEND_TYPE_LEFT)
 		{
-		float l,r;
-		[Sound getVolume:&l:&r];
-		return l;
+		/* SndKit has no class-level volume (the legacy [Sound
+		   getVolume:] was a device/global control; SndKit's volume is
+		   per-performance, via SndAudioFader -- the VolumeController
+		   unit picks that up); the send type is dormant. */
+		return 0.0;
 		}
 	else if (send_type==SOUNDTRACKER_SEND_TYPE_RIGHT)
 		{
-		float l,r;
-		[Sound getVolume:&l:&r];
-		return r;
+		/* SndKit has no class-level volume (see the LEFT branch);
+		   the send type is dormant. */
+		return 0.0;
 		}
 	else if (send_type==SOUNDTRACKER_SEND_TYPE_MONO)
 		{
-		float l,r;
-		[Sound getVolume:&l:&r];
-		return (l+r)/2.0;
+		/* SndKit has no class-level volume (see the LEFT branch);
+		   the send type is dormant. */
+		return 0.0;
 		}
     else if (send_type==SOUNDTRACKER_SEND_TYPE_MONITOR_ATTENUATION)
         {
-        // try to grab resources
-        if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-
-        if (output_device!=NULL)
-            {
-            return [output_device
-                floatValueForParameter:NX_SoundDeviceMonitorAttenuation];
-            }
-        else return -1.0;
+        /* SndKit has no output device parameter API (the legacy read
+           NX_SoundDeviceMonitorAttenuation on the NXSoundOut); the
+           send type is dormant. */
+        return -1.0;
         }
 	else if (send_type==SOUNDTRACKER_SEND_TYPE_LEFT_PEAK)
 		{
-		float l,r;
-		
-		// try to grab resources
-		if (output_device==nil) output_device=[[NXSoundOut alloc] init];
-		
-		if (output_device!=nil)
-			{
-			[output_device getPeakLeft:&l right:&r];
-			return l;
-			}
-		// else...return -1.0 as shown below
+		/* SndKit has no output device peak API (the legacy read
+		   NXSoundOut getPeakLeft:right:); the send type is dormant,
+		   so the -1.0 below applies. */
 		}
 	else if (send_type==SOUNDTRACKER_SEND_TYPE_RIGHT_PEAK)
 		{
-		float l,r;
-		
-		// try to grab resources
-		if (output_device==nil) output_device=[[NXSoundOut alloc] init];
-		
-		if (output_device!=nil)
-			{
-			[output_device getPeakLeft:&l right:&r];
-			return r;
-			}
-		// else...return -1.0 as shown below
+		/* SndKit has no output device peak API (the legacy read
+		   NXSoundOut getPeakLeft:right:); the send type is dormant,
+		   so the -1.0 below applies. */
 		}
 	else if (send_type==SOUNDTRACKER_SEND_TYPE_MONO_PEAK)
 		{
-		float l,r;
-		
-		// try to grab resources
-		if (output_device==nil) output_device=[[NXSoundOut alloc] init];
-		
-		if (output_device!=nil)
-			{
-			[output_device getPeakLeft:&l right:&r];
-			return (l+r)/2.0;
-			}
-		// else...return -1.0 as shown below
+		/* SndKit has no output device peak API (the legacy read
+		   NXSoundOut getPeakLeft:right:); the send type is dormant,
+		   so the -1.0 below applies. */
 		}
 
 	else printf ("SOUNDTRACKER Error:  Wrong send type for floatValue\n");
@@ -532,81 +521,50 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 		{
 		if (sound!=nil)
 			{
-			if ([sound isKindOfClass:[Sound class]])
+			if ([sound isKindOfClass:[Snd class]])
 				{
-				return [sound samplesProcessed];
+				return SOUNDTRACKER_samplesProcessed((Snd*)sound);
 				}
-			else if ([sound isKindOfClass:[SoundView class]])
+			else if ([sound isKindOfClass:[SndView class]])
 				{
 				id snd1=[sound soundBeingProcessed];
-				return [snd1 samplesProcessed];
+				return SOUNDTRACKER_samplesProcessed((Snd*)snd1);
 				}
 			}
 		}
 	else if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE)
 		{
-		return (int) [Sound isMuted];
+		return (int) [Snd isMuted];
 		}
     else if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE_SPEAKER)
         {
-        // try to grab resources
-        if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-
-        if (output_device!=NULL)
-            {
-            return (int) [output_device
-                        boolValueForParameter:NX_SoundDeviceMuteSpeaker];
-            }
-        else return NO;
+        /* SndKit has no output device parameter API (the legacy read
+           NX_SoundDeviceMuteSpeaker on the NXSoundOut); the send type is dormant. */
+        return NO;
         }
     else if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE_LINE_OUT)
         {
-        // try to grab resources
-        if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-
-        if (output_device!=NULL)
-            {
-            return (int) [output_device
-                        boolValueForParameter:NX_SoundDeviceMuteLineOut];
-            }
-        else return NO;
+        /* SndKit has no output device parameter API (the legacy read
+           NX_SoundDeviceMuteLineOut on the NXSoundOut); the send type is dormant. */
+        return NO;
         }
     else if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE_HEADPHONES)
         {
-        // try to grab resources
-        if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-
-        if (output_device!=NULL)
-            {
-            return (int) [output_device
-                        boolValueForParameter:NX_SoundDeviceMuteHeadphone];
-            }
-        else return NO;
+        /* SndKit has no output device parameter API (the legacy read
+           NX_SoundDeviceMuteHeadphone on the NXSoundOut); the send type is dormant. */
+        return NO;
         }
     else if (send_type==SOUNDTRACKER_SEND_TYPE_RAMPING)
         {
-        // try to grab resources
-        if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-
-        if (output_device!=NULL)
-            {
-            return (int) ([output_device
-                        boolValueForParameter:NX_SoundDeviceRampUp]
-                        &&[output_device
-                        boolValueForParameter:NX_SoundDeviceRampDown]);
-            }
-        else return NO;
+        /* SndKit has no output device parameter API (the legacy read
+           NX_SoundDeviceRampUp/RampDown on the NXSoundOut); the send type is dormant. */
+        return NO;
         }
 	else if (send_type==SOUNDTRACKER_SEND_TYPE_DEEMPHASIS)
 		{
-		// try to grab resources
-		if (output_device==nil) output_device=[[NXSoundOut alloc] init];
-		
-		if (output_device!=nil)
-			{
-			return (int) [output_device doesDeemphasize];
-			}
-		else return NO;
+		/* SndKit has no output device parameter API (the legacy read
+		   NXSoundOut doesDeemphasize); the send type is dormant. */
+		return NO;
 		}
 	else printf ("SOUNDTRACKER Error:  Wrong send type for intValue\n");
 	return -1;
@@ -615,25 +573,15 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 
 - setVolumeTo:sender	
 	{
-	float l,r,x;
-	[Sound getVolume:&l:&r];
+	float x;
 	if (! [sender respondsToSelector:@selector(floatValue)]) return nil;
 	x=[sender floatValue];
 	if (x<0||x>1) return nil;
-	if (send_type==SOUNDTRACKER_SEND_TYPE_LEFT) [Sound setVolume:x:r];
-	if (send_type==SOUNDTRACKER_SEND_TYPE_RIGHT) [Sound setVolume:l:x];
-	if (send_type==SOUNDTRACKER_SEND_TYPE_MONO) [Sound setVolume:x:x];
-    if (send_type==SOUNDTRACKER_SEND_TYPE_MONITOR_ATTENUATION)
-        {
-        // try to grab resources
-        if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-
-        if (output_device!=NULL)
-            {
-            [output_device setParameter:NX_SoundDeviceMonitorAttenuation
-                toFloat:x];
-            }
-        }
+	/* SndKit has no class-level volume (the legacy [Sound getVolume:]/
+	   [Sound setVolume:l:r:] were device/global controls; SndKit's
+	   volume is per-performance, via SndAudioFader -- the
+	   VolumeController unit picks that up) and no monitor-
+	   attenuation parameter, so the volume send types are dormant. */
 	return self;
 	}
 
@@ -641,38 +589,14 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 - setMuteTo:sender	
     {
     int x;
-    if (! [sender respondsTo:@selector(intValue)]) return NULL;
+    if (! [sender respondsToSelector:@selector(intValue)]) return NULL;
     x=[sender intValue];
     if (x!=0) x=1;
 
-    // try to grab resources
-    if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-
-    if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE) [Sound setMute:(BOOL)x];
-    if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE_SPEAKER)
-        {
-        if (output_device!=NULL)
-            {
-            [output_device setParameter:NX_SoundDeviceMuteSpeaker
-                toBool:x];
-            }
-        }	
-    if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE_LINE_OUT)
-        {
-        if (output_device!=NULL)
-            {
-            [output_device setParameter:NX_SoundDeviceMuteLineOut
-                toBool:x];
-            }
-        }	
-    if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE_HEADPHONES)
-        {
-        if (output_device!=NULL)
-            {
-            [output_device setParameter:NX_SoundDeviceMuteHeadphone
-                toBool:x];
-            }
-        }	
+    if (send_type==SOUNDTRACKER_SEND_TYPE_MUTE) [Snd setMute:(BOOL)x];
+    /* SndKit has no output device parameter API (the legacy set
+       NX_SoundDeviceMute* on the NXSoundOut); the speaker/
+       line-out/headphone mute send types are dormant. */
     return self;
     }
 
@@ -683,13 +607,9 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 	x=[sender intValue];
 	if (x!=0) x=1;
 	
-	// try to grab resources
-	if (output_device==nil) output_device=[[NXSoundOut alloc] init];
-	
-	if (output_device!=nil)
-		{
-		[output_device setDeemphasis:x];
-		}
+	/* SndKit has no output device parameter API (the legacy set
+	   NXSoundOut setDeemphasis:); the deemphasis send types are
+	   dormant. */
 	return self;
 	}
 
@@ -697,20 +617,13 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 - setRampingTo:sender	
     {
     int x;
-    if (! [sender respondsTo:@selector(intValue)]) return NULL;
+    if (! [sender respondsToSelector:@selector(intValue)]) return NULL;
     x=[sender intValue];
     if (x!=0) x=1;
 
-    // try to grab resources
-    if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-
-    if (output_device!=NULL)
-        {
-        [output_device setParameter:NX_SoundDeviceRampUp
-                toBool:x];
-        [output_device setParameter:NX_SoundDeviceRampDown
-                toBool:x];
-        }
+    /* SndKit has no output device parameter API (the legacy set
+       NX_SoundDeviceRampUp/RampDown on the NXSoundOut); the ramping
+       send types are dormant. */
     return self;
     }
 

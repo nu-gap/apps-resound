@@ -36,13 +36,11 @@ IMPLIED WARRANTIES.
 
 
 #import "ConsoleManager.h"
-#import "FileController.h"
 #import "SoundManager.h"
 #import "ResoundMiscVolumeMeter.h"
 #import "MiscSoundTracker.h"
-#import "ResoundMiscSoundView.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <stdio.h>
 
 #ifndef __BUILDING_RHAPSODY
@@ -54,6 +52,34 @@ IMPLIED WARRANTIES.
 #define SOURCE_LINE @"Line"
 #define LENGTH_5_MINUTES @"300"        /* String Macro Value -- can't have ints in strings */
 #define F_LENGTH_5_MINUTES 300.0      /* Integer Macro Value */
+
+// SndKit has no per-device encoding list (the legacy asked the NXSoundIn
+// for it); the record panel offers the three encodings SoundKit can
+// capture in.  (A-Law and AES were never usable in the 1998 file either
+// -- they carried usable=0.)
+static SndSampleFormat CONSOLE_FORMATS[3]=
+    {SND_FORMAT_LINEAR_16, SND_FORMAT_LINEAR_8, SND_FORMAT_MULAW_8};
+#define CONSOLE_FORMAT_COUNT \
+    ((int)(sizeof(CONSOLE_FORMATS)/sizeof(CONSOLE_FORMATS[0])))
+
+/* FileController is not yet migrated (it comes with the file-
+    handling unit); the console only needs currentSound: from it.
+    The 1998 SoundView play-position methods are likewise absent
+    from SndKit's SndView -- the view-chain unit re-adds them.
+    Both are declared so the dispatch below compiles warning-free
+    until then. */
+@protocol ConsoleFileController
+- currentSound:sender;
+@end
+
+@protocol ConsoleSoundViewCompat
+- (BOOL) xAxisDisplayed;
+- (BOOL) scrollToReflectPlaying;
+- (void) getSelection:(int*)firstSample size:(int*)sampleCount;
+- (void) scrollToSample:(int)sample;
+- (void) setPlayMark:(int)sample;
+- (NSWindow*) window;
+@end
 
 @implementation ConsoleManager
 
@@ -72,41 +98,25 @@ IMPLIED WARRANTIES.
     NSDictionary* dict;
     /*float *s_rates;
     unsigned int n_rates;*/
-    NXSoundParameterTag *encodings;
-    unsigned int n_encodings;
 
-    if ([sound_device streamChannelCountLimit]>0)
-        channel = (([sound_device streamChannelCountLimit]==1) ? @"1" : @"2");
+    if (input_format.channelCount>0)
+        channel = ((input_format.channelCount==1) ? @"1" : @"2");
     else channel = @"-1";
 
 	{
 	double defaultrate = 22050;
 	double lowrate= 500;
 	double hirate = 1000000;
-	double r = [[[[Sound alloc] init] autorelease] samplingRate];
+	double r = input_format.sampleRate;
 	rate = [NSString stringWithFormat:@"%f", (r > lowrate && r < hirate ?
 		r : defaultrate)];
 	}
 
-    /*
-	if ([sound_device acceptsContinuousStreamSamplingRates])
-        {
-        float lowrate=22050;
-        float hirate=44100;
-        [sound_device getStreamSamplingRatesLow:&lowrate high:&hirate];
-        rate = [NSString stringWithFormat:@"%f",hirate];
-        }
-    else
-        {
-        [sound_device getStreamSamplingRates:&s_rates count:&n_rates];
-        if (n_rates)  rate = [NSString stringWithFormat:@"%f",s_rates[n_rates-1]];
-        else rate = @"-1";	// default...
-        }
-	*/
 
-    [sound_device getStreamDataEncodings:&encodings count:&n_encodings];
-    if (n_encodings) encoding=@"0";
-    else encoding=@"-1";	// default...
+    // SndKit has no per-device encoding list (the legacy asked the
+    // NXSoundIn for it); the record panel offers the three encodings
+    // SoundKit can capture in, so the default is the first of them.
+    encoding=@"0";
 
     dict=
         [NSDictionary dictionaryWithObjectsAndKeys:
@@ -135,10 +145,6 @@ IMPLIED WARRANTIES.
 - init
     {
     id returnval=[super init];
-    float *s_rates;
-    unsigned int n_rates;
-    NXSoundParameterTag *encodings;
-    unsigned int n_encodings;
     int x;
 
     NSString* defaultChannel;
@@ -147,7 +153,7 @@ IMPLIED WARRANTIES.
     NSString* defaultSource;
     NSString* defaultLength;
     
-    sound_device = [[NXSoundIn alloc] init];
+    input_format = [Snd nativeInputFormat];
     [NSBundle loadNibNamed: @"Console.nib" owner:self];
     
     // Register Defaults
@@ -190,37 +196,21 @@ IMPLIED WARRANTIES.
 #endif
     
     // Set the Input Gains...
-    
-    [monoRecordGain setFloatValue: [sound_device floatValueForParameter:
-				    NX_SoundDeviceInputGainStereo]];
-    [leftRecordGain setFloatValue: [sound_device floatValueForParameter:
-				    NX_SoundDeviceInputGainLeft]];
-    [rightRecordGain setFloatValue:[sound_device floatValueForParameter:
-				    NX_SoundDeviceInputGainRight]];	
+    // SndKit has no input gain device parameters (the legacy read
+    // NX_SoundDeviceInputGain* on the NXSoundIn); the record gain
+    // sliders keep their nib values and are display-only.
 
     // Set the Input Source...
-
-    if ([defaultSource isEqualToString:SOURCE_LINE])
-	{
-	id nxsi=[[NXSoundIn alloc] init];
-	[nxsi setParameter:NX_SoundDeviceAnalogInputSource toInt: 		
-	 NX_SoundDeviceAnalogInputSource_LineIn];
-	[nxsi release];
-	}
-    else 
-	{
-	id nxsi=[[NXSoundIn alloc] init];
-	[nxsi setParameter:NX_SoundDeviceAnalogInputSource toInt: 		
-	 NX_SoundDeviceAnalogInputSource_Microphone];
-	[nxsi release];
-	}
+    // SndKit has no analog input source selector (the legacy set
+    // NX_SoundDeviceAnalogInputSource on a throwaway NXSoundIn, which
+    // has no counterpart); there is no device-level source switch.
     
 
     // Here we figure out what rates and formats are available...
     
     [recordLengthField setStringValue:defaultLength];
     
-    if ([sound_device streamChannelCountLimit]==1)
+    if (input_format.channelCount==1)
 	// Warning, bug in NeXT's docs the name is totally wrong...
 	{
 	[[channels cellAtRow:1 column:0] setEnabled:NO];
@@ -238,97 +228,56 @@ IMPLIED WARRANTIES.
 
     // Set the available rates...
 
-    if ([sound_device acceptsContinuousStreamSamplingRates])
-	{
-        NSString* t;
-	float lowrate=22050;
-	float hirate=44100;
-	[rateMenu setEnabled:NO];
-	[rateField setEnabled:YES];
-	[rateMenu addItemWithTitle: @"User-Defined:"];
+    // SndKit has no per-device sampling rate list (the legacy asked the
+    // NXSoundIn for it).  SoundManager resamples the capture to the
+    // requested rate in _finishRecording, so the rate menu is always
+    // user-defined; the native input rate seeds the field and labels.
+    {
+    NSString* t;
+    [rateMenu setEnabled:NO];
+    [rateField setEnabled:YES];
+    [rateMenu addItemWithTitle: @"User-Defined:"];
     [rateMenu selectItemWithTitle: @"User-Defined:"];
-	[sound_device getStreamSamplingRatesLow:&lowrate high:&hirate];
-	// Work-around for a little sprintf bug...
-	if (lowrate==floor(lowrate))	// it's a round number
-	    t=[NSString stringWithFormat:@"%d",(int)floor(lowrate)];
-	else
-        t=[NSString stringWithFormat:@"%f",lowrate];
-	[minrate setStringValue:t];
-	if (hirate==floor(lowrate))	// it's a round number
-        t=[NSString stringWithFormat:@"%d",(int)floor(hirate)];
-	else
-        t=[NSString stringWithFormat:@"%f",hirate];
-	[maxrate setStringValue:t];
-	if ([defaultRate floatValue]<=hirate&&[defaultRate floatValue]>=lowrate)
-        [rateField setFloatValue:[defaultRate floatValue]];
-	else
-	    {
-	    [rateField setFloatValue:hirate];
-	    defaultRate=[NSString stringWithFormat:@"%f",hirate];
-        }
-	}
+    [[rateMenu menu] removeItem:[[rateMenu menu] itemWithTitle: @"Default"]];
+    // Work-around for a little sprintf bug...
+    if ((int)input_format.sampleRate==input_format.sampleRate)	// it's a round number
+        t=[NSString stringWithFormat:@"%d",(int)input_format.sampleRate];
     else
-	{
-	[sound_device getStreamSamplingRates:&s_rates count:&n_rates];
-	if (n_rates)
-	    {
-	    int s=0;				// no format set...
-        NSString* t;
-	    [rateMenu setEnabled:YES];
-	    [rateField setEnabled:NO];
-	    for (x=0;x<n_rates;x++)
-		{
-		// Work-around for a little sprintf bug...
-		if (s_rates[x]==floor(s_rates[x]))	// it's a round number
-		    t=[NSString stringWithFormat:@"%d",(int)floor(s_rates[x])];
-		else
-		    t=[NSString stringWithFormat:@"%f",s_rates[x]];
-
-        [[[rateMenu menu] addItemWithTitle:t
-            action:@selector(setRateToMe:)
-            keyEquivalent:@""] setTarget:self];
-        if (x==0) [rateMenu selectItemWithTitle:t];
-        if ([t intValue]==[defaultRate intValue]) {[rateMenu selectItemWithTitle:t]; s=1;}
-		}
-	    if (!s) defaultRate=[NSString stringWithFormat:@"%s",[rateMenu title]];
-        [[rateMenu menu] removeItem: [[rateMenu menu] itemWithTitle:@"Default"]];
-	    }
-	else
-	    {
-	    defaultRate=@"-1";
-	    [rateMenu setEnabled:NO];
-	    [rateField setEnabled:NO];
-	    }
-	}
+        t=[NSString stringWithFormat:@"%f",input_format.sampleRate];
+    [minrate setStringValue:t];
+    [maxrate setStringValue:t];
+    if ([defaultRate floatValue]>0)
+        [rateField setFloatValue:[defaultRate floatValue]];
+    else
+    {
+    [rateField setFloatValue:input_format.sampleRate];
+    defaultRate=[NSString stringWithFormat:@"%f",input_format.sampleRate];
+    }
+    }
 
     // set the available encodings...
-    
-    [sound_device getStreamDataEncodings:&encodings count:&n_encodings];
-    
-    if (n_encodings)
-	{
-	int s=0;			// unset
-	int sx=0;
-	int usable=1;		// some encodings aren't usable
+    // SndKit has no per-device encoding list (the legacy asked the
+    // NXSoundIn for it); the record panel offers the three encodings
+    // SoundKit can capture in (A-Law and AES were never usable in the
+    // 1998 file either -- they carried usable=0).
+    {
+    int s=0;		// unset
+    int sx=0;
     NSString* t;
-	[formatMenu setEnabled:YES];
-	for (x=0;x<n_encodings;x++)
-	    {
-	    switch (encodings[x])
-		{
-	      case NX_SoundStreamDataEncoding_Linear16:
-              t=@"16-Bit Linear"; usable=1;break;
-	      case NX_SoundStreamDataEncoding_Linear8:
-              t=@"8-Bit Linear";  usable=1;break;
-	      case NX_SoundStreamDataEncoding_Mulaw8:
-              t=@"8-Bit Mu-Law"; usable=1;break;
-	      case NX_SoundStreamDataEncoding_Alaw8:
-              t=@"8-Bit A-Law";  usable=0;break;
-	      case NX_SoundStreamDataEncoding_AES:
-              t=@"AES";  usable=0;break;
-	      default:
-              t=@"Unknown"; usable=0;break;
-		}
+    [formatMenu setEnabled:YES];
+    for (x=0;x<CONSOLE_FORMAT_COUNT;x++)
+        {
+        switch (CONSOLE_FORMATS[x])
+        {
+          case SND_FORMAT_LINEAR_16:
+              t=@"16-Bit Linear"; break;
+          case SND_FORMAT_LINEAR_8:
+              t=@"8-Bit Linear";  break;
+          case SND_FORMAT_MULAW_8:
+              t=@"8-Bit Mu-Law"; break;
+          default:
+              t=@"Unknown"; break;
+        }
         [[[formatMenu menu] addItemWithTitle:t
                         action:@selector(setFormatToMe:)
                  keyEquivalent:@""] setTarget:self];
@@ -339,14 +288,9 @@ IMPLIED WARRANTIES.
         s=1; sx=x;
         }
     }
-	if (!s) defaultEncoding=[NSString stringWithFormat:@"%d",sx];
+    if (!s) defaultEncoding=[NSString stringWithFormat:@"%d",sx];
     [[formatMenu menu] removeItem:[[formatMenu menu] itemWithTitle: @"Default"]];
-	}
-    else
-	{
-	defaultEncoding=@"-1";
-	[formatMenu setEnabled:NO];
-	}
+    }
 
     {
     NSUserDefaults* defaults = [NSUserDefaults standardUserDefaults];
@@ -380,7 +324,6 @@ IMPLIED WARRANTIES.
 - (void)dealloc
     {
     [(MiscSoundTracker*)soundTracker stop];
-    [sound_device release];
     [super dealloc];
     }
 
@@ -415,11 +358,11 @@ IMPLIED WARRANTIES.
 
 - setMeterTo: thisSound
     {
-    [(SoundMeter*)meter setSound: thisSound];	// TypeCast for OS X server	
+    [(MiscVolumeMeter*)meter setSound: thisSound];
 #ifndef __BUILDING_RHAPSODY
     [light setSound: thisSound];
 #endif
-    [(SoundMeter*)soundTracker setSound:thisSound];	// TypeCast for OS X server
+    [(MiscSoundTracker*)soundTracker setSound:thisSound];
     return self;
     }
 
@@ -436,7 +379,7 @@ IMPLIED WARRANTIES.
 #endif
     // First a little spoofing to make certain that play mark is removed...
     [self clearPlayMark];
-    [(SoundMeter*)meter setSound:nil];	// so VolumeMeter isn't using sound	// TypeCast for OS X server
+    [(MiscVolumeMeter*)meter setSound:nil];	// so VolumeMeter isn't using sound
     // in case sound is freed later
 #ifndef __BUILDING_RHAPSODY
     [light setSound:nil];
@@ -491,16 +434,9 @@ IMPLIED WARRANTIES.
 - recordDown:sender
     {
 
-    NXSoundParameterTag *encodings;
-    unsigned int n_encodings;
-    float *s_rates;
-    int n_rates;
-    int x;
-
     NSString* defaultChannel;
     NSString* defaultRate;
     NSString* defaultEncoding;
-    NSString* defaultSource;
     NSString* defaultLength;
     int c,e;
     float r,l;
@@ -510,58 +446,30 @@ IMPLIED WARRANTIES.
         defaultChannel = [defaults stringForKey: @"RecordChannels"];
         defaultRate = [defaults stringForKey: @"RecordRate"];
         defaultEncoding = [defaults stringForKey: @"RecordEncoding"];
-        defaultSource = [defaults stringForKey: @"RecordSource"];
         defaultLength = [defaults stringForKey: @"RecordLength"];
     }
     
-    [sound_device getStreamDataEncodings:&encodings count:&n_encodings];
 
     c=[defaultChannel intValue]; if (c<=0) c=1; if (c>2) c=2;
     r=[defaultRate intValue]; if (r<=0) r=1;
 
-    if ([sound_device acceptsContinuousStreamSamplingRates])
-	{
-	float lowrate, hirate;
-	[sound_device getStreamSamplingRatesLow:&lowrate high:&hirate];
-	if (r<=lowrate||r>=hirate) r=hirate;
-	}
-    else
-	{
-	[sound_device getStreamSamplingRates:&s_rates count:&n_rates];
-	for (x=0;x<n_rates&&r!=s_rates[x];x++);
-	r=s_rates[x];
-	if (!n_rates) r=SND_RATE_CODEC;
-	}
+    // SndKit has no per-device sampling rate list, so the stored rate
+    // is passed through as-is: SoundManager resamples the capture to
+    // it in _finishRecording.
     
     e=[defaultEncoding intValue];
-    if (e>=0&&e<n_encodings) e=encodings[e];
-    else e=NX_SoundStreamDataEncoding_Mulaw8;
+    if (e>=0&&e<CONSOLE_FORMAT_COUNT) e=CONSOLE_FORMATS[e];
+    else e=SND_FORMAT_MULAW_8;
     
-    if ([defaultSource isEqualToString:SOURCE_LINE])
-	{
-	NXSoundIn* nxsi=[[NXSoundIn alloc] init];
-	[nxsi setParameter:NX_SoundDeviceAnalogInputSource toInt: 		
-	 NX_SoundDeviceAnalogInputSource_LineIn];
-    [nxsi dealloc];}
-    else 
-	{
-	NXSoundIn* nxsi=[[NXSoundIn alloc] init];
-	[nxsi setParameter:NX_SoundDeviceAnalogInputSource toInt: 		
-	 NX_SoundDeviceAnalogInputSource_Microphone];
-	[nxsi dealloc];}
+    // SndKit has no analog input source selector (see init); there is
+    // no device-level source switch to program before recording.
     
     l=[defaultLength intValue];
     if (l<=0.0) l=F_LENGTH_5_MINUTES;
     
-    // Now, we convert the weird parameters into 
-
-    switch (e)
-	{
-      case NX_SoundStreamDataEncoding_Linear16: e=SND_FORMAT_LINEAR_16; break;
-      case NX_SoundStreamDataEncoding_Linear8: e=SND_FORMAT_LINEAR_8; break;
-      case NX_SoundStreamDataEncoding_Mulaw8: e=SND_FORMAT_MULAW_8; break;
-      default: e=SND_FORMAT_MULAW_8; break;
-	}
+    // The format already arrives as an SND_FORMAT_* value (the record
+    // panel's encoding menu is built from CONSOLE_FORMATS), so the 1998
+    // NX_SoundStreamDataEncoding_*-to-SND_FORMAT_* conversion is gone.
 
     [soundTracker setDefaultSamplingRate:r];
     
@@ -622,7 +530,8 @@ IMPLIED WARRANTIES.
 
 - meterDidUpdate:sender
     {
-#ifndef __BUILDING_RHAPSODY    if (sender==Light)
+#ifndef __BUILDING_RHAPSODY
+    if (sender==Light)
 	{
 	return [NSApp windowToAppIcon:hidden_window];	
 	// A MiscAppIcon category method
@@ -657,11 +566,10 @@ IMPLIED WARRANTIES.
 	{
 #endif
 
-    	id snd=[(SoundMeter*)sender sound];		// note that the meter is tracking the scratch sound,	// TypeCast for OS X server
+    	id snd=[(MiscVolumeMeter*)sender sound];		// note that the meter is tracking the scratch sound,
 	// not the real sound!
-	id cv=[soundManager soundViewPlayingOrRecording];
-	int st;
-	int samp;
+	id<ConsoleSoundViewCompat> cv=[soundManager soundViewPlayingOrRecording];
+	int samp=0;
 	int fs,ns;
 	BOOL ruler_drawn;
 	BOOL need_to_scroll;
@@ -680,14 +588,25 @@ IMPLIED WARRANTIES.
 
 	// we're assuming here that [sender sound] really _is_ a sound,
 	// not a soundview.
-        st=[(Sound*)snd status];		// TypeCast for OS X server
-
-	if (st!=NX_SoundPlaying && st!=NX_SoundPlayingPending&&
-	    st!=NX_SoundPlayingPaused) return self;
+	// SndKit has no Sound-style status: the legacy Playing/
+	// PlayingPending/PlayingPaused group maps to "a performance is
+	// playing (pending counts) or paused".
+	if (![snd isKindOfClass:[Snd class]]) return self;
+	{
+	NSArray* performances=[(Snd*)snd performances];
+	int i;
+	if (![(Snd*)snd isPlaying])
+		{
+		for (i=0;i<[performances count];i++)
+			if ([[performances objectAtIndex:i] isPaused]) break;
+		if (i>=[performances count]) return self;
+		}
+	}
 	
 
-	samp=[(Sound*)snd samplesProcessed];
-	[(ResoundMiscSoundView*)cv getSelection:&fs size:&ns];
+	SndPerformance* performance=[[(Snd*)snd performances] lastObject];
+	if (performance) samp=[(Snd*)snd samplesPerformedOfPerformance:performance];
+	[cv getSelection:&fs size:&ns];
 	if (ns) samp+=fs;			// this is because the samples processed are
 	// how _many_ samples have been processed, NOT
 	// the sample numbers in the soundview! 
@@ -716,7 +635,7 @@ IMPLIED WARRANTIES.
 
 - clearPlayMark
     {
-    id cv=[soundManager soundViewPlayingOrRecording];
+    id<ConsoleSoundViewCompat> cv=[soundManager soundViewPlayingOrRecording];
     
     if (cv==nil) return self;
 
@@ -755,7 +674,7 @@ IMPLIED WARRANTIES.
     NSString* defaultRate;
     float f;
 
-    if ([sender isKindOf:[NSTextField class]])
+    if ([sender isKindOfClass:[NSTextField class]])
 	{
 	f=[(NSControl*)sender floatValue];
 	if (f<=0) f=SND_RATE_CODEC;		// default
@@ -782,10 +701,6 @@ IMPLIED WARRANTIES.
     {
     NSString* defaultEncoding;
     int index;
-    NXSoundParameterTag *encodings;
-    unsigned int n_encodings;
-
-    [sound_device getStreamDataEncodings:&encodings count:&n_encodings];
 
     index=[[formatMenu menu] indexOfItem:[[formatMenu menu] itemWithTitle:[[sender selectedCell] title]]];
 
@@ -808,12 +723,9 @@ IMPLIED WARRANTIES.
 
 - setMono:sender
     {
-    [sound_device setParameter:NX_SoundDeviceInputGainStereo
-   toFloat:[monoRecordGain floatValue]];
-    [leftRecordGain setFloatValue: [sound_device floatValueForParameter:
-				    NX_SoundDeviceInputGainLeft]];
-    [rightRecordGain setFloatValue:[sound_device floatValueForParameter:
-				    NX_SoundDeviceInputGainRight]];
+    /* SndKit has no input gain device parameters (the 1998 code set
+       NX_SoundDeviceInputGain* on the NXSoundIn); the gain sliders
+       are display-only. */
     return self;
     }
 
@@ -824,12 +736,8 @@ IMPLIED WARRANTIES.
 
 - setLeft:sender
     {
-    [sound_device setParameter:NX_SoundDeviceInputGainLeft
-   toFloat:[leftRecordGain floatValue]];
-    [rightRecordGain setFloatValue: [sound_device floatValueForParameter:
-				     NX_SoundDeviceInputGainRight]];
-    [monoRecordGain setFloatValue:[sound_device floatValueForParameter:
-				   NX_SoundDeviceInputGainStereo]];
+    /* SndKit has no input gain device parameters (see setMono); the
+       gain sliders are display-only. */
     return self;
     }
 
@@ -840,12 +748,8 @@ IMPLIED WARRANTIES.
 
 - setRight:sender
     {
-    [sound_device setParameter:NX_SoundDeviceInputGainRight
-   toFloat:[rightRecordGain floatValue]];
-    [leftRecordGain setFloatValue: [sound_device floatValueForParameter:
-				    NX_SoundDeviceInputGainLeft]];
-    [monoRecordGain setFloatValue:[sound_device floatValueForParameter:
-				   NX_SoundDeviceInputGainStereo]];
+    /* SndKit has no input gain device parameters (see setMono); the
+       gain sliders are display-only. */
     return self;
     }
 
@@ -990,7 +894,7 @@ IMPLIED WARRANTIES.
 	[source selectCellAtRow:1 column:0];
     
 
-    if ([sound_device streamChannelCountLimit]==1)
+    if (input_format.channelCount==1)
 	// Warning, bug in NeXT's docs the name is totally wrong...
 	{
 	[[channels cellAtRow:1 column:0] setEnabled:NO];

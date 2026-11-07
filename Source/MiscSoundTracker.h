@@ -20,8 +20,21 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 
 */
 
+/*
+ This file was migrated from the defunct NeXT SoundKit to SndKit as
+ part of the GNUstep port (see docs/RESOUND_SNDKIT_PLAN.md, Phase 2,
+ unit 1c).  The sound can be an Snd or an SndView (the view's
+ soundBeingProcessed accessor is the SndKit counterpart of the legacy
+ SoundView's).  The legacy NXSoundOut output_device ivar is gone:
+ SndKit has no output device object, and the device-parameter send
+ types (peaks, mute channels, ramping, deemphasis, monitor
+ attenuation) are dormant -- see the .m for what each now maps to
+ (the global mute maps to [Snd setMute:], the sample counters to the
+ Snd performance's playIndex).
+ */
+
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <Foundation/Foundation.h>
 
 
@@ -52,13 +65,12 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 
 @interface MiscSoundTracker:NSObject <NSCoding>
 {
-	id 			sound;			// can be a Sound or a SoundView
+	id 			sound;			// can be an Snd or an SndView
 	id 			target;			// item to send messages
 	BOOL			running;		// is running
 	int			send_type;		// what to send (see defines above)
 	float			refresh;		// total seconds between updates
 	NSTimer 		*teNum;			// timed entry
-	NXSoundOut*		output_device;		// used to track deemphasis, peaks
 	float			default_sampling_rate;	// default rate for processing
 }
 
@@ -70,7 +82,7 @@ IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
 - (float)refresh;
 - (void)dealloc;
 
-- (void)setSound:(Sound *)this_sound_or_soundview;
+- (void)setSound:(id)this_sound_or_soundview;
 - sound;
 - setDefaultSamplingRate:(float) this_rate;	
 		// because when recording, sound returns rate improperly

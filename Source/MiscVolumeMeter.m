@@ -22,6 +22,7 @@ MiscVolumeMeter
 
 #import "MiscVolumeMeter.h"
 #import <stdio.h>
+#import <math.h>
 
 
 // convenience functions
@@ -38,6 +39,28 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
        }
 
 
+
+
+
+// SndKit has no Sound-style status enum (the NX_Sound* codes).
+// SndPerformance's isPlaying covers the legacy NX_SoundPlaying and
+// NX_SoundPlayingPending group (a pending performance has not reached
+// its end, so it counts as playing); isPaused covers the paused
+// members.  Snd's isRecording is hard-wired NO (SndKit never records
+// into an Snd), so the legacy recording group is undetectable on an
+// Snd: such a sound reports idle and the meter erases its bar (the
+// legacy bar in that state was driven by the input device's peaks,
+// which has no SndKit counterpart).
+static BOOL VOLUMEMETER_sound_idle(Snd *snd)
+	{
+	NSArray* performances;
+	int i;
+	if ([snd isPlaying]) return NO;
+	performances=[snd performances];
+	for (i=0;i<[performances count];i++)
+		if ([[performances objectAtIndex:i] isPaused]) return NO;
+	return YES;
+	}
 
 
 @implementation MiscVolumeMeter
@@ -87,10 +110,7 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
 	current_max_refresh_left=0;
 	current_max_refresh_right=0;
 	
-	if (input_device==NULL) input_device= [[NXSoundIn alloc] init];
-	if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-	[input_device setDetectPeaks:YES];
-	[output_device setDetectPeaks:YES];
+	last_position=0;
 	teNum=0;
 	
 	return self;
@@ -117,34 +137,31 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
 	//printf ("Meter\n");
 	if (sound!=NULL)
 		{
-		int status=NX_SoundStopped;
 		id actual_sound=NULL;			// quiets compiler complaints
 		
-		if ([sound isKindOfClass:[Sound class]]) 
+		// The metered sound can be an Snd or an SndView (the view's
+		// soundBeingProcessed accessor is the SndKit counterpart of the
+		// legacy SoundView's; the cast is for the OS X server).
+		if ([sound isKindOfClass:[Snd class]]) 
 			{actual_sound=sound;}
-		else if ([sound isKindOfClass:[SoundView class]])
+		else if ([sound isKindOfClass:[SndView class]])
 			{actual_sound=[sound soundBeingProcessed];}
-                status=[(Sound*)actual_sound status];				// TypeCast for OS X server
-		if (status==NX_SoundStopped||
-			status==NX_SoundInitialized||
-			status==NX_SoundFreed) 
-		{just_erase=1;}
-			
-		// Then modify the meter to match the sound	
 		
-		else if (status==NX_SoundRecordingPaused||
-				 status==NX_SoundRecording||
-				 status==NX_SoundRecordingPending)
-		{[self setToInput];}
+		// SndKit has no Sound-style status enum; the performance flags
+		// cover the legacy NX_Sound* groups (see the static above).  An
+		// idle sound erases the bar; the legacy recording group is
+		// undetectable on an Snd and erases likewise.  Everything else
+		// meters the output.
+		if (actual_sound==NULL
+			||VOLUMEMETER_sound_idle((Snd*)actual_sound))
+			{just_erase=1;}
+		else
+			{[self setToOutput];}
 		
-		else if (status==NX_SoundPlayingPaused||
-				 status==NX_SoundPlaying||
-				 status==NX_SoundPlayingPending)
-		{[self setToOutput];}
+		// Then set the channel mode to match the sound (a hook:
+		// ResoundMiscVolumeMeter overrides the channel-count fallback).
+		[self setChannelsForSound:actual_sound];
 		
-		if ([actual_sound channelCount]>1)
-			{[self setStereo];}
-		else {[self setMono];}
 		}
 	
 	// then check for bezeled stuff
@@ -188,11 +205,10 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
 		{
 		left=0;right=0;
 		
-		if (input&&input_device!=NULL) 
-			[input_device getPeakLeft:&left right:&right];
-		
-		if ((!input)&&output_device!=NULL)
-			[output_device getPeakLeft:&left right:&right];
+		// SndKit: peaks from the metered sound's data (see
+		// getPeakLeft:right:); the legacy read the input or output
+		// device's hardware peaks depending on the input flag.
+		[self getPeakLeft:&left right:&right];
 			
 		if (left>1) left=1; if (right>1) right=1;
 			// occasionally a NeXTSTEP bug returns values larger than 1!
@@ -410,20 +426,14 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
 - setToInput
 	{
 	input=YES;
-		// try to allocate once more...
-	[self reclaim];
-		// ...then test
-	if (input_device==NULL) return NULL;
+	/* SndKit has no device to reclaim or test (see reclaim). */
 	return self;
 	}
 
 - setToOutput
 	{
 	input=NO;
-		// try to allocate once more...
-	[self reclaim];
-		// ...then test
-	if (output_device==NULL) return NULL;
+	/* SndKit has no device to reclaim or test (see reclaim). */
 	return self;
 	}
 
@@ -466,16 +476,10 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
 
 - reclaim
 	{
-	// try to grab devices
-	
-	if (input_device==NULL) input_device=[[NXSoundIn alloc] init];
-	if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-	
-	// reset devices
-	
-	[input_device setDetectPeaks:YES];
-	[output_device setDetectPeaks:YES];
-	
+	// SndKit has no device objects to grab or reset (the legacy
+	// re-allocated the NXSoundIn/NXSoundOut here); the method stays
+	// so the window notifications still have something harmless to
+	// call.
 	// don't display here!  That would create a loop.
 	return self;
 	}
@@ -531,10 +535,7 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
                 current_max_refresh_left=0;
                 current_max_refresh_right=0;
 
-                if (input_device==NULL) input_device= [[NXSoundIn alloc] init];
-                if (output_device==NULL) output_device=[[NXSoundOut alloc] init];
-                [input_device setDetectPeaks:YES];
-                [output_device setDetectPeaks:YES];			// for symmetry;
+	/* SndKit: no device objects to allocate (see the header note). */
 
 
 
@@ -560,8 +561,6 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
 	if (delegate!=nil) [delegate release];
 	if (teNum) [teNum invalidate]; [teNum release];;
 	teNum=0;
-	if (input_device!=NULL) [input_device release];
-	if (output_device!=NULL) [output_device release];
 	{ [super dealloc]; return; };
 	}
 
@@ -649,10 +648,11 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
 	return YES;
 	}
 	
-- (void)setSound:(Sound *)this_sound
+- (void)setSound:(id)this_sound
 	{
 	if (sound!=nil) [sound release];
 	sound=[this_sound retain];
+	last_position=0;		// a new sound restarts the peak window
 	[self display];
 }
 
@@ -708,6 +708,138 @@ BOOL VOLUMEMETER_can_draw(const NSRect* aRect)
 	}
 	
 	
+// SndKit replacement for the legacy [device getPeakLeft:right:]
+// hardware peaks.  SndKit has no device object, and its own
+// SndStreamClient peak API (setDetectPeaks:/getPeakLeft:right:)
+// is a stub that returns self without touching the values (SndKit's
+// own SndMeter calls it, which is why that class documents itself
+// as "not ready for operation").  So the peaks are computed from the
+// metered sound's data, over the window advanced since the previous
+// refresh -- the legacy device peak likewise reported "peak since
+// the last call".  The window is the playIndex range of the current
+// performance, capped at one second of audio; a sound with no
+// performance (in particular the console's zero-buffer recording
+// token) has advanced nowhere and reports 0/0, exactly as in unit 1.
+
+- (void) getPeakLeft:(float *) left right:(float *) right
+	{
+	Snd* snd;
+	SndPerformance* performance;
+	SndAudioBuffer* buffer;
+	void *bytes;
+	unsigned long to, from, width, framebytes, n, n_frames;
+	int channels;
+	SndSampleFormat format;
+	float l, r, v0, v1;
+
+	*left = 0.0;
+	*right = 0.0;
+
+	snd = nil;
+	if ([sound isKindOfClass:[Snd class]]) snd=(Snd*)sound;
+	else if ([sound isKindOfClass:[SndView class]])
+		snd=(Snd*)[sound soundBeingProcessed];
+	if (![snd isKindOfClass:[Snd class]]) return;
+
+	// the current position is the current performance's playIndex,
+	// clamped to the sound's length...
+	performance=[[snd performances] lastObject];
+	to=[snd lengthInSampleFrames];
+	if (performance)
+		{
+		long p=[performance playIndex];
+		if (p>0) to=(p>to) ? to : (unsigned long) p;
+		}
+	if (to<last_position) last_position=0;	// (re)start: window from the beginning
+	from=last_position;
+	if (to<=from) return;
+
+	// ...capped so a stalled refresh doesn't integrate over the whole
+	// sound: at most one second of audio.
+	if ([snd samplingRate]>0
+		&&to-from>(unsigned long)[snd samplingRate])
+		from=to-(unsigned long)[snd samplingRate];
+
+	buffer=[snd audioBufferForSamplesInRange:NSMakeRange((long)from,(long)(to-from))];
+	bytes=[buffer bytes];
+	if (bytes==NULL) return;
+	n_frames=[buffer lengthInSampleFrames];
+	channels=[buffer channelCount];
+	format=[buffer dataFormat];
+	width=SndSampleWidth(format);
+	if (width==0||channels<=0||n_frames==0) return;	// a format we don't decode
+	framebytes=(unsigned long)channels*width;
+	l=0.0;
+	r=0.0;
+	for (n=0;n<n_frames;n++)
+		{
+		unsigned char *p=(unsigned char*)bytes+n*framebytes;
+		v0=0.0;
+		v1=0.0;
+		switch (format)
+			{
+			case SND_FORMAT_FLOAT:
+				{
+				float *f=(float*)p;
+				v0=f[0];
+				v1=(channels>1)?f[1]:v0;
+				}
+				break;
+			case SND_FORMAT_LINEAR_16:
+				{
+				short *s=(short*)p;
+				v0=(float)s[0]/32768.0f;
+				v1=(channels>1)?(float)s[1]/32768.0f:v0;
+				}
+				break;
+			case SND_FORMAT_LINEAR_8:
+				{
+				unsigned char *c=p;
+				v0=fabs((float)c[0]-128.0f)/128.0f;
+				v1=(channels>1)?fabs((float)c[1]-128.0f)/128.0f:v0;
+				}
+				break;
+			case SND_FORMAT_DOUBLE:
+				{
+				double *d=(double*)p;
+				v0=(float)d[0];
+				v1=(channels>1)?(float)d[1]:v0;
+				}
+				break;
+			case SND_FORMAT_MULAW_8:
+				{
+				unsigned char *c=p;
+				v0=(float)SndMuLawToLinear(c[0])/32768.0f;
+				v1=(channels>1)?(float)SndMuLawToLinear(c[1])/32768.0f:v0;
+				}
+				break;
+			default:
+				// compressed formats aren't decoded in the meter.
+				break;
+			}
+		if (v0<0.0) v0=-v0;
+		if (v1<0.0) v1=-v1;
+		if (v0>l) l=v0;
+		if (v1>r) r=v1;
+		}
+	last_position=to;
+	*left=l;
+	*right=r;
+	return;
+	}
+
+// the stereo/mono decision (a hook: ResoundMiscVolumeMeter overrides
+// this with Resound's channel-count fallback); the base class is the
+// legacy behaviour.
+
+- (void) setChannelsForSound:(id)actual_sound
+	{
+	if ([((Snd*)actual_sound) channelCount]>1)
+		{[self setStereo];}
+	else {[self setMono];}
+	return;
+	}
+
 // The following are delegate methods, just listed here to stop warnings
 - meterWillUpdateOnOwn:sender {return NULL;}
 - meterWillUpdate:sender {return NULL;}	

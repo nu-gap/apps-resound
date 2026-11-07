@@ -403,7 +403,16 @@ read-back, conversion) with a silent virtual input, and 0005 with an
 8-second capture converted 44.1 kHz -> 8 kHz, which aborted 3/3 before
 the fix and completed 3/3 (plus a 1/2/4/6/10/15 s duration matrix)
 after it, with the file-I/O contract tests (`resoundio`, `sndsmoke`)
-unchanged.
+unchanged. **In-app verification (2026-11-07, Phase 2 unit 1c, the
+console unit):** the console's `recordDown:`/`stopDown:` path runs the
+same flow inside the app (the 1998 six-argument `record:::::` call →
+`SndStreamRecorder` capture of the silent virtual input on the dev
+machine → user stop at ~2 s → `_finishRecording` read-back and
+conversion; the capture is 44.1 kHz so the convert is same-rate
+float32→linear-16 — the cross-rate path 0005 guards was verified by
+the probe). This is the first in-app exercise of the 0004 threshold
+(unit 1b's verification was a standalone probe on the Pi) and of the
+whole `_finishRecording` sequence.
 
 0001 and 0002 were submitted upstream on 2026-11-03 as issue
 [#2](https://github.com/leighsmith/MusicKit/issues/2) (vDSP arch guard) and

@@ -15,7 +15,16 @@ NO REPRESENTATIONS ABOUT THE ACCURACY OR SUITABILITY OF THIS MATERIAL
 FOR ANY PURPOSE.  IT IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR
 IMPLIED WARRANTIES.
 
-*/
+This file was migrated from the defunct NeXT SoundKit to SndKit as
+part of the GNUstep port (see docs/RESOUND_SNDKIT_PLAN.md, Phase 2,
+unit 1c).  The legacy class duplicated the entire MiscVolumeMeter
+drawRect just for its channel-count fallback (a brand-new sound has
+0 channels until it is recorded -- a NeXTSTEP bug).  The SndKit port
+lifts the channel decision into the MiscVolumeMeter
+setChannelsForSound: hook, so this class overrides only that hook.
+Everything else (drawing, peaks, status) is inherited from the
+ported base class.
+ */
 
 #import "MiscVolumeMeter.h"
 
@@ -26,6 +35,7 @@ IMPLIED WARRANTIES.
 
 - init;
 - setDefaultChannelCount:(int) this;
-- (void) drawRect:(NSRect)rects;  // A change
+- (void) setChannelsForSound:(id)actual_sound;  // A change (was a
+                                                // drawRect override)
 
 @end

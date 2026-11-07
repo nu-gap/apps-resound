@@ -78,7 +78,11 @@ Resound_OBJC_FILES= \
 	Source/Extra.m \
 	Source/ModuleMenuNode.m \
 	Source/Sound-ResoundSound.m \
-	Source/SoundManager.m
+	Source/SoundManager.m \
+	Source/MiscVolumeMeter.m \
+	Source/ResoundMiscVolumeMeter.m \
+	Source/MiscSoundTracker.m \
+	Source/ConsoleManager.m
 
 Resound_C_FILES= \
 	Source/fft.c
