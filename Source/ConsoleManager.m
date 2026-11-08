@@ -40,6 +40,7 @@ IMPLIED WARRANTIES.
 #import "SoundManager.h"
 #import "ResoundMiscVolumeMeter.h"
 #import "MiscSoundTracker.h"
+#import "ResoundMiscSoundView.h"
 #import <AppKit/AppKit.h>
 #import <SndKit/SndKit.h>
 #import <stdio.h>
@@ -65,21 +66,14 @@ static SndSampleFormat CONSOLE_FORMATS[3]=
 
 /* FileController is not yet migrated (it comes with the file-
     handling unit); the console only needs currentSound: from it.
-    The 1998 SoundView play-position methods are likewise absent
-    from SndKit's SndView -- the view-chain unit re-adds them.
-    Both are declared so the dispatch below compiles warning-free
-    until then. */
+    Declared so the dispatch below compiles warning-free until
+    then.  (The 1998 SoundView play-position methods the console
+    auto-scrolling uses are the view chain's own: they are the
+    typed MiscSoundView methods reached through the
+    ResoundMiscSoundView import below, so no protocol is needed
+    for those -- see the view-chain unit, Phase 2 unit 2. */
 @protocol ConsoleFileController
 - currentSound:sender;
-@end
-
-@protocol ConsoleSoundViewCompat
-- (BOOL) xAxisDisplayed;
-- (BOOL) scrollToReflectPlaying;
-- (void) getSelection:(int*)firstSample size:(int*)sampleCount;
-- (void) scrollToSample:(int)sample;
-- (void) setPlayMark:(int)sample;
-- (NSWindow*) window;
 @end
 
 @implementation ConsoleManager
@@ -569,7 +563,7 @@ static SndSampleFormat CONSOLE_FORMATS[3]=
 
     	id snd=[(MiscVolumeMeter*)sender sound];		// note that the meter is tracking the scratch sound,
 	// not the real sound!
-	id<ConsoleSoundViewCompat> cv=[soundManager soundViewPlayingOrRecording];
+	id cv=[soundManager soundViewPlayingOrRecording];
 	int samp=0;
 	int fs,ns;
 	BOOL ruler_drawn;
@@ -636,7 +630,7 @@ static SndSampleFormat CONSOLE_FORMATS[3]=
 
 - clearPlayMark
     {
-    id<ConsoleSoundViewCompat> cv=[soundManager soundViewPlayingOrRecording];
+    id cv=[soundManager soundViewPlayingOrRecording];
     
     if (cv==nil) return self;
 

@@ -57,18 +57,24 @@ IMPLIED WARRANTIES.
     The newSound allocation stays: SndKit never fills it, so it serves
     as the console meter's token object (the meter shows a zero buffer,
     as in unit 1; the real meter re-work is a later unit).
-  - The FileController/ConsoleManager/ModuleController imports were
-    dropped: those headers still import <SoundKit/SoundKit.h> (they are
-    later Phase 2 units).  SoundManager holds only id references to them
-    and messages them dynamically, so no headers are needed.  Re-add
-    them for static type-checking as those classes are ported.
-  - The two diagnostic pragmas below silence exactly the warning classes
-    that the id dispatch above produces: -Wobjc-method-access (sends to
-    controllers whose headers cannot be imported yet) and
-    -Wobjc-multiple-method-names (SndKit declares play:/pause:/resume:
-    on both Snd and SndView, which an id-typed view matches
-    ambiguously).  Remove the pragmas when the view chain and the
-    controllers are ported and the references can be typed again.
+  - The 1998 controller imports (FileController.h / ConsoleManager.h /
+    ModuleController.h) were dropped in unit 1: those headers then still
+    imported <SoundKit/SoundKit.h>, and FileController and
+    ModuleController still do (later Phase 2 units).  ConsoleManager is
+    ported (unit 1c) but its import stays dropped for now: the reference
+    is the 1998 id, the pragma below covers the dispatch, and the file
+    unit restores the 1998 import block as a whole.  All controller
+    references are id-typed dynamic dispatch, so no headers are needed.
+  - The diagnostic pragma below silences the -Wobjc-method-access
+    warnings the id-typed controller dispatch above produces (the
+    controllers' headers cannot be imported yet).  It no longer covers
+    -Wobjc-multiple-method-names, whose reason is gone: SndKit declares
+    play:/pause:/resume: on both Snd and SndView, which the unit-1
+    id-typed view matched ambiguously -- but the view ivar is now the
+    typed ResoundMiscSoundView (view-chain unit), so those sends resolve
+    unambiguously and the suppression is dead weight.  Remove the pragma
+    when the controllers are ported and the references can be typed
+    again.
     (The -Wmissing-selector-name warnings from the 1998-style record:
     declaration are deliberately left visible: that idiom predates the
     port and its runtime selector is preserved exactly, see
@@ -84,7 +90,6 @@ IMPLIED WARRANTIES.
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wobjc-method-access"
-#pragma clang diagnostic ignored "-Wobjc-multiple-method-names"
 
 @implementation SoundManager
 

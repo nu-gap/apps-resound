@@ -31,6 +31,7 @@ only as the console meter's token object.
 #import <Foundation/Foundation.h>
 #import <SndKit/SndKit.h>
 #import <AppKit/NSWindow.h>
+#import "ResoundMiscSoundView.h"
 
 @interface SoundManager:NSObject
     {
@@ -38,14 +39,7 @@ only as the console meter's token object.
     id  fileController;
     
     Snd*	currentPlayingOrRecordingSound;
-    /* Typed as id for now: the soundview chain (MiscSoundView /
-       ResoundMiscSoundView, hence SoundView -> SndView) is not yet
-       migrated, so its headers still import <SoundKit/SoundKit.h> and
-       cannot be used here.  All uses of the view below are dynamic
-       message sends (play:/stop:/pause:/resume:/setPlayMark:), so the
-       id type is safe.  Tighten to ResoundMiscSoundView* once the view
-       chain is ported (Phase 2, next unit). */
-    id	currentPlayingOrRecordingSoundView;
+    ResoundMiscSoundView*	currentPlayingOrRecordingSoundView;
     NSWindow*	currentPlayingOrRecordingWindow;
     Snd*   newSound;
     /* Unit 1b: the capture itself runs through SndStreamRecorder (SndKit
