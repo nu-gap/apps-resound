@@ -1,0 +1,664 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    AttributesInspector = {
+	Actions = (
+	    "update:",
+	    "getInspector:",
+	    "changeDisplayModeToMinMax:",
+	    "changeDisplayModeToOscilliscopic:"
+	);
+	Outlets = (
+	    "display_matrix",
+	    infoWindow,
+	    seconds,
+	    fragmented,
+	    format,
+	    fileController,
+	    channels,
+	    "oscilliscopic_button",
+	    inspector,
+	    playOrDisplay,
+	    rate,
+	    samples,
+	    "min_max_button",
+	    inspectorController
+	);
+	Super = NSObject;
+    };
+    ConsoleManager = {
+	Actions = (
+	    "setStereoChannels:",
+	    "displayRecordFormatPanel:",
+	    "setRecordingLength:",
+	    "setSourceLine:",
+	    "stopDown:",
+	    "setLeft:",
+	    "showConsole:",
+	    "setFormatToMe:",
+	    "setMonoChannels:",
+	    "recordDown:",
+	    "setRight:",
+	    "meterWillUpdateOnOwn:",
+	    "setMono:",
+	    "playDown:",
+	    "setSourceMic:",
+	    "setRateToMe:",
+	    "pauseDown:"
+	);
+	Outlets = (
+	    soundManager,
+	    rateField,
+	    minrate,
+	    leftRecordGain,
+	    recordLengthField,
+	    formatWindow,
+	    "hidden_window",
+	    rightRecordGain,
+	    formatMenu,
+	    fileController,
+	    meter,
+	    stopButton,
+	    recordButton,
+	    pauseButton,
+	    rateMenu,
+	    light,
+	    playButton,
+	    maxrate,
+	    console,
+	    source,
+	    soundTracker,
+	    channels,
+	    monoRecordGain
+	);
+	Super = Object;
+    };
+    EditController = {
+	Actions = (
+	    "turnOffMenu:",
+	    "turnOnMenu:",
+	    "compactSound:",
+	    "okayConvert:",
+	    "convert:"
+	);
+	Outlets = (
+	    channelMatrix,
+	    fileController,
+	    samplingRateField,
+	    convertPanel,
+	    samplingRateMatrix,
+	    formatMenu,
+	    compactButton
+	);
+	Super = NSObject;
+    };
+    ErrorController = {
+	Actions = (
+	    "Okayed:",
+	    "NoDataToSave:"
+	);
+	Outlets = (
+	    SixteenBitWindow,
+	    NoSoundWindow,
+	    OperationFailedWindow,
+	    NoDataToSaveWindow
+	);
+	Super = Object;
+    };
+    ErrorHandler = {
+	Actions = (
+	);
+	Outlets = (
+	    errorWindow,
+	    errorText
+	);
+	Super = NSObject;
+    };
+    Extra = {
+	Actions = (
+	    "openResoundOnlineHelp:",
+	    "openResoundHomePage:"
+	);
+	Outlets = (
+	);
+	Super = NSObject;
+    };
+    FileController = {
+	Actions = (
+	    "noSaveClosePanel:",
+	    "currentSoundView:",
+	    "quit:",
+	    "saveQuitPanel:",
+	    "noSaveQuitPanel:",
+	    "close:",
+	    "saveAs:",
+	    "print:",
+	    "newSoundFromMicrophone:",
+	    "save:",
+	    "saveClosePanel:",
+	    "cancelQuitPanel:",
+	    "currentSound:",
+	    "revert:",
+	    "saveAll:",
+	    "newSoundFromPasteBoard:",
+	    "cancelClosePanel:",
+	    "open:",
+	    "currentWindow:",
+	    "doPageLayout:"
+	);
+	Outlets = (
+	    moduleController,
+	    junkField,
+	    saveAllButton,
+	    soundManager,
+	    infoPanel,
+	    mainMenu,
+	    selectionInspector,
+	    revertButton,
+	    preferencesManager,
+	    saveButton,
+	    soundViewCursor,
+	    closeButton,
+	    editController,
+	    consoleManager,
+	    inspectorManager,
+	    saveAsButton
+	);
+	Super = NSObject;
+    };
+    FirstResponder = {
+	Actions = (
+	    "ChangeSelection:",
+	    "ChangeXAxis:",
+	    "CompactSound:",
+	    "DisplayContributorsPanel:",
+	    "DisplayInfoPanel:",
+	    "GetInspector:",
+	    "NoDataToSave:",
+	    "Okayed:",
+	    "Reset:",
+	    "Update:",
+	    "XAxisChanged:",
+	    "ZoomChanged:",
+	    "begin:",
+	    "cancelClosePanel:",
+	    "cancelQuitPanel:",
+	    "cancelled:",
+	    "changeDisplayModeToMinMax:",
+	    "changeDisplayModeToOscilliscopic:",
+	    "changeGrid:",
+	    "changeSelection:",
+	    "changeSelectionPercent:",
+	    "changeSelectionPercentLength:",
+	    "changeSelectionSamples:",
+	    "changeSelectionSamplesLength:",
+	    "changeSelectionSeconds:",
+	    "changeSelectionSecondsLength:",
+	    "compactSound:",
+	    "convert:",
+	    "currentSound:",
+	    "currentSoundView:",
+	    "currentWindow:",
+	    "didPlay:",
+	    "didRecord:",
+	    "displayAttributes:",
+	    "displayInfoString:",
+	    "displayInspector:",
+	    "displayMarks:",
+	    "displayRecordFormatPanel:",
+	    "displaySelection:",
+	    "displayZoom:",
+	    "doPageLayout:",
+	    "drawSelf:",
+	    "findSelection:",
+	    "getInspector:",
+	    "gridChanged:",
+	    "mailMessage:",
+	    "meterWillUpdateOnOwn:",
+	    "newSoundFromMicrophone:",
+	    "newSoundFromPasteBoard:",
+	    "noSaveClosePanel:",
+	    "noSaveQuitPanel:",
+	    "okay:",
+	    "okayConvert:",
+	    "okayed:",
+	    "openResoundHomePage:",
+	    "openResoundOnlineHelp:",
+	    "pauseDown:",
+	    "play:",
+	    "playDown:",
+	    "preferencesOkayed:",
+	    "quit:",
+	    "recordDown:",
+	    "reset:",
+	    "revert:",
+	    "save:",
+	    "saveAll:",
+	    "saveAs:",
+	    "saveClosePanel:",
+	    "saveQuitPanel:",
+	    "setFormatToMe:",
+	    "setLeft:",
+	    "setMono:",
+	    "setMonoChannels:",
+	    "setRateToMe:",
+	    "setRecordingLength:",
+	    "setRight:",
+	    "setSourceLine:",
+	    "setSourceMic:",
+	    "setStereoChannels:",
+	    "setToDecibel:",
+	    "setToPercent:",
+	    "setToSamples:",
+	    "setToSeconds:",
+	    "setToSixteen:",
+	    "setToTwenty:",
+	    "setToTwentyFour:",
+	    "showConsole:",
+	    "startPreferencesPanel:",
+	    "stopDown:",
+	    "takeFloatValueFromMe:",
+	    "toggleContinuousZoom:",
+	    "turnOffMenu:",
+	    "turnOnMenu:",
+	    "update:",
+	    "windowDidClose:",
+	    "zoomAllIn:",
+	    "zoomAllOut:",
+	    "zoomChanged:",
+	    "zoomInOneReduction:",
+	    "zoomOutOneReduction:",
+	    "zoomToSelection:"
+	);
+	Super = NSObject;
+    };
+    Grid = {
+	Actions = (
+	    "XAxisChanged:",
+	    "Update:",
+	    "ChangeXAxis:",
+	    "GetInspector:"
+	);
+	Outlets = (
+	    "major_tick_spacing",
+	    TheInspector,
+	    "major_tick_color",
+	    "minor_tick_spacing",
+	    TheFileController,
+	    "display_axis",
+	    "minor_tick_spacing_format",
+	    "display_format",
+	    TheInspectorController,
+	    "minor_tick_color"
+	);
+	Super = Object;
+    };
+    HelpManager = {
+	Actions = (
+	    "DisplayContributorsPanel:",
+	    "DisplayInfoPanel:",
+	    "windowDidClose:"
+	);
+	Outlets = (
+	    InfoVolumeLight,
+	    ContributorsPanel,
+	    InfoPanel
+	);
+	Super = Object;
+    };
+    InfoManager = {
+	Actions = (
+	    "CompactSound:",
+	    "changeDisplayModeToOscilliscopic:",
+	    "changeDisplayModeToMinMax:",
+	    "GetInspector:"
+	);
+	Outlets = (
+	    TheEditController,
+	    Samples,
+	    Format,
+	    TheInspectorController,
+	    Fragmented,
+	    TheInspector,
+	    Seconds,
+	    InfoWindow,
+	    "oscilliscopic_button",
+	    Rate,
+	    TheFileController,
+	    Channels,
+	    "min_max_button"
+	);
+	Super = Object;
+    };
+    InfoStringInspector = {
+	Actions = (
+	    "update:",
+	    "getInspector:",
+	    "revert:",
+	    "okay:"
+	);
+	Outlets = (
+	    fileController,
+	    infoString,
+	    inspectorController,
+	    inspector
+	);
+	Super = NSObject;
+    };
+    InspectorManager = {
+	Actions = (
+	    "displaySelection:",
+	    "displayInspector:",
+	    "displayMarks:",
+	    "displayAttributes:",
+	    "displayZoom:",
+	    "displayInfoString:"
+	);
+	Outlets = (
+	    selectionInspector,
+	    marksInspector,
+	    inspector,
+	    attributesInspector,
+	    zoomInspector,
+	    nothingInspector,
+	    infoStringInspector,
+	    fileController,
+	    inspectorView,
+	    popUpListButton
+	);
+	Super = NSObject;
+    };
+    Mail = {
+	Actions = (
+	);
+	Outlets = (
+	    mailSpeaker
+	);
+	Super = Object;
+    };
+    MarksInspector = {
+	Actions = (
+	    "setToTwentyFour:",
+	    "setToTwenty:",
+	    "setToSixteen:",
+	    "setToDecibel:",
+	    "setToPercent:",
+	    "gridChanged:",
+	    "setToSamples:",
+	    "changeGrid:",
+	    "update:",
+	    "getInspector:",
+	    "setToSeconds:"
+	);
+	Outlets = (
+	    amplitude,
+	    "zero_line",
+	    inspector,
+	    "minor_tick_menu",
+	    "major_tick_field",
+	    ticks,
+	    "amplitude_menu",
+	    inspectorController,
+	    "scroll_to_reflect",
+	    fileController,
+	    "minor_tick_field"
+	);
+	Super = NSObject;
+    };
+    ModSound = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = Sound;
+    };
+    Module = {
+	Actions = (
+	);
+	Outlets = (
+	    TheModuleMenuNode,
+	    TheModuleController
+	);
+	Super = Object;
+    };
+    ModuleController = {
+	Actions = (
+	    "turnOnMenu:",
+	    "turnOffMenu:",
+	    "cancelled:",
+	    "okayed:"
+	);
+	Outlets = (
+	    loadPanel,
+	    adjustButton,
+	    fileName,
+	    zoomController,
+	    compactPanel,
+	    soundManager,
+	    moduleHelpWindow,
+	    infoManager,
+	    selectionManager,
+	    fileController,
+	    moduleHelpView,
+	    pathName
+	);
+	Super = NSObject;
+    };
+    PreferencesManager = {
+	Actions = (
+	    "startPreferencesPanel:",
+	    "preferencesOkayed:"
+	);
+	Outlets = (
+	    attributesMatrix,
+	    convertOnOpenButton,
+	    backupButton,
+	    zoomedInButton,
+	    zoomMatrix,
+	    preferencesPanel,
+	    minMaxDisplayButton,
+	    minorTicksFormatButton,
+	    amplitudeButton,
+	    playOnOpenButton,
+	    displayAmplitudeButton,
+	    zoomedOutButton,
+	    scrollToReflectSoundButton,
+	    majorTicksField,
+	    minorTicksField,
+	    displayZeroLineButton,
+	    displayTicksButton,
+	    oscilliscopicDisplayButton
+	);
+	Super = NSObject;
+    };
+    ResoundMail = {
+	Actions = (
+	    "mailMessage:"
+	);
+	Outlets = (
+	);
+	Super = Mail;
+    };
+    SelectionInspector = {
+	Actions = (
+	    "changeSelectionPercentLength:",
+	    "changeSelectionSamplesLength:",
+	    "changeSelection:",
+	    "changeSelectionSamples:",
+	    "reset:",
+	    "update:",
+	    "getInspector:",
+	    "changeSelectionSecondsLength:",
+	    "changeSelectionPercent:",
+	    "changeSelectionSeconds:"
+	);
+	Outlets = (
+	    selectionSecondsLength,
+	    viewSecondsStart,
+	    viewPercentStart,
+	    selectionSecondsStart,
+	    selectionPercentEnd,
+	    inspector,
+	    selectionPercentLength,
+	    selectionPercentStart,
+	    viewStart,
+	    selectionEnd,
+	    selectionStart,
+	    viewPercentEnd,
+	    fileController,
+	    selectionSecondsEnd,
+	    viewSecondsLength,
+	    viewEnd,
+	    selectionLength,
+	    viewSecondsEnd,
+	    inspectorController,
+	    viewPercentLength,
+	    viewLength
+	);
+	Super = NSObject;
+    };
+    SelectionManager = {
+	Actions = (
+	    "ChangeSelection:",
+	    "Update:",
+	    "Reset:",
+	    "GetInspector:"
+	);
+	Outlets = (
+	    ViewEnd,
+	    ViewStart,
+	    SelectionSecondsStart,
+	    SelectionStart,
+	    SelectionWindow,
+	    TheInspectorController,
+	    TheInspector,
+	    SelectionLength,
+	    ViewSecondsStart,
+	    ViewSecondsLength,
+	    SelectionEnd,
+	    TheFileController,
+	    ViewSecondsEnd,
+	    SelectionSecondsEnd,
+	    ViewLength,
+	    SelectionSecondsLength
+	);
+	Super = Object;
+    };
+    Sound = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = NSObject;
+    };
+    SoundManager = {
+	Actions = (
+	    "didPlay:",
+	    "stop:",
+	    "didRecord:",
+	    "play:"
+	);
+	Outlets = (
+	    fileController,
+	    consoleManager
+	);
+	Super = NSObject;
+    };
+    SoundMeter = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = NSView;
+    };
+    SoundTable = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = Object;
+    };
+    SoundView = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = NSView;
+    };
+    StringTable = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = Object;
+    };
+    UpdateSoundView = {
+	Actions = (
+	    "drawSelf:"
+	);
+	Outlets = (
+	);
+	Super = SoundView;
+    };
+    VolumeController = {
+	Actions = (
+	    "begin:"
+	);
+	Outlets = (
+	    left,
+	    deemphasis,
+	    mute,
+	    "volume_panel",
+	    right
+	);
+	Super = Object;
+    };
+    ZoomController = {
+	Actions = (
+	    "zoomOutOneReduction:",
+	    "zoomToSelection:",
+	    "GetInspector:",
+	    "ZoomChanged:",
+	    "takeFloatValueFromMe:",
+	    "findSelection:",
+	    "zoomAllOut:",
+	    "toggleContinuousZoom:",
+	    "zoomInOneReduction:",
+	    "zoomAllIn:"
+	);
+	Outlets = (
+	    ZoomField,
+	    TheInspectorController,
+	    ZoomSlider,
+	    TheFileController,
+	    ReductionField,
+	    "continuous_button",
+	    TheInspector
+	);
+	Super = Object;
+    };
+    ZoomInspector = {
+	Actions = (
+	    "zoomOutOneReduction:",
+	    "zoomToSelection:",
+	    "zoomChanged:",
+	    "takeFloatValueFromMe:",
+	    "findSelection:",
+	    "zoomAllOut:",
+	    "toggleContinuousZoom:",
+	    "getInspector:",
+	    "update:",
+	    "zoomInOneReduction:",
+	    "zoomAllIn:"
+	);
+	Outlets = (
+	    reductionField,
+	    inspectorController,
+	    fileController,
+	    zoomSlider,
+	    zoomField,
+	    "continuous_button",
+	    inspector
+	);
+	Super = NSObject;
+    };
+}

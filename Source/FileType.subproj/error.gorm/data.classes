@@ -1,0 +1,12 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    ErrorHandler = {
+	Actions = (
+	);
+	Outlets = (
+	    errorWindow,
+	    errorText
+	);
+	Super = NSObject;
+    };
+}

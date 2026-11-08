@@ -31,6 +31,7 @@ IMPLIED WARRANTIES.
 
 
 #import "VolumeController.h"
+#import "ResoundNibs.h"
 #import <stdio.h>
 
 @implementation VolumeController
@@ -61,7 +62,7 @@ IMPLIED WARRANTIES.
     {
     if (!loaded) 
 	{
-	[NSBundle loadNibNamed: @"Volume.nib" owner:self];
+	[ResoundNibs loadNibNamed: @"Volume" owner:self];
 	left=[[MiscSoundTracker alloc] init];
 	right=[[MiscSoundTracker alloc] init];
 	monitorMute=[[MiscSoundTracker alloc] init];

@@ -1,0 +1,34 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    EnvelopeModule = {
+	Actions = (
+	    "showEnvelopePanel:",
+	    "applyEnvelope:",
+	    "cancel:"
+	);
+	Outlets = (
+	    applyToAllButton,
+	    applyButton,
+	    envelopePanel,
+	    applyToLeftButton,
+	    applyToRightButton,
+	    inOutMatrix
+	);
+	Super = Module;
+    };
+    FirstResponder = {
+	Actions = (
+	    "applyEnvelope:",
+	    "showEnvelopePanel:"
+	);
+	Super = NSObject;
+    };
+    Module = {
+	Actions = (
+	);
+	Outlets = (
+	    TheModuleMenuNode
+	);
+	Super = Object;
+    };
+}

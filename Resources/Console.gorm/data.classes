@@ -1,0 +1,146 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    ConsoleManager = {
+	Actions = (
+	    "setStereoChannels:",
+	    "displayRecordFormatPanel:",
+	    "setRecordingLength:",
+	    "setSourceLine:",
+	    "stopDown:",
+	    "setLeft:",
+	    "showConsole:",
+	    "setFormatToMe:",
+	    "setMonoChannels:",
+	    "recordDown:",
+	    "setRight:",
+	    "meterWillUpdateOnOwn:",
+	    "setMono:",
+	    "playDown:",
+	    "setSourceMic:",
+	    "setRateToMe:",
+	    "pauseDown:"
+	);
+	Outlets = (
+	    soundManager,
+	    rateField,
+	    minrate,
+	    leftRecordGain,
+	    recordLengthField,
+	    formatWindow,
+	    "hidden_window",
+	    rightRecordGain,
+	    formatMenu,
+	    fileController,
+	    meter,
+	    stopButton,
+	    recordButton,
+	    pauseButton,
+	    rateMenu,
+	    light,
+	    playButton,
+	    maxrate,
+	    console,
+	    source,
+	    soundTracker,
+	    channels,
+	    monoRecordGain
+	);
+	Super = Object;
+    };
+    FirstResponder = {
+	Actions = (
+	    "displayRecordFormatPanel:",
+	    "meterDidUpdate:",
+	    "meterWillUpdate:",
+	    "meterWillUpdateOnOwn:",
+	    "pauseDown:",
+	    "playDown:",
+	    "recordDown:",
+	    "run:",
+	    "sendDeemphasis:",
+	    "sendLeft:",
+	    "sendLeftPeak:",
+	    "sendMono:",
+	    "sendMonoPeak:",
+	    "sendMute:",
+	    "sendPercent:",
+	    "sendRatio:",
+	    "sendRight:",
+	    "sendRightPeak:",
+	    "sendSamples:",
+	    "sendSeconds:",
+	    "setDeemphasisTo:",
+	    "setFormatToMe:",
+	    "setLeft:",
+	    "setMono:",
+	    "setMonoChannels:",
+	    "setMuteTo:",
+	    "setRateToMe:",
+	    "setRecordingLength:",
+	    "setRefreshToMe:",
+	    "setRight:",
+	    "setSourceLine:",
+	    "setSourceMic:",
+	    "setStereo:",
+	    "setStereoChannels:",
+	    "setToInput:",
+	    "setToOutput:",
+	    "setVolumeTo:",
+	    "showConsole:",
+	    "stopDown:"
+	);
+	Super = NSObject;
+    };
+    MiscSoundTracker = {
+	Actions = (
+	    "run:",
+	    "sendRight:",
+	    "sendLeftPeak:",
+	    "sendLeft:",
+	    "sendPercent:",
+	    "sendMute:",
+	    "setRefreshToMe:",
+	    "sendSamples:",
+	    "setVolumeTo:",
+	    "sendRightPeak:",
+	    "sendMono:",
+	    "setDeemphasisTo:",
+	    "sendRatio:",
+	    "setMuteTo:",
+	    "sendSeconds:",
+	    "sendDeemphasis:",
+	    "stop:",
+	    "sendMonoPeak:"
+	);
+	Outlets = (
+	    target,
+	    sound
+	);
+	Super = NSObject;
+    };
+    MiscVolumeMeter = {
+	Actions = (
+	    "setStereo:",
+	    "meterDidUpdate:",
+	    "meterWillUpdateOnOwn:",
+	    "setMono:",
+	    "meterWillUpdate:",
+	    "stop:",
+	    "setToInput:",
+	    "setToOutput:",
+	    "run:"
+	);
+	Outlets = (
+	    sound,
+	    delegate
+	);
+	Super = NSView;
+    };
+    ResoundMiscVolumeMeter = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = MiscVolumeMeter;
+    };
+}

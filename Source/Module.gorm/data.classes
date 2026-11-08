@@ -1,0 +1,35 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "cancelled:",
+	    "okayed:",
+	    "turnOffMenu:",
+	    "turnOnMenu:"
+	);
+	Super = NSObject;
+    };
+    ModuleController = {
+	Actions = (
+	    "turnOnMenu:",
+	    "turnOffMenu:",
+	    "cancelled:",
+	    "okayed:"
+	);
+	Outlets = (
+	    loadPanel,
+	    adjustButton,
+	    fileName,
+	    zoomController,
+	    compactPanel,
+	    soundManager,
+	    moduleHelpWindow,
+	    infoManager,
+	    selectionManager,
+	    fileController,
+	    moduleHelpView,
+	    pathName
+	);
+	Super = NSObject;
+    };
+}

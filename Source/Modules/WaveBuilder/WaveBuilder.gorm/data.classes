@@ -1,0 +1,85 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "A:",
+	    "As:",
+	    "B:",
+	    "C:",
+	    "Cs:",
+	    "D:",
+	    "Ds:",
+	    "E:",
+	    "F:",
+	    "Fs:",
+	    "G:",
+	    "Gs:",
+	    "clear:",
+	    "cosA:",
+	    "doNoise:",
+	    "doPulse:",
+	    "doSawtooth:",
+	    "doSquare:",
+	    "doTriangle:",
+	    "generateOthers:",
+	    "generateSin:",
+	    "loadOthersPanel:",
+	    "loadSinPanel:"
+	);
+	Super = NSObject;
+    };
+    Module = {
+	Actions = (
+	);
+	Outlets = (
+	    rootModuleMenuNode,
+	    moduleController
+	);
+	Super = NSObject;
+    };
+    WaveBuilderModule = {
+	Actions = (
+	    "F:",
+	    "Gs:",
+	    "Ds:",
+	    "A:",
+	    "doNoise:",
+	    "doPulse:",
+	    "As:",
+	    "C:",
+	    "loadOthersPanel:",
+	    "E:",
+	    "doTriangle:",
+	    "doSquare:",
+	    "G:",
+	    "cosA:",
+	    "loadSinPanel:",
+	    "Fs:",
+	    "B:",
+	    "doSawtooth:",
+	    "generateSin:",
+	    "generateOthers:",
+	    "Cs:",
+	    "D:",
+	    "clear:"
+	);
+	Outlets = (
+	    sinTextPhases,
+	    sinTextAmplitudes,
+	    sinPopUpButton,
+	    percentDoneSin,
+	    sinHarmonics,
+	    percentDoneOthers,
+	    sinLength,
+	    sinAmplitudes,
+	    othersSize,
+	    othersAmplitude,
+	    sinTextHarmonics,
+	    othersLength,
+	    sinPhases,
+	    othersPanel,
+	    sinPanel
+	);
+	Super = Module;
+    };
+}

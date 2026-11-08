@@ -1,0 +1,87 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FileController = {
+	Actions = (
+	    "noSaveClosePanel:",
+	    "currentSoundView:",
+	    "quit:",
+	    "setToSaveFormatSnd:",
+	    "saveQuitPanel:",
+	    "noSaveQuitPanel:",
+	    "setToSaveFormatAu:",
+	    "close:",
+	    "newSound:",
+	    "saveAs:",
+	    "print:",
+	    "newSoundFromMicrophone:",
+	    "save:",
+	    "saveClosePanel:",
+	    "cancelQuitPanel:",
+	    "currentSound:",
+	    "revert:",
+	    "saveAll:",
+	    "newSoundFromPasteBoard:",
+	    "cancelClosePanel:",
+	    "open:",
+	    "currentWindow:",
+	    "doPageLayout:"
+	);
+	Outlets = (
+	    selectionManager,
+	    editController,
+	    soundManager,
+	    saveButton,
+	    closePanel,
+	    inspectorManager,
+	    zoomController,
+	    savepanel,
+	    quitPanelNoCancel,
+	    saveAsButton,
+	    preferencesManager,
+	    infoManager,
+	    moduleController,
+	    revertButton,
+	    consoleManager,
+	    closeButton,
+	    junkField,
+	    currentPanel,
+	    soundViewCursor,
+	    quitPanel,
+	    saveAllButton,
+	    currentWindow
+	);
+	Super = NSObject;
+    };
+    FirstResponder = {
+	Actions = (
+	    "cancelClosePanel:",
+	    "cancelQuitPanel:",
+	    "currentSound:",
+	    "currentSoundView:",
+	    "currentWindow:",
+	    "doPageLayout:",
+	    "newSound:",
+	    "newSoundFromMicrophone:",
+	    "newSoundFromPasteBoard:",
+	    "noSaveClosePanel:",
+	    "noSaveQuitPanel:",
+	    "quit:",
+	    "revert:",
+	    "save:",
+	    "saveAll:",
+	    "saveAs:",
+	    "saveClosePanel:",
+	    "saveQuitPanel:",
+	    "setToSaveFormatAu:",
+	    "setToSaveFormatSnd:"
+	);
+	Super = NSObject;
+    };
+    Sound = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = NSObject;
+    };
+}

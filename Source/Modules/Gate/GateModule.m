@@ -16,6 +16,7 @@ IMPLIED WARRANTIES.
 
 */
 #import "GateModule.h"
+#import "ResoundNibs.h"
 #import <AppKit/AppKit.h>
 #import <SoundKit/SoundKit.h>
 #import <Foundation/Foundation.h>
@@ -44,7 +45,7 @@ IMPLIED WARRANTIES.
 	{	
 	if (!nib_loaded)
 		{
-       		[NSBundle loadNibNamed: @"Gate" owner:self];
+       		[ResoundNibs loadNibNamed: @"Gate" owner:self];
 		nib_loaded=1;
 		}
 	[gatePanel makeKeyAndOrderFront:self];

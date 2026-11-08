@@ -1,0 +1,37 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "displayAttributes:",
+	    "displayInfoString:",
+	    "displayInspector:",
+	    "displayMarks:",
+	    "displaySelection:",
+	    "displayZoom:"
+	);
+	Super = NSObject;
+    };
+    InspectorManager = {
+	Actions = (
+	    "displaySelection:",
+	    "displayInspector:",
+	    "displayMarks:",
+	    "displayAttributes:",
+	    "displayZoom:",
+	    "displayInfoString:"
+	);
+	Outlets = (
+	    selectionInspector,
+	    marksInspector,
+	    inspector,
+	    attributesInspector,
+	    zoomInspector,
+	    nothingInspector,
+	    infoStringInspector,
+	    fileController,
+	    inspectorView,
+	    popUpListButton
+	);
+	Super = NSObject;
+    };
+}

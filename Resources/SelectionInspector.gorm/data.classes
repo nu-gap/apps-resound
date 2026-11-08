@@ -1,0 +1,105 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "ChangeSelection:",
+	    "ChangeViewSamples:",
+	    "ChangeViewSeconds:",
+	    "GetInspector:",
+	    "Reset:",
+	    "Update:",
+	    "changeSelection:",
+	    "changeSelectionPercent:",
+	    "changeSelectionPercentLength:",
+	    "changeSelectionSamples:",
+	    "changeSelectionSamplesLength:",
+	    "changeSelectionSeconds:",
+	    "changeSelectionSecondsLength:",
+	    "getInspector:",
+	    "reset:",
+	    "toggleContinuousView:",
+	    "update:"
+	);
+	Super = NSObject;
+    };
+    SelectionInspector = {
+	Actions = (
+	    "changeSelectionPercentLength:",
+	    "changeSelectionSamplesLength:",
+	    "changeSelection:",
+	    "changeSelectionSamples:",
+	    "reset:",
+	    "update:",
+	    "getInspector:",
+	    "changeSelectionSecondsLength:",
+	    "changeSelectionPercent:",
+	    "changeSelectionSeconds:"
+	);
+	Outlets = (
+	    selectionSecondsLength,
+	    viewSecondsStart,
+	    viewPercentStart,
+	    selectionSecondsStart,
+	    selectionPercentEnd,
+	    inspector,
+	    selectionPercentLength,
+	    selectionPercentStart,
+	    viewStart,
+	    selectionEnd,
+	    selectionStart,
+	    viewPercentEnd,
+	    fileController,
+	    selectionSecondsEnd,
+	    viewSecondsLength,
+	    viewEnd,
+	    selectionLength,
+	    viewSecondsEnd,
+	    inspectorController,
+	    viewPercentLength,
+	    viewLength
+	);
+	Super = NSObject;
+    };
+    SelectionManager = {
+	Actions = (
+	    "toggleContinuousView:",
+	    "changeSelectionSeconds:",
+	    "changeSelectionSamplesLength:",
+	    "Update:",
+	    "ChangeViewSamples:",
+	    "ChangeViewSeconds:",
+	    "changeSelectionPercent:",
+	    "Reset:",
+	    "changeSelectionSecondsLength:",
+	    "ChangeSelection:",
+	    "changeSelectionPercentLength:",
+	    "GetInspector:",
+	    "changeSelectionSamples:"
+	);
+	Outlets = (
+	    SelectionEnd,
+	    SelectionStart,
+	    SelectionSecondsStart,
+	    ViewPercentEnd,
+	    ViewStart,
+	    ViewSecondsEnd,
+	    ViewPercentStart,
+	    SelectionLength,
+	    SelectionSecondsEnd,
+	    ViewSecondsStart,
+	    SelectionSecondsLength,
+	    SelectionWindow,
+	    ViewSecondsLength,
+	    SelectionPercentLength,
+	    ViewLength,
+	    ViewEnd,
+	    TheInspector,
+	    TheFileController,
+	    SelectionPercentStart,
+	    ViewPercentLength,
+	    TheInspectorController,
+	    SelectionPercentEnd
+	);
+	Super = Object;
+    };
+}

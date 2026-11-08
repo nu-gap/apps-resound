@@ -62,6 +62,7 @@ IMPLIED WARRANTIES.
 
 #import "ConsoleManager.h"
 #import "FileController.h"
+#import "ResoundNibs.h"
 #ifndef NOT_COMPILING_WITH_MODULES
 #import "ModuleController.h"
 #endif
@@ -141,7 +142,7 @@ return p;
     
     NSPoint hot_spot;
     ignorethis=0;
-    [NSBundle loadNibNamed: @"File.nib" owner:self];//loads Panels
+    [ResoundNibs loadNibNamed: @"File" owner:self];//loads Panels
 
     cursor_image=[[[NSImage alloc] initWithContentsOfFile:
         [[NSBundle mainBundle] pathForImageResource:@"SoundViewCursor"]] autorelease];

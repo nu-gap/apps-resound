@@ -1,0 +1,48 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "changeMarks:",
+	    "getInspector:",
+	    "marksChanged:",
+	    "setToDecibel:",
+	    "setToPercent:",
+	    "setToSamples:",
+	    "setToSeconds:",
+	    "setToSixteen:",
+	    "setToTwenty:",
+	    "setToTwentyFour:",
+	    "update:"
+	);
+	Super = NSObject;
+    };
+    MarksInspector = {
+	Actions = (
+	    "setToTwentyFour:",
+	    "setToTwenty:",
+	    "setToSixteen:",
+	    "marksChanged:",
+	    "setToDecibel:",
+	    "changeMarks:",
+	    "setToPercent:",
+	    "setToSamples:",
+	    "update:",
+	    "getInspector:",
+	    "setToSeconds:"
+	);
+	Outlets = (
+	    amplitude,
+	    "zero_line",
+	    inspector,
+	    "minor_tick_menu",
+	    "major_tick_field",
+	    ticks,
+	    "amplitude_menu",
+	    inspectorController,
+	    "scroll_to_reflect",
+	    fileController,
+	    "minor_tick_field"
+	);
+	Super = NSObject;
+    };
+}

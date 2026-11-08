@@ -1,0 +1,48 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FilterModule = {
+	Actions = (
+	    "Apply:",
+	    "ApplyEcho:",
+	    "LoadFilterPanel:",
+	    "Difference:",
+	    "Halve:",
+	    "Double:",
+	    "Sum:",
+	    "Normal:",
+	    "Zero:",
+	    "Echo:",
+	    "MultiEcho:",
+	    "LoadEchoFilterPanel:"
+	);
+	Outlets = (
+	    Position,
+	    EchoFilterPanel,
+	    FilterPanel,
+	    SumField,
+	    recursive,
+	    Amplitude,
+	    Sliders,
+	    EchoPercentDone,
+	    PercentDone
+	);
+	Super = Object;
+    };
+    FirstResponder = {
+	Actions = (
+	    "Apply:",
+	    "ApplyEcho:",
+	    "Difference:",
+	    "Double:",
+	    "Echo:",
+	    "Halve:",
+	    "LoadEchoFilterPanel:",
+	    "LoadFilterPanel:",
+	    "MultiEcho:",
+	    "Normal:",
+	    "Sum:",
+	    "Zero:"
+	);
+	Super = NSObject;
+    };
+}

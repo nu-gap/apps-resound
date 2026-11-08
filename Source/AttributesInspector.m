@@ -30,6 +30,7 @@ IMPLIED WARRANTIES.
 
 
 #import "AttributesInspector.h"
+#import "ResoundNibs.h"
 #import "FileController.h"
 #import "InspectorManager.h"
 #import <AppKit/AppKit.h>
@@ -58,7 +59,7 @@ IMPLIED WARRANTIES.
     {
     if (!infoWindowLoaded)
 	{
-	[NSBundle loadNibNamed: @"AttributesInspector.nib" owner:self];
+	[ResoundNibs loadNibNamed: @"AttributesInspector" owner:self];
 	infoWindowLoaded=1;
 	}
     infoWindow=[inspectorController inspectorWindow];

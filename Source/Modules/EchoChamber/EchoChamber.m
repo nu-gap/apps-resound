@@ -17,6 +17,7 @@ IMPLIED WARRANTIES.
 */
   
 #import "EchoChamber.h"
+#import "ResoundNibs.h"
 #import "ModuleSoundView.h" 
 
 @implementation EchoChamber
@@ -35,7 +36,7 @@ IMPLIED WARRANTIES.
 {
 	if (!windowLoaded)
 		{
-		[NSBundle loadNibNamed:@"EchoChamber" owner:self];
+		[ResoundNibs loadNibNamed: @"EchoChamber" owner:self];
 		windowLoaded=1;
 		}
 	[EchoChamberPanel makeKeyAndOrderFront:self];

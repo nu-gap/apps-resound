@@ -1,0 +1,65 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    AttributesInspector = {
+	Actions = (
+	    "update:",
+	    "getInspector:",
+	    "changeDisplayModeToMinMax:",
+	    "changeDisplayModeToOscilliscopic:"
+	);
+	Outlets = (
+	    "display_matrix",
+	    infoWindow,
+	    seconds,
+	    fragmented,
+	    format,
+	    fileController,
+	    channels,
+	    "oscilliscopic_button",
+	    inspector,
+	    playOrDisplay,
+	    rate,
+	    samples,
+	    "min_max_button",
+	    inspectorController
+	);
+	Super = NSObject;
+    };
+    FirstResponder = {
+	Actions = (
+	    "CompactSound:",
+	    "GetInspector:",
+	    "changeDisplayModeToMinMax:",
+	    "changeDisplayModeToOscilliscopic:",
+	    "getInspector:",
+	    "update:"
+	);
+	Super = NSObject;
+    };
+    InfoManager = {
+	Actions = (
+	    "CompactSound:",
+	    "changeDisplayModeToOscilliscopic:",
+	    "changeDisplayModeToMinMax:",
+	    "GetInspector:"
+	);
+	Outlets = (
+	    "display_matrix",
+	    TheEditController,
+	    Samples,
+	    Format,
+	    TheInspectorController,
+	    Fragmented,
+	    TheInspector,
+	    Seconds,
+	    InfoWindow,
+	    "oscilliscopic_button",
+	    Rate,
+	    TheFileController,
+	    Channels,
+	    PlayOrDisplay,
+	    "min_max_button"
+	);
+	Super = Object;
+    };
+}

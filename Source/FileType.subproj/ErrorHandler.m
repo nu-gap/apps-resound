@@ -23,6 +23,7 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #import "ErrorHandler.h"
+#import "ResoundNibs.h"
 
 
 static id defaultHandler;
@@ -41,7 +42,7 @@ return defaultHandler;
 -init
 {
 id returnVal = [super init];
-[NSBundle loadNibNamed: @"error.nib" owner:self];
+[ResoundNibs loadNibNamed: @"error" owner:self];
 hasError = NO;
 
 return returnVal;

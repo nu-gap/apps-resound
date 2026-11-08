@@ -1,0 +1,32 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    EditController = {
+	Actions = (
+	    "turnOffMenu:",
+	    "turnOnMenu:",
+	    "compactSound:",
+	    "okayConvert:",
+	    "convert:"
+	);
+	Outlets = (
+	    channelMatrix,
+	    fileController,
+	    samplingRateField,
+	    convertPanel,
+	    samplingRateMatrix,
+	    formatMenu,
+	    compactButton
+	);
+	Super = NSObject;
+    };
+    FirstResponder = {
+	Actions = (
+	    "compactSound:",
+	    "convert:",
+	    "okayConvert:",
+	    "turnOffMenu:",
+	    "turnOnMenu:"
+	);
+	Super = NSObject;
+    };
+}

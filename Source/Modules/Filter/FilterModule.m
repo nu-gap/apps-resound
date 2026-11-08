@@ -17,6 +17,7 @@ IMPLIED WARRANTIES.
 */
 
 #import "FilterModule.h"
+#import "ResoundNibs.h"
 #import <AppKit/AppKit.h>
 #import <stdio.h>
 #import "ModuleSoundView.h"
@@ -50,7 +51,7 @@ IMPLIED WARRANTIES.
 {
 	if (!WindowLoaded)
 		{
-        [NSBundle loadNibNamed:@"FilterModule" owner:self];
+        [ResoundNibs loadNibNamed: @"FilterModule" owner:self];
 		WindowLoaded=1;
 		}
 	[FilterPanel makeKeyAndOrderFront:self];
@@ -64,7 +65,7 @@ IMPLIED WARRANTIES.
 {
 	if (!WindowLoaded)
 		{
-        [NSBundle loadNibNamed:@"FilterModule" owner:self];
+        [ResoundNibs loadNibNamed: @"FilterModule" owner:self];
 		WindowLoaded=1;
 		}
 	[EchoFilterPanel makeKeyAndOrderFront:self];

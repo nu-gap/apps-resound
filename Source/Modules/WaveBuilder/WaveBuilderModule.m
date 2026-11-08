@@ -18,6 +18,7 @@ IMPLIED WARRANTIES.
 
 
 #import "WaveBuilderModule.h"
+#import "ResoundNibs.h"
 #include <stdlib.h>
 #import <SoundKit/SoundKit.h>
 #include <math.h>
@@ -130,7 +131,7 @@ float triangle (int position, int wavelength)
 {
 	if (!windowLoaded)
 		{
-		[NSBundle loadNibNamed:@"WaveBuilder" owner:self];
+		[ResoundNibs loadNibNamed: @"WaveBuilder" owner:self];
 			// this only works because self is the owner of the bundle
 		windowLoaded=1;
 		}
@@ -149,7 +150,7 @@ float triangle (int position, int wavelength)
 {
 	if (!windowLoaded)
 		{
-        	[NSBundle loadNibNamed:@"WaveBuilder" owner:self];
+        	[ResoundNibs loadNibNamed: @"WaveBuilder" owner:self];
                 	// this only works because self is the owner of the bundle
 		windowLoaded=1;
 		}

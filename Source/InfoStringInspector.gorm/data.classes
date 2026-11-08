@@ -1,0 +1,27 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "getInspector:",
+	    "okay:",
+	    "revert:",
+	    "update:"
+	);
+	Super = NSObject;
+    };
+    InfoStringInspector = {
+	Actions = (
+	    "update:",
+	    "getInspector:",
+	    "revert:",
+	    "okay:"
+	);
+	Outlets = (
+	    fileController,
+	    infoString,
+	    inspectorController,
+	    inspector
+	);
+	Super = NSObject;
+    };
+}

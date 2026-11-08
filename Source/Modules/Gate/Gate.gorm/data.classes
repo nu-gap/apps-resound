@@ -1,0 +1,30 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "gateIt:"
+	);
+	Super = NSObject;
+    };
+    GateModule = {
+	Actions = (
+	    "gateIt:"
+	);
+	Outlets = (
+	    thresholdField,
+	    gatePanel,
+	    secondsCutField,
+	    secondsWaitField
+	);
+	Super = Module;
+    };
+    Module = {
+	Actions = (
+	);
+	Outlets = (
+	    TheModuleMenuNode,
+	    TheModuleController
+	);
+	Super = Object;
+    };
+}

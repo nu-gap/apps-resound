@@ -97,6 +97,7 @@ IMPLIED WARRANTIES.
 
 
 #import "MathModule.h"
+#import "ResoundNibs.h"
 #import <AppKit/AppKit.h>
 #import <SoundKit/SoundKit.h>
 #import <limits.h>
@@ -140,7 +141,7 @@ IMPLIED WARRANTIES.
 	{
 	if (!nib_loaded)
 		{
-		[NSBundle loadNibNamed: @"Math" owner:self]; // this only works because self is the main class of the bundle!
+		[ResoundNibs loadNibNamed: @"Math" owner:self]; // this only works because self is the main class of the bundle!
 		nib_loaded=1;
 		}
 	[multiplyPanel makeKeyAndOrderFront:self];
@@ -151,7 +152,7 @@ IMPLIED WARRANTIES.
 	{
 	if (!nib_loaded)
 		{
-        	[NSBundle loadNibNamed: @"Math" owner:self]; // this only works because self is the main class of the bundle!
+        	[ResoundNibs loadNibNamed: @"Math" owner:self]; // this only works because self is the main class of the bundle!
 		nib_loaded=1;
 		}
 	[shiftPanel makeKeyAndOrderFront:self];

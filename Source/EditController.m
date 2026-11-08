@@ -35,6 +35,7 @@ IMPLIED WARRANTIES.
 
 
 #import "EditController.h"
+#import "ResoundNibs.h"
 #import "FileController.h"
 #import <SoundKit/SoundKit.h>
 
@@ -69,7 +70,7 @@ IMPLIED WARRANTIES.
     {
     if (!windowsLoaded)
 	{
-    [NSBundle loadNibNamed: @"Edit.nib" owner:self];//loads Panels
+    [ResoundNibs loadNibNamed: @"Edit" owner:self];//loads Panels
 	windowsLoaded=1;
 	}
     [convertPanel  makeKeyAndOrderFront:self];

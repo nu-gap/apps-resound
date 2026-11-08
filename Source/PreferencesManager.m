@@ -28,6 +28,7 @@ IMPLIED WARRANTIES.
 
 
 #import "PreferencesManager.h"
+#import "ResoundNibs.h"
 #import "ResoundMiscSoundView.h"
 #import <AppKit/AppKit.h>
 #import <string.h>
@@ -380,7 +381,7 @@ IMPLIED WARRANTIES.
     {
     if (!preferencesPanelLoaded)
 	{
-        [NSBundle loadNibNamed: @"Preferences.nib" owner:self];
+        [ResoundNibs loadNibNamed: @"Preferences" owner:self];
         preferencesPanelLoaded=1;
 	}
     

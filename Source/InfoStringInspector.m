@@ -37,6 +37,7 @@ IMPLIED WARRANTIES.
 
 
 #import "InfoStringInspector.h"
+#import "ResoundNibs.h"
 #import "FileController.h"
 #import "InspectorManager.h"
 #import <AppKit/AppKit.h>
@@ -68,7 +69,7 @@ IMPLIED WARRANTIES.
     {
     if (!infoWindowLoaded)
 	{
-	[NSBundle loadNibNamed: @"InfoStringInspector.nib" owner:self];
+	[ResoundNibs loadNibNamed: @"InfoStringInspector" owner:self];
 	infoWindowLoaded=1;
 	}
     infoWindow=[inspectorController inspectorWindow];

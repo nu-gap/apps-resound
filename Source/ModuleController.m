@@ -45,6 +45,7 @@ IMPLIED WARRANTIES.
 
 
 #import "ModuleController.h"
+#import "ResoundNibs.h"
 #import "FileController.h"
 #import "SoundManager.h"
 #import "ZoomInspector.h"
@@ -69,7 +70,7 @@ IMPLIED WARRANTIES.
     {
     id returnVal=[super init];
     /* Load Module Help Window */
-    [NSBundle loadNibNamed: @"Module.nib" owner:self];
+    [ResoundNibs loadNibNamed: @"Module" owner:self];
 
 
     loaded=0; //windowsLoaded

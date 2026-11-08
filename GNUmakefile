@@ -41,12 +41,12 @@ Resound_RESOURCE_FILES_DIR =	Resources
 Resound_PRINCIPAL_CLASS=	NSApplication
 Resound_APPLICATION_ICON=	Resound.tiff
 
-# The main nib (NSMainNibFile) is left unset for now: the legacy
-# NeXT-format .nib files need to be migrated to GNUstep-format nibs
-# first (see docs/RESOUND_SNDKIT_PLAN.md, NIB migration section).
-# Once the Resound.nib conversion is done, set:
+# The main nib (NSMainNibFile) is left unset for now: the Resound.nib
+# conversion to .gorm is done (see below and docs/RESOUND_SNDKIT_PLAN.md,
+# NIB migration section), but loading it would instantiate the
+# FileController, which is still blocked.  Once the FileController unit
+# lands, set:
 #   Resound_MAIN_MODEL_FILE = Resound
-
 #
 # Resource files (added step by step as they are migrated).
 #
@@ -54,8 +54,30 @@ Resound_APPLICATION_ICON=	Resound.tiff
 # input only - it is merged into the generated Info-gnustep.plist and
 # is intentionally not copied into the bundle.
 #
+# The 1998 .nib files cannot be loaded by the GNUstep runtime, so the
+# bundle carries the converted .gorm folders (produced with gormtool,
+# gnustep/apps-gorm branch OPENSTEP_nib_support) - one per .nib, sitting
+# side by side with the originals, which stay in the tree as the
+# migration source.  Call sites use the logical name (no extension);
+# Source/ResoundNibs.{h,m} resolves it per platform (a native build
+# would bundle the .nib folders from this very list instead).
+# gnustep-make copies directory resources recursively.
 Resound_RESOURCE_FILES= \
-	Resound.tiff
+	Resound.tiff \
+	AttributesInspector.gorm \
+	Console.gorm \
+	Edit.gorm \
+	error.gorm \
+	File.gorm \
+	InfoStringInspector.gorm \
+	Inspector.gorm \
+	MarksInspector.gorm \
+	Module.gorm \
+	Preferences.gorm \
+	Resound.gorm \
+	SelectionInspector.gorm \
+	Volume.gorm \
+	ZoomInspector.gorm
 
 #
 # Sources (added step by step as they are ported to GNUstep)
@@ -82,7 +104,8 @@ Resound_OBJC_FILES= \
 	Source/MiscVolumeMeter.m \
 	Source/ResoundMiscVolumeMeter.m \
 	Source/MiscSoundTracker.m \
-	Source/ConsoleManager.m
+	Source/ConsoleManager.m \
+	Source/ResoundNibs.m
 
 Resound_C_FILES= \
 	Source/fft.c

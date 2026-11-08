@@ -26,6 +26,7 @@ IMPLIED WARRANTIES.
   ****************************************************************************/
 
 #import "MarksInspector.h"
+#import "ResoundNibs.h"
 #import "FileController.h"
 #import "InspectorManager.h"
 #import "ResoundMiscSoundView.h"
@@ -55,7 +56,7 @@ IMPLIED WARRANTIES.
     {
     if (!windowsLoaded)
 	{
-	[NSBundle loadNibNamed: @"MarksInspector.nib" owner:self];
+	[ResoundNibs loadNibNamed: @"MarksInspector" owner:self];
 	windowsLoaded=1;
 	}
     return inspector;

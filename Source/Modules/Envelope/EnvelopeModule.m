@@ -6,6 +6,7 @@
 
 
 #import "EnvelopeModule.h"
+#import "ResoundNibs.h"
 #import <SoundKit/SoundKit.h>
 #import <AppKit/AppKit.h>
 #import "ModuleSoundView.h" 
@@ -84,7 +85,7 @@ If we succeed in loading the control panel, or if it already existed, we set the
 {
 	if (!envelopePanel)
 	{
-		if (![NSBundle loadNibNamed:@"EnvelopePanel" owner:self])
+		if (![ResoundNibs loadNibNamed: @"EnvelopePanel" owner:self])
 		{
 			NSRunAlertPanel (nil, @"Unable to locate EnvelopePanel.nib", nil, nil, nil);
 			return nil;

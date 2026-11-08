@@ -1,0 +1,32 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    EchoChamber = {
+	Actions = (
+	    "performEcho:",
+	    "begin:"
+	);
+	Outlets = (
+	    initial,
+	    firstDelay,
+	    ratio,
+	    delay,
+	    dropoff,
+	    EchoChamberPanel
+	);
+	Super = Module;
+    };
+    FirstResponder = {
+	Actions = (
+	    "begin:",
+	    "performEcho:"
+	);
+	Super = NSObject;
+    };
+    Module = {
+	Actions = (
+	);
+	Outlets = (
+	);
+	Super = Object;
+    };
+}

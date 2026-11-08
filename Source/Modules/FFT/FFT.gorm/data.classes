@@ -1,0 +1,82 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    DiscreteGraphView = {
+	Actions = (
+	);
+	Outlets = (
+	    "bottom_field",
+	    "x_delegate",
+	    cursor,
+	    "top_field",
+	    "y_delegate"
+	);
+	Super = NSView;
+    };
+    FFTController = {
+	Actions = (
+	    "toggleLinearAndDecibel:",
+	    "redrawGraphs:"
+	);
+	Outlets = (
+	    phasview,
+	    minimumdbfield,
+	    decibelButton,
+	    freqview
+	);
+	Super = Object;
+    };
+    FFTModule = {
+	Actions = (
+	    "showFFTPanel:",
+	    "doFFT:"
+	);
+	Outlets = (
+	    y,
+	    x,
+	    fftPanel,
+	    fftController
+	);
+	Super = Module;
+    };
+    FirstResponder = {
+	Actions = (
+	    "doFFT:",
+	    "redrawGraphs:",
+	    "showFFTPanel:",
+	    "toggleLinearAndDecibel:",
+	    "turnOffMenu:",
+	    "turnOnMenu:"
+	);
+	Super = NSObject;
+    };
+    Module = {
+	Actions = (
+	);
+	Outlets = (
+	    TheModuleMenuNode,
+	    TheModuleController
+	);
+	Super = Object;
+    };
+    ModuleController = {
+	Actions = (
+	    "turnOnMenu:",
+	    "turnOffMenu:"
+	);
+	Outlets = (
+	    loadPanel,
+	    adjustButton,
+	    fileName,
+	    zoomController,
+	    compactPanel,
+	    soundManager,
+	    moduleHelpWindow,
+	    infoManager,
+	    selectionManager,
+	    fileController,
+	    moduleHelpView,
+	    pathName
+	);
+	Super = NSObject;
+    };
+}

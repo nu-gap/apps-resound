@@ -1,0 +1,49 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "absIt:",
+	    "double:",
+	    "halve:",
+	    "invertIt:",
+	    "maximize:",
+	    "multiplyIt:",
+	    "reverseIt:",
+	    "shiftIt:",
+	    "showMultiplyPanel:",
+	    "showShiftPanel:"
+	);
+	Super = NSObject;
+    };
+    MathModule = {
+	Actions = (
+	    "shiftIt:",
+	    "maximize:",
+	    "absIt:",
+	    "halve:",
+	    "invertIt:",
+	    "multiplyIt:",
+	    "showShiftPanel:",
+	    "reverseIt:",
+	    "showMultiplyPanel:",
+	    "double:"
+	);
+	Outlets = (
+	    percentChangeScroller,
+	    percentChangeField,
+	    multiplyPanel,
+	    shiftSliderValue,
+	    shiftPanel
+	);
+	Super = Module;
+    };
+    Module = {
+	Actions = (
+	);
+	Outlets = (
+	    TheModuleMenuNode,
+	    TheModuleController
+	);
+	Super = Object;
+    };
+}

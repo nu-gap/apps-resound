@@ -280,6 +280,25 @@ jobs:
           make -j"$(nproc)" -f GNUmakefile
           find Resound.app -maxdepth 3 | sort
 
+      - name: NIB conversion format check
+        # Every 1998 .nib in the tree has a converted .gorm twin
+        # (gormtool, gnustep/apps-gorm branch OPENSTEP_nib_support); the
+        # 1998 folders stay in place as the source of the stepwise
+        # re-nib migration.  This verifies the asset format - the GNUstep
+        # archive magic and the class description of every .gorm, in the
+        # tree and in the freshly built bundle.  Headless and fatal.
+        # (The runtime load half of the test, --load, needs a display and
+        # runs locally; see docs/RESOUND_SNDKIT_PLAN.md, NIB migration.)
+        run: |
+          set -ex
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          make -C test -j"$(nproc)"
+          TOOL=$(find test -type f -name resoundnib | head -n 1)
+          test -n "$TOOL"
+          export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          "$TOOL" --check . Resound.app/Resources
+
       - name: Upload app bundle
         uses: actions/upload-artifact@v7
         with:

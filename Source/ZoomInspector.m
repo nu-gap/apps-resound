@@ -30,6 +30,7 @@ IMPLIED WARRANTIES.
 
 
 #import "ZoomInspector.h"
+#import "ResoundNibs.h"
 #import "InspectorManager.h"
 #import "FileController.h"
 #import <AppKit/AppKit.h>
@@ -61,7 +62,7 @@ IMPLIED WARRANTIES.
     {
     if (!windowsLoaded)
 	{
-	[NSBundle loadNibNamed: @"ZoomInspector.nib" owner:self];
+	[ResoundNibs loadNibNamed: @"ZoomInspector" owner:self];
 	windowsLoaded=1;
 	}
     return inspector;

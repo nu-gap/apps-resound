@@ -1,0 +1,127 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    ConsoleManager = {
+	Actions = (
+	    "ShowConsole:",
+	    "setStereo:",
+	    "RecordDown:",
+	    "meterWillUpdateOnOwn:",
+	    "setMono:",
+	    "StopDown:",
+	    "PlayDown:",
+	    "PauseDown:"
+	);
+	Outlets = (
+	    PauseButton,
+	    source,
+	    soundTracker,
+	    TheSoundManager,
+	    StopButton,
+	    channels,
+	    rateMenu,
+	    TheFileController,
+	    RecordButton,
+	    rateField,
+	    Console,
+	    Meter,
+	    formatMenu,
+	    PlayButton,
+	    formatWindow
+	);
+	Super = Object;
+    };
+    FirstResponder = {
+	Actions = (
+	    "PauseDown:",
+	    "PlayDown:",
+	    "RecordDown:",
+	    "ShowConsole:",
+	    "StopDown:",
+	    "begin:",
+	    "meterWillUpdateOnOwn:",
+	    "run:",
+	    "sendDeemphasis:",
+	    "sendLeft:",
+	    "sendLeftPeak:",
+	    "sendMono:",
+	    "sendMonoPeak:",
+	    "sendMute:",
+	    "sendPercent:",
+	    "sendRatio:",
+	    "sendRight:",
+	    "sendRightPeak:",
+	    "sendSamples:",
+	    "sendSeconds:",
+	    "setDeemphasis:",
+	    "setDeemphasisTo:",
+	    "setHeadphonesMute:",
+	    "setLeft:",
+	    "setLineOutMute:",
+	    "setMonitor:",
+	    "setMonitorMute:",
+	    "setMono:",
+	    "setMute:",
+	    "setMuteTo:",
+	    "setRamping:",
+	    "setRight:",
+	    "setStereo:",
+	    "setVolumeTo:"
+	);
+	Super = NSObject;
+    };
+    SoundTracker = {
+	Actions = (
+	    "run:",
+	    "sendRight:",
+	    "sendLeftPeak:",
+	    "sendLeft:",
+	    "sendPercent:",
+	    "sendMute:",
+	    "sendSamples:",
+	    "setVolumeTo:",
+	    "sendRightPeak:",
+	    "sendMono:",
+	    "setDeemphasisTo:",
+	    "sendRatio:",
+	    "setMuteTo:",
+	    "sendSeconds:",
+	    "sendDeemphasis:",
+	    "stop:",
+	    "sendMonoPeak:"
+	);
+	Outlets = (
+	    target,
+	    sound
+	);
+	Super = Object;
+    };
+    VolumeController = {
+	Actions = (
+	    "setMute:",
+	    "setRight:",
+	    "begin:",
+	    "setMonitorMute:",
+	    "setLeft:",
+	    "setDeemphasis:",
+	    "setMono:",
+	    "setRamping:",
+	    "setHeadphonesMute:",
+	    "setMonitor:",
+	    "setLineOutMute:"
+	);
+	Outlets = (
+	    lineOutMuteKnob,
+	    volumePanel,
+	    deemphasisKnob,
+	    leftKnob,
+	    monitorKnob,
+	    monitorMuteKnob,
+	    muteKnob,
+	    bothKnob,
+	    rightKnob,
+	    rampingKnob,
+	    headphonesMuteKnob
+	);
+	Super = Object;
+    };
+}

@@ -28,6 +28,7 @@ IMPLIED WARRANTIES.
 
 
 #import "InspectorManager.h"
+#import "ResoundNibs.h"
 #import "AttributesInspector.h"
 #import "SelectionInspector.h"
 #import "ZoomInspector.h"
@@ -50,7 +51,7 @@ IMPLIED WARRANTIES.
 - init
     {
     id returnval=[super init];
-    [NSBundle loadNibNamed: @"Inspector.nib" owner:self];
+    [ResoundNibs loadNibNamed: @"Inspector" owner:self];
     nothingView=[[nothingInspector contentView] retain];
     contentView=nil;
     inspectorOn=NO;

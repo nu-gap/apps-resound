@@ -38,6 +38,7 @@ IMPLIED WARRANTIES.
 
 
 #import "SelectionInspector.h"
+#import "ResoundNibs.h"
 #import "FileController.h"
 #import "InspectorManager.h"
 #import "ResoundMiscSoundView.h"
@@ -214,7 +215,7 @@ int percentTosamples(Sound* x, float percent)
     {
     if (!windowsLoaded)
 	{
-	[NSBundle loadNibNamed: @"SelectionInspector.nib" owner:self];
+	[ResoundNibs loadNibNamed: @"SelectionInspector" owner:self];
 	windowsLoaded=1;
 	}
     selectionWindow=[inspectorController inspectorWindow];

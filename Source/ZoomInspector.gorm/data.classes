@@ -1,0 +1,81 @@
+{
+    "## Comment" = "Do NOT change this file, Gorm maintains it";
+    FirstResponder = {
+	Actions = (
+	    "GetInspector:",
+	    "ZoomChanged:",
+	    "findSelection:",
+	    "getInspector:",
+	    "takeFloatValueFromMe:",
+	    "toggleContinuousZoom:",
+	    "update:",
+	    "zoomAllIn:",
+	    "zoomAllOut:",
+	    "zoomChanged:",
+	    "zoomIn:",
+	    "zoomInBig:",
+	    "zoomInOneReduction:",
+	    "zoomInSmall:",
+	    "zoomOut:",
+	    "zoomOutBig:",
+	    "zoomOutOneReduction:",
+	    "zoomOutSmall:",
+	    "zoomToSelection:"
+	);
+	Super = NSObject;
+    };
+    ZoomController = {
+	Actions = (
+	    "zoomOutSmall:",
+	    "zoomAllIn:",
+	    "zoomInOneReduction:",
+	    "zoomInSmall:",
+	    "zoomAllOut:",
+	    "zoomInBig:",
+	    "zoomOut:",
+	    "zoomOutOneReduction:",
+	    "zoomOutBig:",
+	    "zoomIn:",
+	    "zoomToSelection:",
+	    "takeFloatValueFromMe:",
+	    "ZoomChanged:",
+	    "GetInspector:",
+	    "toggleContinuousZoom:"
+	);
+	Outlets = (
+	    ZoomField,
+	    TheInspectorController,
+	    ZoomSlider,
+	    TheFileController,
+	    ReductionField,
+	    "continuous_button",
+	    TheInspector
+	);
+	Super = Object;
+    };
+    ZoomInspector = {
+	Actions = (
+	    "zoomOutOneReduction:",
+	    "zoomToSelection:",
+	    "zoomChanged:",
+	    "takeFloatValueFromMe:",
+	    "findSelection:",
+	    "zoomAllOut:",
+	    "toggleContinuousZoom:",
+	    "getInspector:",
+	    "update:",
+	    "zoomInOneReduction:",
+	    "zoomAllIn:"
+	);
+	Outlets = (
+	    reductionField,
+	    inspectorController,
+	    fileController,
+	    zoomSlider,
+	    zoomField,
+	    "continuous_button",
+	    inspector
+	);
+	Super = NSObject;
+    };
+}

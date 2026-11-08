@@ -36,6 +36,7 @@ IMPLIED WARRANTIES.
 
 
 #import "ConsoleManager.h"
+#import "ResoundNibs.h"
 #import "SoundManager.h"
 #import "ResoundMiscVolumeMeter.h"
 #import "MiscSoundTracker.h"
@@ -154,7 +155,7 @@ static SndSampleFormat CONSOLE_FORMATS[3]=
     NSString* defaultLength;
     
     input_format = [Snd nativeInputFormat];
-    [NSBundle loadNibNamed: @"Console.nib" owner:self];
+    [ResoundNibs loadNibNamed: @"Console" owner:self];
     
     // Register Defaults
     

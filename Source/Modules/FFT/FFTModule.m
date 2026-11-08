@@ -16,6 +16,7 @@ IMPLIED WARRANTIES.
 
 */
 #import "FFTModule.h"
+#import "ResoundNibs.h"
 #import "FFTController.h"
 #import <AppKit/AppKit.h>
 #import <SoundKit/SoundKit.h>
@@ -38,7 +39,7 @@ IMPLIED WARRANTIES.
 	{
 	if (!nib_loaded)
 		{
-		[NSBundle loadNibNamed:@"FFT" owner:self];
+		[ResoundNibs loadNibNamed: @"FFT" owner:self];
 		nib_loaded=YES;
 		}
 	[fftController setDelegates:x:y];
