@@ -105,6 +105,9 @@ Resound_OBJC_FILES= \
 	Source/ResoundMiscVolumeMeter.m \
 	Source/MiscSoundTracker.m \
 	Source/ConsoleManager.m \
+	Source/MiscSoundView.m \
+	Source/MiscSoundViewRuler.m \
+	Source/ResoundMiscSoundView.m \
 	Source/ResoundNibs.m
 
 Resound_C_FILES= \

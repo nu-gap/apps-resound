@@ -41,8 +41,6 @@ IMPLIED WARRANTIES.
 
 
 #import "ResoundMiscSoundView.h"
-#import "ModuleSoundView.h"
-#import "SelectionInspector.h"
 #import "MiscSoundViewRuler.h"
 #import <stdio.h>
 
@@ -95,7 +93,7 @@ IMPLIED WARRANTIES.
 // resset the reduction factor of the sound if we want our own reduction factor.
 // see NeXTAnswers 1451.
 // this code also attempts to 
-- (void) setSound:(Sound*) aSound
+- (void) setSound:(Snd*) aSound
 {
 	double reduction_factor;
 	int first_sample,size;
@@ -128,10 +126,10 @@ IMPLIED WARRANTIES.
 
 - (void) paste:sender
     {
-    NSArray* array=[NSArray arrayWithObject:NXSoundPboardType];
+    NSArray* array=[NSArray arrayWithObject:SndPasteboardType];
     id pb=[NSPasteboard generalPasteboard];
     
-    if (![[pb availableTypeFromArray:array] isEqualToString:NXSoundPboardType])
+    if (![[pb availableTypeFromArray:array] isEqualToString:SndPasteboardType])
 	{
         /* nothing to paste */
 	}
@@ -156,10 +154,10 @@ IMPLIED WARRANTIES.
   */
 - (void) cut:sender
     {
-    NSArray* array=[NSArray arrayWithObject:NXSoundPboardType];
+    NSArray* array=[NSArray arrayWithObject:SndPasteboardType];
     id pb=[NSPasteboard generalPasteboard];
 
-    if (([[pb availableTypeFromArray:array]  isEqualToString:NXSoundPboardType])&&
+    if (([[pb availableTypeFromArray:array]  isEqualToString:SndPasteboardType])&&
 	![selectionInspector stillExists: (void*)[pb owner]])
 	[selectionInspector invalidatePasteboard];
 
@@ -172,10 +170,10 @@ IMPLIED WARRANTIES.
   */
 - (void) copy:sender
     {
-    NSArray* array=[NSArray arrayWithObject:NXSoundPboardType];
+    NSArray* array=[NSArray arrayWithObject:SndPasteboardType];
     id pb=[NSPasteboard generalPasteboard];
 
-    if (([[pb availableTypeFromArray:array] isEqualToString:NXSoundPboardType])&&
+    if (([[pb availableTypeFromArray:array] isEqualToString:SndPasteboardType])&&
 	![selectionInspector stillExists: (void*)[pb owner]])
 	[selectionInspector invalidatePasteboard];
     
@@ -194,8 +192,8 @@ IMPLIED WARRANTIES.
 	// how big is our data?
          [self getSelection:&first size:&sampleSize];
 	 sizeOfDataOnPasteboard=sampleSize * [[self sound] channelCount];
-	 if ([[self sound] sampleCount]!=0)
-         	sizeOfDataOnPasteboard *= ([[self sound] dataSize]/[[self sound] sampleCount]);
+	 if ([[self sound] lengthInSampleFrames]!=0)
+         	sizeOfDataOnPasteboard *= ([[self sound] dataSize]/[[self sound] lengthInSampleFrames]);
 
 
          // important that you cut FIRST
@@ -221,8 +219,8 @@ IMPLIED WARRANTIES.
         // how big is our data?
          [self getSelection:&first size:&sampleSize];
          sizeOfDataOnPasteboard=sampleSize * [[self sound] channelCount];
-         if ([[self sound] sampleCount]!=0)
-                sizeOfDataOnPasteboard *= ([[self sound] dataSize]/[[self sound] sampleCount]);
+         if ([[self sound] lengthInSampleFrames]!=0)
+                sizeOfDataOnPasteboard *= ([[self sound] dataSize]/[[self sound] lengthInSampleFrames]);
 
 	// important that you copy FIRST
 	[super copy:sender];
@@ -237,11 +235,12 @@ IMPLIED WARRANTIES.
 
 - (void)pasteboard:(NSPasteboard *)sender provideDataForType:(NSString *)type
 	{
-	// believe it or not, the SoundView object has a bug in its method call.
+	// the 1998 SoundView had a bug in this call: it invoked
+	// pasteboard:provideData: instead of pasteboard:provideDataForType:
+	// (a bug this override was compensating for).  SndKit calls the
+	// correct selector, so relay to it the way the 1998 comment said
 	// it SHOULD be:
-	//[super pasteboard:sender provideDataForType:type];
-	// but in fact it is:
-	[super pasteboard:sender provideData:type];
+	[super pasteboard:sender provideDataForType:type];
 	// at this point we assume that we've provided data and don't have to any more.
 	if (dataOnPasteboard) { dataOnPasteboard=NO; }
 	}
@@ -282,7 +281,7 @@ IMPLIED WARRANTIES.
 			
 			// suck that data into the pasteboard
 			[[NSPasteboard generalPasteboard]
-                                dataForType:NXSoundPboardType];
+                                dataForType:SndPasteboardType];
 			
 			NS_HANDLER
 
@@ -353,9 +352,15 @@ IMPLIED WARRANTIES.
 
 - updateStuff
     {
-    // Now update the Selection Manager
-    
-    if (continuousUpdate && selectionInspector) [selectionInspector update:self];
+    // Now update the Selection Manager.
+    //
+    // The 1998 code sent the informal 'update:' message directly.  With
+    // SndKit's umbrella headers visible, clang type-checks that argument
+    // against SndStreamArchitectureView's update:(NSTimer*) and warns, so
+    // the informal call goes through performSelector: instead (the same
+    // dynamic dispatch, no compile-time type check):
+
+    if (continuousUpdate && selectionInspector) [selectionInspector performSelector:@selector(update:) withObject:self];
     return self;
     }
 
@@ -390,7 +395,7 @@ IMPLIED WARRANTIES.
     {
     continuousUpdate=this_update;
     if (continuousUpdate) 
-	{[self setContinuous:YES];} else [self setContinuous:NO];
+	{[self setContinuousSelectionUpdates:YES];} else [self setContinuousSelectionUpdates:NO];
     return self;
     }
 
@@ -415,7 +420,7 @@ IMPLIED WARRANTIES.
     continuousZoom=YES;
     continuousUpdate=YES;
     cursor=nil;
-    info_string=NULL;
+    info_string=nil;
     return returnval;
     }
 
@@ -510,7 +515,7 @@ double RMSV_reduction_to_scroll (double reduction, double ratio)
     
     return RMSV_reduction_to_scroll
 	( [self reductionFactor],
-	 ((double)[[self sound] sampleCount])
+	 ((double)[[self sound] lengthInSampleFrames])
 	 /(double)content_size.width);
     }
 
@@ -534,7 +539,7 @@ double RMSV_reduction_to_scroll (double reduction, double ratio)
     
     new_reduction_factor= RMSV_scroll_to_reduction	
 	( this_value,
-	 ((double)[[self sound] sampleCount])
+	 ((double)[[self sound] lengthInSampleFrames])
 	 /(double)content_size.width);
     
     if (new_reduction_factor!=-1.0)		// it's not an error
@@ -559,7 +564,7 @@ double RMSV_reduction_to_scroll (double reduction, double ratio)
 
 - (void) dealloc
     {
-    if (info_string!=NULL) free(info_string);
+    if (info_string!=nil) [info_string release];
 	// it looks like my superior does some cursor drawing
 	// that he shouldn't be doing when he's released,
 	// because at this point he's not in a window!
@@ -578,7 +583,7 @@ double RMSV_reduction_to_scroll (double reduction, double ratio)
   loads the info string from a sound
  */
 
-- loadInfo:(Sound*)s
+- loadInfo:(Snd*)s
     {
     return [self setInfo:[s info]];
     }
@@ -589,9 +594,9 @@ double RMSV_reduction_to_scroll (double reduction, double ratio)
   returns the current info string 
  */
 
-- (char*)info
+- (NSString*)info
     {
-    return (info_string==NULL ? "" : info_string);
+    return (info_string==nil ? @"" : info_string);
     }
 
 
@@ -601,19 +606,17 @@ double RMSV_reduction_to_scroll (double reduction, double ratio)
   sets the current info string, enlarging it sufficiently. 
  */
 
-- setInfo:(const char*)t
+- setInfo:(NSString*)t
     {
-    if (info_string!=NULL) free(info_string);
-    if (t==NULL) // happens when it's a new sound (no info string, because
-		// no SNDSoundStruct in a newly-allocated sound)
+    if (info_string!=nil) [info_string release];
+    if (t==nil) // happens when it's a new sound (no info string, because
+		// a newly-allocated Snd has none)
 	{
-	info_string=malloc(1);  // for the \0
-	strcpy(info_string,"");
+	info_string=[@"" copy];  // the empty string
 	}
     else
 	{
-	info_string=malloc(strlen(t)+1);  // string plus the \0
-	strcpy(info_string,t);
+	info_string=[t copy];
 	}
     return self;
     }
@@ -642,11 +645,15 @@ double RMSV_reduction_to_scroll (double reduction, double ratio)
 	ignoreShowAndHideCursor=this;
 	}
 
-- (void) showCursor { 
+// SndKit declares showCursor/hideCursor without a return type (1998
+// SoundKit did too) and its implementations return self; match that.
+- showCursor { 
 	if (!ignoreShowAndHideCursor) [super showCursor];
+	return self;
 	}
 
-- (void) hideCursor { 
+- hideCursor { 
+	// SndKit declares this without a return type and returns self.
 	if (!ignoreShowAndHideCursor)
 	// hideCursor is also subtly broken; it may or may not hide the 
 	// cursor depending on its blink state.  I've tried changing the
@@ -658,6 +665,7 @@ double RMSV_reduction_to_scroll (double reduction, double ratio)
 		{
 		[super hideCursor];
 		}
+	return self;
 	}
 
 - (id) retain // for debugging purposes

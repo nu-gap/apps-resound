@@ -249,11 +249,12 @@ against the GNUstep toolchain:
 | `Source/ConsoleManager.{h,m}` | **Phase 2, unit 1c (2026-11-07)**: the record console, migrated to SndKit. The `NXSoundIn` device ivar becomes an `SndFormat input_format` ivar seeded from `[Snd nativeInputFormat]`; SndKit has no per-device gain/source/rate/encoding APIs, so the gain sliders are display-only, the rate menu is always user-defined (the native rate seeds the field and min/max labels; a stored rate wins and `SoundManager` resamples the capture to it in `_finishRecording`), and the encoding menu is a fixed table of the three capturable formats (16-bit/8-bit linear, µ-law — A-Law and AES were never usable in the 1998 file either). The 1998 `__BUILDING_RHAPSODY` define is kept (its `#ifndef` blocks — the app-icon light, the hidden window — were already dead in the 1998 Rhapsody build and stay dead; the `light` ivar is declared unconditionally, as the 1998 nib's class description lists it). Two local protocols bridge the not-yet-migrated neighbours: `ConsoleFileController` (`currentSound:` — `FileController` is the file unit) and `ConsoleSoundViewCompat` (the 1998 SoundView play-position API the console auto-scrolling needs; the view-chain unit implements it on `SndView`). The 1998 six-argument `record:::::` call is byte-identical (the selector is preserved — see the `SoundManager` row). Compiles with zero new warnings (the four `-Wmissing-selector-name` from the `SoundManager.h` 1998 idiom remain in its output — documented there). **Verified in-app** (headless probe): `[[ConsoleManager alloc] init]` (the in-app path; it loads the 1998 `Console.nib`), the manager wired to a fresh `SoundManager`, `recordDown:` → `SndStreamRecorder` capture of the silent virtual input (now also on the dev machine, not only the Pi) → user `stop:` at ~2 s → the restored `_finishRecording` (recorder stop, read-back, convert to 44.1 kHz/2 ch/linear-16, flag resets, temp-file/recorder/timer cleanup) — clean, no stray file, exit 0. The 1998 `Console.nib` itself **does not load** under the GNUstep reader; its converted `Console.gorm` twin does (the NIB conversion unit, 2026-11-08 — `docs/RESOUND_SNDKIT_PLAN.md`, NIB migration), and the console now loads in-app through `ResoundNibs`. |
 | `Source/MiscVolumeMeter.{h,m}`, `Source/ResoundMiscVolumeMeter.{h,m}`, `Source/MiscSoundTracker.{h,m}` | **Phase 2, unit 1c (2026-11-07)**: the console's meter and second tracker, migrated to SndKit in the same unit — the 1998 `SoundMeter` casts become the migrated class names, the legacy `NX_Sound*` status groups map to `Snd isPlaying` / `SndPerformance isPaused` (the recording group is undetectable on an Snd — SndKit never records into one — and reports idle), and the 1998 `samplesProcessed` maps to the last performance's `samplesPerformedOfPerformance:`. Verified in-app by the same console probe (the meter receives the console's token sound during the capture). |
 | `Source/ResoundNibs.{h,m}` | **NIB conversion unit (2026-11-08)**: the platform-aware nib-load helper (`+loadNibNamed:owner:` with the logical name, no extension) through which every nib-load call site in the tree now goes; resolves to the converted `.gorm` on GNUstep and the 1998 `.nib` on a native build (see `docs/RESOUND_SNDKIT_PLAN.md`, NIB migration). |
+| `Source/MiscSoundView.{h,m}`, `Source/MiscSoundViewRuler.{h,m}`, `Source/ResoundMiscSoundView.{h,m}` | **Phase 2, view-chain unit (2026-11-08)**: the three core document views, migrated to SndKit on `SndView` (`SoundView`→`SndView`, `Sound*`→`Snd*`, `sampleCount`→`lengthInSampleFrames`, `SNDConvertDecibelsToLinear`, `setContinuous:`→`setContinuousSelectionUpdates:`, `NXSoundPboardType`→`SndPasteboardType`, `char*` info-string chain→`NSString*`; `ModuleSoundView.h`/`SelectionInspector.h` imports dropped — the latter is a legacy-SoundKit drag nothing in the file needs). Three platform rewrites (documented in `docs/RESOUND_SNDKIT_PLAN.md`): the ruler labels are drawn via `NSString` drawing (GNUstep has no `PSselectfont`/`PSstringwidth`), the 1998 `selectionRect` 1.1x fudge becomes a 10% wider frame selection (SndKit's `setSelection:` doesn't clamp; its `selectionRect` is a read-only derived method), and the 1998 buggy `pasteboard:provideData:` super call becomes the `provideDataForType:` it always should have been. `getSelection:size:` keeps the 1998 `int*` (the super call casts to SndKit's `unsigned int*` — an `unsigned int*` override would warn at every call site); `pasteboardChangedOwner:` stays byte-identical but GNUstep's `NSPasteboard` never sends it (no such symbol in `libgnustep-gui`), so the 1998 paste-bug retains accumulate (two per `cut:` — SndKit's `cut:` dispatches its internal `copy:` back into the 1998 override — plus one per `copy:`): documented difference, not a regression. The 1998 multi-arg `set:`/`update:` idiom is kept verbatim and is runtime-safe (registered `set:::::::::`/`update::::::::::`; the real callers' argument counts match); the 50 re-emitted `-Wmissing-selector-name` warnings are the file set's documented baseline (the `MiscSoundView.h` 8 re-emit into every TU importing it; zero other warning classes). Verified with a display probe (both display modes, the selection fudge, zoom 1/10/100/1000, ruler via the 1998 `set:` idiom incl. the NSString labels, pasteboard cut/copy/data materialisation, info chain, teardown — all pass, no exceptions) + all fatal gates green + app launch clean. |
 
-### Blocked by SoundKit (19 files, not in the build yet)
+### Blocked by SoundKit (15 files, not in the build yet)
 
-All 19 fail with `fatal error: 'SoundKit/SoundKit.h' file not found`
-(directly or via their headers: `FileController.h`, `MiscSoundView.h`,
+All 15 fail with `fatal error: 'SoundKit/SoundKit.h' file not found`
+(directly or via their headers: `FileController.h`,
 `SelectionInspector.h`, `SoundDocumentTable.h`,
 `VolumeController.h`, `ModuleProtocol.h`, `ModuleSound.h`,
 `ModuleSoundView.h`). They unblock with the SndKit migration
@@ -261,9 +262,8 @@ All 19 fail with `fatal error: 'SoundKit/SoundKit.h' file not found`
 
 AttributesInspector, EditController, FileController,
 InfoStringInspector, InspectorManager, MarksInspector,
-MiscSoundView, MiscSoundViewRuler, Module,
-ModuleController, ModuleSound, ModuleSoundView, PreferencesManager,
-ResoundMiscSoundView, ResoundScrollView,
+Module, ModuleController, ModuleSound, ModuleSoundView,
+ResoundScrollView,
 SelectionInspector, SoundDocumentTable, VolumeController,
 ZoomInspector
 
@@ -271,6 +271,15 @@ ZoomInspector
 the legacy reader imports; those moved to
 `Source/Sound-ResoundSound.{h,m}` / were dropped with the SndKit port —
 the class itself remains blocked with the Phase 2 GUI chain.)
+
+The view-chain unit (2026-11-08) unblocked one more file from the original
+19: `Source/PreferencesManager.{h,m}` — its only path to SoundKit was
+through `ResoundMiscSoundView.h` → `MiscSoundView.h`, both migrated by that
+unit. It now compiles with zero errors and **no changes** (nothing in it
+needed the legacy API). It is deliberately **not** added to the build in
+that unit: it loads the `Preferences` nib lazily from its menu action
+(`startPreferencesPanel:`), which nothing in the current app reaches — it
+ships with the file/inspector chain that instantiates it.
 
 ### Not part of the app
 

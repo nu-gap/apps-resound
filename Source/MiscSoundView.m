@@ -161,7 +161,7 @@ int MISCSOUNDVIEW_round(float x)
 	NSSize temp;
 	float maxval,lastval;
 	int a;
-	int true_sample_count=[sound sampleCount];
+	int true_sample_count=[[self sound] lengthInSampleFrames];
 
         BOOL only_change_play_mark =  [rulerView onlyChangePlayMark];
 
@@ -184,12 +184,12 @@ int MISCSOUNDVIEW_round(float x)
 		{
 		if (y_display_format==MISCSOUNDVIEW_YAXIS_DISPLAY_FORMAT_DECIBEL)
 			{
-			maxval=SNDConvertDecibelsToLinear(100.0);
+			maxval=SndConvertDecibelsToLinear(100.0);
 			lastval=[self bounds].size.height/2;
 			
 			for (a=19;a>=10;a--)
 				{
-				temp.height=lastval-SNDConvertDecibelsToLinear
+				temp.height=lastval-SndConvertDecibelsToLinear
 					((float)a*5)/maxval*([self bounds].size.height/2);
 				temp.width=0;
 				temp = [self convertSize:temp toView:nil];
@@ -197,16 +197,16 @@ int MISCSOUNDVIEW_round(float x)
 					{
 					PSsetlinewidth(0);
 					PSsetgray(NSDarkGray);
-					PSmoveto (rects.origin.x,SNDConvertDecibelsToLinear
+					PSmoveto (rects.origin.x,SndConvertDecibelsToLinear
 						((float)a*5)/maxval*([self bounds].size.height/2));
 					PSrlineto(rects.size.width,0);
 					PSsetlinewidth(0);
-					PSmoveto (rects.origin.x,0-SNDConvertDecibelsToLinear
+					PSmoveto (rects.origin.x,0-SndConvertDecibelsToLinear
 						((float)a*5)/maxval*([self bounds].size.height/2));
 					PSrlineto(rects.size.width,0);
 					PSstroke();
 					}
-				lastval=SNDConvertDecibelsToLinear
+				lastval=SndConvertDecibelsToLinear
 					((float)a*5)/maxval*([self bounds].size.height/2);
 				}
 			}
@@ -291,8 +291,10 @@ int MISCSOUNDVIEW_round(float x)
 // POSSIBLE BUG ALERT:  NeXT's stuff may depend on the broken getSelection!
 
 {
-	int samples=[[self sound] sampleCount];
-	[super getSelection:firstSample size:sampleCount];
+	int samples=[[self sound] lengthInSampleFrames];
+	// SndKit's getSelection: takes unsigned int* (1998 SoundView took
+	// int*), so cast the 1998 int* parameters explicitly:
+	[super getSelection:(unsigned int*)firstSample size:(unsigned int*)sampleCount];
 	// Now we check and modify accordingly:
 	if (*firstSample+*sampleCount>samples) *sampleCount=samples-*firstSample;
 	//return self;
@@ -305,17 +307,19 @@ int MISCSOUNDVIEW_round(float x)
 // POSSIBLE BUG ALERT:  NeXT's stuff may depend on the broken setSelection!
 
 {
-	int samples=[[self sound] sampleCount];
+	int samples=[[self sound] lengthInSampleFrames];
 	if (firstSample+sampleCount>=samples)
 		// we make certain that the right amount is selected!
-		// Note that you can't just set the selection beyond the sound
-		// value, because the soundView doesn't allow it.
-		// so here we physically set the soundView's selection rect...
-		// hope this doesn't cause weird bugs...
+		// The 1998 soundView clamped a selection that extended beyond
+		// the sound's end, and the code compensated by physically
+		// widening the (stored) selectionRect by 10%.  SndKit's
+		// setSelection: does not clamp, and its selectionRect is a
+		// read-only rect derived from the frame selection, so the
+		// "tiny bit larger" fudge becomes a 10% wider frame
+		// selection:
 		{
-		[super setSelection:firstSample size:sampleCount];	
+		[super setSelection:firstSample size:(int)(sampleCount*1.1)];
 			// as good as can be done...
-		selectionRect.size.width*=1.1;	
 			// this makes the selection a tiny bit larger
 		}
 	else [super setSelection:firstSample size:sampleCount];
@@ -329,7 +333,7 @@ int MISCSOUNDVIEW_round(float x)
 // POSSIBLE BUG ALERT:  NeXT's stuff may depend on the broken selectAll!
 
 {
-	[self setSelection:0 size:[[self sound] sampleCount]];
+	[self setSelection:0 size:[[self sound] lengthInSampleFrames]];
 }
 
 
@@ -444,7 +448,7 @@ int MISCSOUNDVIEW_round(float x)
 	
 	if (currentScrollView==NULL) return NULL;		// not in scrollView!
 	
-	total_samples=[[self sound] sampleCount];
+	total_samples=[[self sound] lengthInSampleFrames];
 	[self getSelection:&first_sample size:&number_of_samples];
 	bounds_rect = [self bounds];		// get new bounds information if any
 	visible_rect = [self visibleRect];
@@ -466,7 +470,7 @@ int MISCSOUNDVIEW_round(float x)
 - scrollToSample:(int) samp
 	// scrolls to samp if there's room to do so.
 	{
-	int first_sample,number_of_samples;
+	int first_sample;
 	int total_samples;
 	NSRect bounds_rect;
 	NSRect visible_rect;
@@ -475,9 +479,8 @@ int MISCSOUNDVIEW_round(float x)
 	
 	if (currentScrollView==NULL) return NULL;		// not in scrollView!
 	
-	total_samples=[[self sound] sampleCount];
+	total_samples=[[self sound] lengthInSampleFrames];
 	first_sample=samp;
-	number_of_samples=0;
 	bounds_rect = [self bounds];		// get new bounds information if any
 	visible_rect = [self visibleRect];
 	
@@ -505,9 +508,9 @@ int MISCSOUNDVIEW_round(float x)
 	ReductionFactor= (double) [self reductionFactor];
 	visibleRect = [self visibleRect];
 	firstViewSample=(int)(visibleRect.origin.x*ReductionFactor);
-	if (sound)
-		if (firstViewSample>=[sound sampleCount]) 
-			firstViewSample=[sound sampleCount]-1;
+	if ([self sound])
+		if (firstViewSample>=[[self sound] lengthInSampleFrames])
+			firstViewSample=[[self sound] lengthInSampleFrames]-1;
 	if (firstViewSample<0) firstViewSample=0;
 	return firstViewSample;
 	}
@@ -536,7 +539,7 @@ int MISCSOUNDVIEW_round(float x)
 	
 	return reduction_to_scroll
 		( [self reductionFactor],
-		  ((double)[sound sampleCount])
+		  ((double)[[self sound] lengthInSampleFrames])
 		  /(double)content_size.width);
 	}
 	
@@ -559,7 +562,7 @@ int MISCSOUNDVIEW_round(float x)
 	new_reduction_factor= scroll_to_reduction		
 					// is this where the problem lies?
 		( this_value,
-		  ((double)[sound sampleCount])
+		  ((double)[[self sound] lengthInSampleFrames])
 		  /(double)content_size.width);
 	
 	if (new_reduction_factor!=-1.0)		// it's not an error
@@ -606,7 +609,7 @@ int MISCSOUNDVIEW_round(float x)
 	int samples;
 	
 	if (snd==NULL) samples=0;
-	else samples=[snd sampleCount];
+	else samples=[snd lengthInSampleFrames];
 	
 	if (temp_play_mark>=0&&
 		temp_play_mark<samples&&scroll_to_reflect_playing)
@@ -688,7 +691,7 @@ int MISCSOUNDVIEW_round(float x)
 
 - zoomToSelection:sender
 	{
-	int first_sample, number_of_samples, total_samples;
+	int first_sample, number_of_samples;
 	double reduction_factor;
 	NSRect visible_rect;
 	
@@ -697,7 +700,6 @@ int MISCSOUNDVIEW_round(float x)
 	if (self==NULL) return NULL;
 	[[self window] disableFlushWindow];	
 	
-	total_samples=[sound sampleCount];
 	[self getSelection:&first_sample size:&number_of_samples];
 	
 	visible_rect = [self visibleRect];

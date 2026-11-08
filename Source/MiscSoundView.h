@@ -19,7 +19,7 @@
 
  */
 
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <AppKit/AppKit.h>
 
 // Defines
@@ -45,7 +45,7 @@ double scroll_to_reduction (double scrollValue, double ratio);
 int MISCSOUNDVIEW_round(float x);
 double reduction_to_scroll (double reduction, double ratio);
 
-@interface MiscSoundView:SoundView
+@interface MiscSoundView:SndView
 {
 	id rulerView;
 	id scrollView;

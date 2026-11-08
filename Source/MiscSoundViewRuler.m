@@ -60,14 +60,14 @@ int numberOfSamples;
 double scale_factor;
 char tempstring[20],maxWidthString[20];
 float print_value;
-float xStringWidth, yStringWidth;
+float xStringWidth;
 // Retreiving the parent soundView, the sound
 // and all relevant information
 
 id sndView = [[self scrollView] documentView];
-id sound = [(SoundView*)sndView sound];					// TypeCast for OS X server
+id sound = [(SndView*)sndView sound];					// TypeCast for OS X server
 int reductionFactor = [sndView reductionFactor];
-int true_sample_count=[[(SoundView*)sndView sound] sampleCount];	// TypeCast for OS X server
+int true_sample_count=[[(SndView*)sndView sound] lengthInSampleFrames];	// TypeCast for OS X server
 float minor_tick_spacing = [sndView minorTickSpacing];			// Minor Tick Spacing
 int minor_tick_spacing_format = [sndView minorTickSpacingFormat];	// Tick Format
 int major_tick_spacing = [sndView majorTickSpacing];		// Number of minor ticks per major tick
@@ -90,11 +90,11 @@ if  (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_SAMPLES) 	// 
 else if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_PERCENT) // display in percentage
       {
       numberOfSamples=(int)
-	(minor_tick_spacing/100.0*[[(SoundView*)sndView sound] sampleCount]);	// TypeCast for OS X server
+	(minor_tick_spacing/100.0*[[(SndView*)sndView sound] lengthInSampleFrames]);	// TypeCast for OS X server
       }
 else   										// display in seconds
       {
-      numberOfSamples=(int)(minor_tick_spacing*[[(SoundView*)sndView sound] samplingRate]);	// TypeCast for OS X server
+      numberOfSamples=(int)(minor_tick_spacing*[[(SndView*)sndView sound] samplingRate]);	// TypeCast for OS X server
       }
 
 if (!numberOfSamples) numberOfSamples=1;		// for divide-by-zero	
@@ -115,7 +115,7 @@ endsample=((int)(sndViewRects.size.width+sndViewRects.origin.x))*reductionFactor
 if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_SAMPLES) // display in samples
         print_value=(float)endsample;
 else if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_PERCENT)// display in percentage
-        print_value=((float)endsample)/((float)[sound sampleCount])*100;
+        print_value=((float)endsample)/((float)[sound lengthInSampleFrames])*100;
 else					// display in seconds
         print_value=((float)endsample)/(float)[sound samplingRate];	
 
@@ -125,8 +125,21 @@ else if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_PERCENT)
 	sprintf(maxWidthString, " %d", MISCSOUNDVIEW_round(print_value));// use rounded int value
 else sprintf(maxWidthString, " %.3f", print_value);	// use float value
 
-PSselectfont("Helvetica",9);
-PSstringwidth(maxWidthString, &xStringWidth, &yStringWidth);
+// The 1998 code drew the ruler labels with PSselectfont("Helvetica",9)
+// and measured them with PSstringwidth().  GNUstep's PostScript
+// interface provides no PSselectfont/PSstringwidth, so the labels are
+// drawn with NSString drawing in the same 9pt font:
+NSFont *tick_label_font=[NSFont fontWithName:@"Helvetica" size:9.0];
+if (tick_label_font==nil) tick_label_font=[NSFont systemFontOfSize:9.0];
+NSDictionary *tick_label_font_attr=[NSDictionary dictionaryWithObjectsAndKeys:
+	tick_label_font, NSFontAttributeName,
+	nil];
+{
+NSSize tick_label_width;
+tick_label_width = [[NSString stringWithUTF8String:maxWidthString]
+	sizeWithAttributes:tick_label_font_attr];
+xStringWidth=tick_label_width.width;
+}
 
 
 // What should be displayed ?
@@ -188,12 +201,9 @@ if (!only_change_play_mark&&true_sample_count)
         if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_SAMPLES)
             print_value=(float)xx;
         else if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_PERCENT)
-            print_value=((float)xx)/((float)[sound sampleCount])*100;
+            print_value=((float)xx)/((float)[sound lengthInSampleFrames])*100;
         else 
 	    print_value=((float)xx)/(float)[sound samplingRate];
-        PSgsave();
-        PSinitmatrix();
-
         if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_SAMPLES)
         	sprintf(tempstring, " %d", (int)print_value);	// use int value
 	else if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_PERCENT)
@@ -201,10 +211,12 @@ if (!only_change_play_mark&&true_sample_count)
         else 
 		sprintf(tempstring, " %.3f", print_value);	// use float value
 
-        PSrmoveto(0,-4);
-	PSselectfont("Helvetica",9);
-        PSshow(tempstring);
-        PSgrestore();
+        // 1998: PSgsave/PSinitmatrix/PSrmoveto(0,-4)/PSselectfont/PSshow/
+        // PSgrestore - draw the label 4 points below the tick mark.
+        [[NSString stringWithUTF8String:tempstring]
+        	drawAtPoint:NSMakePoint(((float)xx)/reductionFactor+convertedDocBounds.origin.x,
+        			[self baselineLocation]+tick_height*scale_factor-4.0)
+        	withAttributes:tick_label_font_attr];
         }
 
       // end bug fix.  We continue, now drawing the ticks
@@ -232,21 +244,20 @@ if (!only_change_play_mark&&true_sample_count)
 			print_value=(float)xx;
                       else if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_PERCENT)
 								// display in percentage
-                        print_value=((float)xx)/((float)[sound sampleCount])*100;
+                        print_value=((float)xx)/((float)[sound lengthInSampleFrames])*100;
 		      else					// display in seconds
                         print_value=((float)xx)/(float)[sound samplingRate];	
-                      PSgsave();
-                      PSinitmatrix();
-
                       if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_SAMPLES)
                             sprintf(tempstring, " %d", (int)print_value);	// use int value
 		      else if (minor_tick_spacing_format==MISCSOUNDVIEW_XAXIS_SPACING_FORMAT_PERCENT)
                             sprintf(tempstring, " %d", MISCSOUNDVIEW_round(print_value));// use rounded int value
 		      else sprintf(tempstring, " %.3f", print_value);	// use float value
-              PSrmoveto(0,-4);
-              PSselectfont("Helvetica",9);
-                      PSshow(tempstring);
-                      PSgrestore();
+              // 1998: PSgsave/PSinitmatrix/PSrmoveto(0,-4)/PSselectfont/
+              // PSshow/PSgrestore - draw the label 4 points below the tick.
+              [[NSString stringWithUTF8String:tempstring]
+                  drawAtPoint:NSMakePoint(((float)xx)/reductionFactor+convertedDocBounds.origin.x,
+                      [self baselineLocation]+tick_height*scale_factor-4.0)
+                  withAttributes:tick_label_font_attr];
                      }
                  }
            else

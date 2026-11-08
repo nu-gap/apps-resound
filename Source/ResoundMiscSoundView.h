@@ -37,7 +37,7 @@ IMPLIED WARRANTIES.
     id cursor;
     BOOL continuousUpdate;
     BOOL continuousZoom;
-    char* info_string;
+    NSString* info_string;
     BOOL ignoreShowAndHideCursor;
     BOOL dataOnPasteboard;
     int sizeOfDataOnPasteboard;
@@ -78,9 +78,9 @@ IMPLIED WARRANTIES.
 - (double) scrollValue;							// a private method
 - (void) dealloc;
 - (BOOL)sampleIsVisible:(int)sample;
-- loadInfo:(Sound*)s;
-- (char*)info;
-- setInfo:(const char*)this;
+- loadInfo:(Snd*)s;
+- (NSString*)info;
+- setInfo:(NSString*)this;
 - (void)checkForCurrentDataOnPasteboard;
 - (void)pasteboard:(NSPasteboard *)sender provideDataForType:(NSString *)type;
 - (void)pasteboardChangedOwner:(NSPasteboard *)sender;
