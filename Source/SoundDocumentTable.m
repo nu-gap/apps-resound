@@ -42,18 +42,18 @@ IMPLIED WARRANTIES.
 
 @implementation SoundDocument
 
-- initWithSound:(Sound*)s soundView:(ResoundMiscSoundView*)sv window:(NSWindow*)w filename:(NSString*)f untitledValue:(int)uv;
+- initWithSound:(Snd*)s soundView:(ResoundMiscSoundView*)sv window:(NSWindow*)w filename:(NSString*)f untitledValue:(int)uv;
 { sound=[s retain]; soundView=[sv retain]; window=[w retain]; filename=[f retain]; untitledValue=uv; soundChanged=
 	(untitledValue==SOUNDDOCUMENT_TITLED ? NO : YES);
 return [super init];
 }
-- (Sound*) sound { return sound; }
+- (Snd*) sound { return sound; }
 - (ResoundMiscSoundView*) soundView { return soundView; }
 - (NSWindow*) window { return window; }
 - (BOOL) soundChanged { return soundChanged; }
 - (NSString*) filename { return filename; }
 - (int) untitledValue {return untitledValue; }
-- (void) setSound:(Sound*)this 
+- (void) setSound:(Snd*)this 
 	{ if (sound!=nil) [sound release]; sound = [this retain]; }
 - (void) setSoundView:(ResoundMiscSoundView*)this 
 	{ if (soundView!=nil) [soundView release]; soundView = [this retain]; }
@@ -154,7 +154,7 @@ return [super init];
     return [soundDocuments count];
 }
 
-- (SoundDocument*) newDocument:(Sound*)thisSound:(ResoundMiscSoundView*)thisSoundView:(NSWindow*)thisWindow:(NSString*)thisFilename:(BOOL)isUntitled
+- (SoundDocument*) newDocument:(Snd*)thisSound:(ResoundMiscSoundView*)thisSoundView:(NSWindow*)thisWindow:(NSString*)thisFilename:(BOOL)isUntitled
 {
     SoundDocument* sd=[[[SoundDocument alloc] initWithSound:thisSound 
 	soundView:thisSoundView 

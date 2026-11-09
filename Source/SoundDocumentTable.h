@@ -28,7 +28,7 @@ IMPLIED WARRANTIES.
  SoundDocument has an associated sound, sound view, window, etc.
  */
 
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
 #import "ResoundMiscSoundView.h"
@@ -88,21 +88,21 @@ setTitleWithRepresentedFilename.  Useful!
 
 @interface SoundDocument:NSObject
 {
-    Sound* sound;
+    Snd* sound;
     ResoundMiscSoundView* soundView;
     NSWindow* window;
     BOOL soundChanged;
     NSString* filename;
     int untitledValue;
 }
-- initWithSound:(Sound*)s soundView:(ResoundMiscSoundView*)sv window:(NSWindow*)w filename:(NSString*)f untitledValue:(int)uv;
+- initWithSound:(Snd*)s soundView:(ResoundMiscSoundView*)sv window:(NSWindow*)w filename:(NSString*)f untitledValue:(int)uv;
 - (void) dealloc;
-- (Sound*) sound;
+- (Snd*) sound;
 - (ResoundMiscSoundView*) soundView;
 - (NSWindow*) window;
 - (BOOL) soundChanged;
 - (NSString*) filename;
-- (void) setSound:(Sound*)this;
+- (void) setSound:(Snd*)this;
 - (void) setSoundView:(ResoundMiscSoundView*)this;
 - (void) setWindow:(NSWindow*)this;
 - (void) setSoundChanged:(BOOL)this;
@@ -129,7 +129,7 @@ setTitleWithRepresentedFilename.  Useful!
 
 - init;
 - (void) dealloc;
-- (SoundDocument*) newDocument:(Sound*)thisSound:(ResoundMiscSoundView*)thisSoundView:(NSWindow*)thisWindow:(NSString*)thisFilename:(BOOL)isUntitled;
+- (SoundDocument*) newDocument:(Snd*)thisSound:(ResoundMiscSoundView*)thisSoundView:(NSWindow*)thisWindow:(NSString*)thisFilename:(BOOL)isUntitled;
 - (void) remove:(SoundDocument*) document;
 - (NSEnumerator*) objectEnumerator;
 
