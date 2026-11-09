@@ -11,7 +11,18 @@ _Resound running under GNUstep (whole screen, so every window the app shows up i
 
 See also: [https://nu-gap.github.io/apps-resound/README.html](https://nu-gap.github.io/apps-resound/README.html)
 
-**Status:** historical source import. A GNUstep port has not yet been completed, and builds and runtime behavior have not been verified. The included application and module binaries target Rhapsody on PowerPC and Intel, rather than current GNUstep or macOS systems.
+**Status:** GNUstep port in progress — every push builds in CI against a source-built GNUstep + SndKit stack and is runtime-verified there (SndKit smoke tests, file I/O contract tests, NIB conversion checks, and an app launch under a virtual display; the screenshot above is captured from that run). Milestones:
+
+- [x] SndKit integration — the 1998 SoundKit replaced by SndKit (sound object, file I/O)
+- [x] Audio engine — playback and recording
+- [x] View chain and console — sound view, volume meter, sound tracker
+- [x] NIB migration — the 1998 `.nib` folders converted to `.gorm` (43/44, one documented exception), gated in CI
+- [ ] File browser (`FileController`) — the app's main window; the next unit
+- [ ] Volume controls and tapper
+- [ ] Module API and the ten module implementations
+- [ ] Packaging and validation on the target platforms
+
+The 1998 Rhapsody application and module binaries in the archive are historical reference; the port builds from the 1998 sources.
 
 ## Features
 
