@@ -470,11 +470,15 @@ Both patches were developed against the pinned gnustep-gui on the
 aarch64 dev machine with a throwaway probe (`MiscSoundView` /
 `MiscSoundViewRuler` / `ResoundMiscSoundView` in a real window,
 exactly the app's view chain, plus the 1998 pasteboard cut/copy flow)
-and verified on the hermetic stack (see *Verification* below).  They
-are **not submitted upstream yet**; each carries a suggested issue
-title to use when that happens.
+and verified on the hermetic stack (see *Verification* below).  Both
+were submitted upstream on 2026-11-09 (G1 as libs-gui issue #1028, G2
+as issue #1029, referenced in their sections below); when one of them
+lands, drop the corresponding patch on the next stack pin bump (and
+bump `GNUSTEP_STACK_REV`).
 
 ## G1. `NSWindow`: `isReleasedWhenClosed` defaults to NO (patch `GNUstep-0001-nswindow-released-when-closed-default.diff`)
+
+**Submitted upstream:** gnustep/libs-gui issue [#1028](https://github.com/gnustep/libs-gui/issues/1028) (2026-11-09), carrying this section verbatim.
 
 **Suggested issue title:** *NSWindow's released-when-closed default
 makes `close` a reference consumer: `[w close]` + `[w release]`
@@ -555,6 +559,8 @@ reference, `close` no longer consumes it, and the nib's
 ```
 
 ## G2. `NSPasteboard`: retain the wrapper in the name→pasteboard map (patch `GNUstep-0002-nspasteboard-retained-wrapper-map.diff`)
+
+**Submitted upstream:** gnustep/libs-gui issue [#1029](https://github.com/gnustep/libs-gui/issues/1029) (2026-11-09), carrying this section verbatim.
 
 **Suggested issue title:** *NSPasteboard wrappers die with the
 autorelease pool while their DO target proxy is still in use: FFI
