@@ -412,11 +412,26 @@ jobs:
         # captures are skipped, so a stable UI costs no bot commits.
         if: github.event_name == 'push'
         continue-on-error: true
+        env:
+          # The push token, via the secrets context - the canonical
+          # access.  (The bare $GITHUB_TOKEN in a run block expands to
+          # nothing: the token is NOT auto-injected as a shell
+          # environment variable, and the resulting empty token is
+          # exactly the 'Invalid username or token' failure of the
+          # first real run.)  The optional SCREENSHOT_PUSH_TOKEN
+          # secret (a fine-grained PAT) is the fallback for when the
+          # workflow token is unavailable; an undefined secret
+          # interpolates to the empty string.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.SCREENSHOT_PUSH_TOKEN }}
         run: |
           set -ex
           PNG="$RUNNER_TEMP/Resound-screenshot.png"
           if [ ! -s "$PNG" ]; then
             echo "no capture from the previous step - skipping"
+            exit 0
+          fi
+          if [ -z "${GITHUB_TOKEN:-}" ]; then
+            echo "no push token available - skipping publish"
             exit 0
           fi
           DIR="$RUNNER_TEMP/screenshot-push"

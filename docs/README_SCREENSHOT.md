@@ -39,7 +39,7 @@ edit and no manual re-trigger in between.
 
 ## The token: no custom secret needed
 
-GitHub Actions injects a per-run `GITHUB_TOKEN` automatically, but it
+GitHub Actions creates a per-run `GITHUB_TOKEN` automatically, but it
 is **read-only by default** for new workflows — so the workflow
 declares
 
@@ -48,16 +48,27 @@ permissions:
   contents: write
 ```
 
-at the top.  That alone is all the publish step needs; there is
-nothing to create in the repository settings.
+at the top.  The publish step receives the token through
+
+```yaml
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+(The **secrets context** is the canonical access: the bare
+`$GITHUB_TOKEN` in a `run` block expands to nothing, because the
+token is not auto-injected as a shell environment variable.)  There
+is nothing to create in the repository settings.
 
 *Optional:* if you prefer your own token (e.g. a fine-grained
 personal access token scoped to this one repository with *Contents:
-Read and write*, that expires when the feature is retired): create
-it, save it as the repository secret `SCREENSHOT_PUSH_TOKEN`
-(Settings → Secrets and variables → Actions), and change the publish
-step's remote URL to use `${{ secrets.SCREENSHOT_PUSH_TOKEN }}`
-instead of `${{ GITHUB_TOKEN }}`.  Not required for the default setup.
+Read and write*, that expires when the feature is retired): save it
+as the repository secret `SCREENSHOT_PUSH_TOKEN` (Settings → Secrets
+and variables → Actions).  The step's `env:` uses it as a fallback
+automatically — `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN ||
+secrets.SCREENSHOT_PUSH_TOKEN }}` — so it only takes effect when the
+built-in workflow token is unavailable.  If neither is available the
+step skips with a clear log line instead of failing.
 
 ## Behaviour notes
 
