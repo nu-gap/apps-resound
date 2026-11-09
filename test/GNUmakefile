@@ -20,6 +20,22 @@
 # Prerequisite: the SndKit chain installed into the active GNUstep
 # prefix (see ../third_party/build-sndkit.sh).
 
+# Build the tool instances serially.
+#
+# gnustep-make (strict v2) runs one sub-make per tool, in parallel.
+# Two of the tools below compile sources from the shared ../Source
+# directory, and those object files land in the SAME real directory
+# (obj/Source) reached via two different path strings
+# (obj/<tool>.obj/../Source).  Make does not normalise "..", so it
+# runs the directory-creation rule for both strings at once; the rule
+# calls mkinstalldirs, which tests for existence and then creates
+# non-atomically (TOCTOU), and the losing call fails with
+# 'mkdir: ... File exists' on a fresh parallel build - a flake that
+# hit CI on 2026-11-09 (5/10 locally).  Serialising the instances
+# removes the race; each instance still compiles its own files in
+# parallel, so the cost is a couple of seconds.
+.NOTPARALLEL:
+
 include $(GNUSTEP_MAKEFILES)/common.make
 
 GNUSTEP_INSTALLATION_DOMAIN =	SYSTEM
