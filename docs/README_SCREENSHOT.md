@@ -26,10 +26,12 @@ edit and no manual re-trigger in between.
    a bad X resource.  Non-fatal, like the launch check — a flaky
    display environment must not mask a build result.
 2. **Publish** (push events only): a scratch `git init` directory
-   fetches the `screenshot` branch, compares the capture byte-for-byte
-   against the existing PNG (so a stable UI costs **no** bot commits),
-   and pushes an updated PNG with the workflow's token.  The branch
-   contains only the PNG.
+   whose local branch is named `screenshot` (so the very first commit
+   creates the branch); if the branch already exists, it is fetched
+   and the capture is compared byte-for-byte against the existing PNG
+   (so a stable UI costs **no** bot commits); an updated PNG is
+   pushed with the workflow's token.  The branch contains only the
+   PNG.
 3. **Triggers**: `push.branches-ignore: [screenshot]` keeps the bot's
    own pushes from re-running the build; the publish step is skipped
    for pull requests (fork PRs could not push anyway) and for manual

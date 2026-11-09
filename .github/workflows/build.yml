@@ -426,6 +426,13 @@ jobs:
           git config user.name "Resound Screenshot Bot"
           git config user.email "resound-screenshot@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Name the (still unborn) branch before the first commit: a
+          # fresh 'git init' checks out the default branch, and the
+          # 'checkout -B screenshot FETCH_HEAD' below only runs when
+          # the remote branch already exists - without this, the very
+          # first push fails with 'src refspec screenshot does not
+          # match any'.
+          git checkout -q -b screenshot
           if git ls-remote --exit-code --heads origin screenshot >/dev/null 2>&1; then
             git fetch -q --depth 1 origin screenshot
             git checkout -q -B screenshot FETCH_HEAD
