@@ -59,22 +59,28 @@ IMPLIED WARRANTIES.
     as in unit 1; the real meter re-work is a later unit).
   - The 1998 controller imports (FileController.h / ConsoleManager.h /
     ModuleController.h) were dropped in unit 1: those headers then still
-    imported <SoundKit/SoundKit.h>, and FileController and
-    ModuleController still do (later Phase 2 units).  ConsoleManager is
-    ported (unit 1c) but its import stays dropped for now: the reference
-    is the 1998 id, the pragma below covers the dispatch, and the file
-    unit restores the 1998 import block as a whole.  All controller
-    references are id-typed dynamic dispatch, so no headers are needed.
+    imported <SoundKit/SoundKit.h>.  The file unit (FU3) restores the
+    block: FileController and ConsoleManager are ported and their
+    headers compile; ModuleController.h still cannot (<objc/List.h> is
+    absent from the GNUstep prefix, and ModuleProtocol.h still imports
+    the legacy SoundKit umbrella - both return with the Phase 3 module
+    unit), so that one import is guarded by the 1998
+    NOT_COMPILING_WITH_MODULES switch, enabled here exactly as in
+    FileController.m.  All controller references are id-typed dynamic
+    dispatch, so the imports only add declarations (the 1998 idiom
+    names in them re-emit the documented -Wmissing-selector-name class
+    into this TU).
   - The diagnostic pragma below silences the -Wobjc-method-access
-    warnings the id-typed controller dispatch above produces (the
-    controllers' headers cannot be imported yet).  It no longer covers
+    warnings the module chain produces: getModuleController is declared
+    untyped (returns id) and ModuleController.h is guarded above, so
+    the soundDidPlay/soundNowPlaying/soundNowRecording/soundDidRecord
+    sends stay id dispatch of undeclared selectors.  It no longer covers
     -Wobjc-multiple-method-names, whose reason is gone: SndKit declares
     play:/pause:/resume: on both Snd and SndView, which the unit-1
     id-typed view matched ambiguously -- but the view ivar is now the
     typed ResoundMiscSoundView (view-chain unit), so those sends resolve
     unambiguously and the suppression is dead weight.  Remove the pragma
-    when the controllers are ported and the references can be typed
-    again.
+    with the module unit, which re-enables the ModuleController.h import.
     (The -Wmissing-selector-name warnings from the 1998-style record:
     declaration are deliberately left visible: that idiom predates the
     port and its runtime selector is preserved exactly, see
@@ -84,8 +90,23 @@ IMPLIED WARRANTIES.
 
 
 
-#import "SoundManager.h"
+/* The 1998 no-modules build variant, enabled exactly as in
+   FileController.m: ModuleController.h cannot compile here (it imports
+   <objc/List.h>, absent from the GNUstep prefix, and ModuleProtocol.h,
+   which still imports the legacy SoundKit umbrella - both return with
+   the Phase 3 module unit).  The only module reference this file makes
+   is the [fileController getModuleController] chain, which the
+   no-modules FileController nil-guards at runtime (it returns nil).
+   Re-enable (comment this out) with the module unit. */
+#define NOT_COMPILING_WITH_MODULES
 
+#import "SoundManager.h"
+/* The 1998 import block, restored with the file unit (FU3). */
+#import "FileController.h"
+#import "ConsoleManager.h"
+#ifndef NOT_COMPILING_WITH_MODULES
+#import "ModuleController.h"
+#endif
 #import <unistd.h>	/* getpid, for the capture temp file name */
 
 #pragma clang diagnostic push

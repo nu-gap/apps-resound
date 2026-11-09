@@ -36,6 +36,7 @@ IMPLIED WARRANTIES.
 
 
 #import "ConsoleManager.h"
+#import "FileController.h"
 #import "ResoundNibs.h"
 #import "SoundManager.h"
 #import "ResoundMiscVolumeMeter.h"
@@ -63,18 +64,6 @@ static SndSampleFormat CONSOLE_FORMATS[3]=
     {SND_FORMAT_LINEAR_16, SND_FORMAT_LINEAR_8, SND_FORMAT_MULAW_8};
 #define CONSOLE_FORMAT_COUNT \
     ((int)(sizeof(CONSOLE_FORMATS)/sizeof(CONSOLE_FORMATS[0])))
-
-/* FileController is not yet migrated (it comes with the file-
-    handling unit); the console only needs currentSound: from it.
-    Declared so the dispatch below compiles warning-free until
-    then.  (The 1998 SoundView play-position methods the console
-    auto-scrolling uses are the view chain's own: they are the
-    typed MiscSoundView methods reached through the
-    ResoundMiscSoundView import below, so no protocol is needed
-    for those -- see the view-chain unit, Phase 2 unit 2. */
-@protocol ConsoleFileController
-- currentSound:sender;
-@end
 
 @implementation ConsoleManager
 
