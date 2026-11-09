@@ -58,7 +58,15 @@ IMPLIED WARRANTIES.
   ****************************************************************************/
 
 
-//#define NOT_COMPILING_WITH_MODULES
+/* The 1998 no-modules build variant: ModuleController.h cannot compile
+   here - it imports <objc/List.h> (absent from the GNUstep prefix) and
+   ModuleProtocol.h, which still imports the legacy SoundKit umbrella
+   (both return with the module unit, Phase 3).  Until then the app
+   runs as the 1998 no-modules build: the 1998 modules are runtime
+   plugin bundles anyway, and the nib's ModuleController object comes
+   up nil (the 1998 code nil-guards every use).  Re-enable (comment
+   this out) with the module unit. */
+#define NOT_COMPILING_WITH_MODULES
 
 #import "ConsoleManager.h"
 #import "FileController.h"
@@ -72,8 +80,13 @@ IMPLIED WARRANTIES.
 #import "ResoundScrollView.h"
 #import "ResoundMiscSoundView.h"
 #import "SoundDocumentTable.h"
+/* The Snd (ResoundSound) category used by the open/save paths below
+   lives in its own file since the Phase 1 migration (see
+   Source/FileController.h); the 1998 declaration used to sit in this
+   file's header. */
+#import "Sound-ResoundSound.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <Foundation/Foundation.h>
 #import <string.h>
 #import <stdio.h>
@@ -258,7 +271,9 @@ return p;
 
     {	
     NSWindow* tempWindow;
-    ResoundMiscSoundView*  tempSoundView;
+    /* ResoundMiscSoundView* tempSoundView was removed: its only 1998 use
+       below is already commented out, and the dead store warns under the
+       modern toolchain (cf. the view chain's dead-store removals). */
     /*double reduction_factor;
     int first_sample,size;
     int scroll_sample;*/
@@ -270,7 +285,6 @@ return p;
         [doc setSoundChanged:YES];
         tempWindow=[doc window];
 	[tempWindow setDocumentEdited:YES];
-	tempSoundView=[doc soundView];
 	
 	[tempWindow disableFlushWindow];
 
@@ -564,7 +578,7 @@ So I just catch the exception and go on my merry way.  Seems to be okay. */
   */
 
 
-- (SoundDocument*) newSound: (Sound*) sound:(BOOL) untitled:(NSString*)filename
+- (SoundDocument*) newSound: (Snd*) sound:(BOOL) untitled:(NSString*)filename
 /* Sets up a new window for sound.  Adds everything necessary to the
 sound table.  Returns the new SoundDocument object.  If filename is nil,
 it's assumed to be @"" (don't do this please).  If sound is nil, a new sound
@@ -580,14 +594,14 @@ string should be "\0" anyway, except when loading sound files.
 	SoundDocument* doc;
 	
 	if (filename==nil) filename=@"";
-	if (sound==nil) sound=[[[Sound alloc] init] autorelease];
+	if (sound==nil) sound=[[[Snd alloc] init] autorelease];
 
 	[self newWindow:&win:&scrv:&sndv];
 
         /* fix the info string bug in the SoundKit (dang) */
         [sndv loadInfo:sound];  // this safe from a nil info string
-        if ([sound info]!=NULL)  // assume it's a char array of size at least 1!
-	   ((char*)[sound info])[0]='\0';
+        if ([sound info]!=nil)   // SndKit: the info is an NSString, not the 1998 char*; clearing it is setInfo:@""
+	   [sound setInfo:@""];
         /* done fix */
 
         doc=[soundTable newDocument:sound:sndv:win:filename:untitled];
@@ -605,10 +619,10 @@ string should be "\0" anyway, except when loading sound files.
 
         if ([preferencesManager zoomIn])
             [sndv setReductionFactor: scroll_to_reduction
-            (0,(double)[sound sampleCount]/(double)([scrv contentSize].width))];
+            (0,(double)[sound lengthInSampleFrames]/(double)([scrv contentSize].width))];
         else
             [sndv setReductionFactor: scroll_to_reduction
-            (1,(double)[sound sampleCount]/(double)([scrv contentSize].width))];
+            (1,(double)[sound lengthInSampleFrames]/(double)([scrv contentSize].width))];
 
 
 	// now show that sucker
@@ -632,14 +646,14 @@ string should be "\0" anyway, except when loading sound files.
 
 - newSoundFromPasteBoard:sender
     {
-    Sound* newSound=[[[Sound alloc] init] autorelease];
+    Snd* newSound=[[[Snd alloc] init] autorelease];
     SoundDocument* sd;
     NSMutableArray* array=[NSMutableArray arrayWithCapacity:1];
 
     id pb=[NSPasteboard generalPasteboard];
-    [array addObject:NXSoundPboardType];
+    [array addObject:SndPasteboardType];
 
-    if (![[pb availableTypeFromArray:array] isEqualToString:NXSoundPboardType])
+    if (![[pb availableTypeFromArray:array] isEqualToString:SndPasteboardType])
 	{
 	NSRunAlertPanel(@"Pasteboard",
 			@"The pasteboard is empty.",@"Okay",nil,nil);
@@ -665,10 +679,10 @@ string should be "\0" anyway, except when loading sound files.
 	SoundDocument* doc=[soundTable find:sd];
 	 if ([preferencesManager zoomIn])
    	 [[doc soundView] setReductionFactor: scroll_to_reduction
-   	     (0,(double)[[doc sound] sampleCount]/(double)([[[doc window] contentView] contentSize].width))];
+   	     (0,(double)[[doc sound] lengthInSampleFrames]/(double)([[[doc window] contentView] contentSize].width))];
    	 else
          [[doc soundView] setReductionFactor: scroll_to_reduction
-   	     (1,(double)[[doc sound] sampleCount]/(double)([[[doc window] contentView] contentSize].width))];
+   	     (1,(double)[[doc sound] lengthInSampleFrames]/(double)([[[doc window] contentView] contentSize].width))];
    	 [self update];
 	}
 
@@ -719,7 +733,7 @@ string should be "\0" anyway, except when loading sound files.
 
 - open:(NSString*)nameoffile:(BOOL)fromPanel:sender
     {	
-    Sound* theSound;
+    Snd* theSound;
 
     NSString* extension=[nameoffile pathExtension];
     SoundDocument* doc;
@@ -737,7 +751,9 @@ string should be "\0" anyway, except when loading sound files.
 	}
 
      //...else, it's a new sound to open.	
-    theSound = [[[Sound alloc] initFromForeignSoundFile:nameoffile:	
+    /* Modern call form of the 1998 idiom call: the Phase 1 category
+       declares initFromForeignSoundFile:convert: (named parts). */
+    theSound = [[[Snd alloc] initFromForeignSoundFile:nameoffile convert:
 		[preferencesManager convertOnOpen]] autorelease];
 
     if ([extension caseInsensitiveCompare:@"snd"]==NSOrderedSame)
@@ -842,8 +858,11 @@ string should be "\0" anyway, except when loading sound files.
             defaultPath = [[savepanel directory] copy];
             nameoffile = [savepanel filename];
 
-		[[doc sound] saveToSoundFile:nameoffile:
-		 [doc soundView]:
+		/* Modern call form of the 1998 idiom call: the Phase 1
+		   category declares saveToSoundFile:sv:backup: (named
+		   parts). */
+		[[doc sound] saveToSoundFile:nameoffile sv:
+		 [doc soundView] backup:
 		 [preferencesManager backup]];
         [[doc window] setTitleWithRepresentedFilename:nameoffile];
 		[[doc window] setDocumentEdited:NO];
@@ -889,7 +908,8 @@ string should be "\0" anyway, except when loading sound files.
 		    }
 		else
 		    {
-		    [[doc sound] saveToSoundFile:[doc filename]:[doc soundView]:[preferencesManager backup]];
+		    /* Modern call form of the 1998 idiom call, as above. */
+		    [[doc sound] saveToSoundFile:[doc filename] sv:[doc soundView] backup:[preferencesManager backup]];
             [doc documentWasSaved:[doc filename]];
             [[doc window] setDocumentEdited:NO];
 		    }
@@ -1136,6 +1156,12 @@ string should be "\0" anyway, except when loading sound files.
 	shouldCloseWindow=0;
 	windowtoclose=[doc window];
 	sv=[doc soundView];
+	/* Both locals are read only under the dormant 1998 PASTE_BUG define
+	   (sv) or never (windowtoclose): the dead stores warn under the
+	   modern toolchain, so mark them used explicitly instead of
+	   deleting the 1998 code. */
+	(void)sv;
+	(void)windowtoclose;
 	
 	if ([doc soundChanged])
 	    {

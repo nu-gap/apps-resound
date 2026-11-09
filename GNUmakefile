@@ -101,6 +101,8 @@ Resound_OBJC_FILES= \
 	Source/ModuleMenuNode.m \
 	Source/Sound-ResoundSound.m \
 	Source/SoundDocumentTable.m \
+	Source/FileController.m \
+	Source/ResoundScrollView.m \
 	Source/SoundManager.m \
 	Source/MiscVolumeMeter.m \
 	Source/ResoundMiscVolumeMeter.m \
@@ -116,10 +118,9 @@ Resound_C_FILES= \
 
 # BLOCKED by SoundKit (needs the SndKit migration, see
 # docs/RESOUND_SNDKIT_PLAN.md phases 1-3): AttributesInspector,
-# EditController, FileController, InfoStringInspector, InspectorManager,
-# MarksInspector, Module, ModuleController, ModuleSound, ModuleSoundView,
-# PreferencesManager, ResoundScrollView, SelectionInspector, VolumeController,
-# ZoomInspector
+# EditController, InfoStringInspector, InspectorManager, MarksInspector,
+# Module, ModuleController, ModuleSound, ModuleSoundView, PreferencesManager,
+# SelectionInspector, VolumeController, ZoomInspector
 
 -include GNUmakefile.preamble
 

@@ -30,8 +30,17 @@ IMPLIED WARRANTIES.
   ****************************************************************************/
 
 #import "ResoundScrollView.h"
-#import "SelectionInspector.h"
 #import <stdio.h>
+
+/* The 1998 SelectionInspector.h import (which provided the 'update:'
+   declaration for the id-typed selectionManager below) is dropped:
+   that header still imports the legacy SoundKit umbrella and its unit
+   has not landed.  A local bridge declares the one selector used, as
+   the console unit did with its view-bridge protocol; the dispatch is
+   id-safe (the outlet is nil until the SelectionInspector unit lands). */
+@protocol FileSelectionManagerBridge
+- update:(id)view;
+@end
 
 @implementation ResoundScrollView
 
