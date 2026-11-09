@@ -1,0 +1,13 @@
+diff --git a/Source/NSPasteboard.m b/Source/NSPasteboard.m
+index 556cfee..3d2273d 100644
+--- a/Source/NSPasteboard.m
++++ b/Source/NSPasteboard.m
+@@ -1106,7 +1106,7 @@ static  NSMapTable              *mimeMap = NULL;
+       [self setVersion: 1];
+       dictionary_lock = [[NSRecursiveLock alloc] init];
+       pasteboards = NSCreateMapTable (NSObjectMapKeyCallBacks,
+-	NSNonRetainedObjectMapValueCallBacks, 0);
++	NSObjectMapValueCallBacks, 0);
+     }
+ }
+ 

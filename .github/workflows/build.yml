@@ -60,8 +60,9 @@ jobs:
     needs: check
     if: needs.check.outputs.has_build_system == 'true'
     env:
-      # Bump when the pinned commits below change (invalidates the cache).
-      GNUSTEP_STACK_REV: "1"
+      # Bump when the pinned commits below or the port patches applied to
+      # them (patches/GNUstep-*.diff) change (invalidates the cache).
+      GNUSTEP_STACK_REV: "2"
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
@@ -187,6 +188,14 @@ jobs:
           # 4. gnustep-gui (AppKit).
           fetch gnustep/libs-gui 8f804fd520c60800961e0bee072066f4bbadca94
           cd libs-gui-8f804fd520c60800961e0bee072066f4bbadca94
+          # Port patches (patches/GNUstep-0001/0002, documented in
+          # docs/UPSTREAM_PATCHES.md): the 1998 close/release window pattern
+          # and the pasteboard wrapper/target lifetimes.  Failing to apply
+          # fails the build, like the MusicKit patches (set -e above).
+          patch -p1 --dry-run < "${GITHUB_WORKSPACE}/patches/GNUstep-0001-nswindow-released-when-closed-default.diff"
+          patch -p1 --dry-run < "${GITHUB_WORKSPACE}/patches/GNUstep-0002-nspasteboard-retained-wrapper-map.diff"
+          patch -p1 --forward < "${GITHUB_WORKSPACE}/patches/GNUstep-0001-nswindow-released-when-closed-default.diff"
+          patch -p1 --forward < "${GITHUB_WORKSPACE}/patches/GNUstep-0002-nspasteboard-retained-wrapper-map.diff"
           # Release trees ship the prebuilt configure that Gershwin's build
           # (and the sandbox rehearsal) ran; regenerate only if missing.
           [ -f configure ] || { aclocal && autoconf; }

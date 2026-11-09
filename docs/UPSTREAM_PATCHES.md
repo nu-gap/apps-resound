@@ -1,16 +1,21 @@
-# Upstream patches for leighsmith/MusicKit (SndKit)
+# Upstream patches
 
-The vendored snapshot (`third_party/MusicKit`, pinned at `9683c76a`,
-master 2026-02-22) needs five small fixes: three to build on modern
-toolchains and non-x86 architectures and to run on machines with
-half-duplex audio devices, and two for runtime correctness of the
-recording and conversion paths that the port exercises (0004, 0005).
-All are kept as patches in `patches/` (applied by
-`third_party/build-sndkit.sh`) so the submodule stays pristine.  When a
-fix lands upstream, drop the corresponding patch when bumping the
-submodule.
+This project carries small port patches for two pinned third-party
+codebases, all kept in `patches/`:
 
-All patches apply from the repository root:
+- **leighsmith/MusicKit** (the SndKit source, vendored as the pinned
+  `third_party/MusicKit` submodule): five fixes, three to build on
+  modern toolchains and non-x86 architectures and to run on machines
+  with half-duplex audio devices, and two for runtime correctness of
+  the recording and conversion paths that the port exercises.  Applied
+  by `third_party/build-sndkit.sh` so the submodule stays pristine.
+- **the hermetic GNUstep stack** (pinned source commits, built into the
+  CI prefix by `.github/workflows/build.yml`; there is no submodule —
+  the CI fetches the trees, and the stack build step applies the
+  patches to the fetch): two lifetime-semantics fixes in gnustep-gui
+  that the 1998 code (which must stay byte-identical) depends on.
+
+MusicKit patches apply from the repository root:
 
 ```sh
 patch -p1 < patches/MusicKit-0001-vdsp-arch-guard.diff
@@ -19,6 +24,22 @@ patch -p1 < patches/MusicKit-0003-retrievedriverlist-advance.diff
 patch -p1 < patches/MusicKit-0004-streamrecorder-threshold.diff
 patch -p1 < patches/MusicKit-0005-sndconvert-resample-buffer.diff
 ```
+
+The GNUstep patches apply from the root of the fetched libs-gui tree
+(which is exactly what the CI stack build step does; the `--dry-run`
+first, so a stale patch fails the build before it half-applies):
+
+```sh
+cd libs-gui-8f804fd520c60800961e0bee072066f4bbadca94
+patch -p1 --dry-run < ../GNUstep-0001-nswindow-released-when-closed-default.diff
+patch -p1 --dry-run < ../GNUstep-0002-nspasteboard-retained-wrapper-map.diff
+patch -p1 < ../GNUstep-0001-nswindow-released-when-closed-default.diff
+patch -p1 < ../GNUstep-0002-nspasteboard-retained-wrapper-map.diff
+```
+
+(When a fix lands upstream, drop the corresponding patch and bump the
+pin — for the stack, that means `GNUSTEP_STACK_REV` in
+`.github/workflows/build.yml`.)
 
 ---
 
@@ -428,3 +449,179 @@ temp-buffer overflow).  The Resound project (nu-gap/apps-resound, branch
 fixes in the meantime as `patches/MusicKit-0001-…` through
 `MusicKit-0005-…`; each is dropped on the submodule bump once its issue
 lands.
+
+---
+
+# Upstream patches for the GNUstep stack (gnustep-gui)
+
+The CI builds a hermetic GNUstep stack from pinned source commits into
+its own prefix (`.github/workflows/build.yml`: libobjc2 `c9f4002a`,
+gnustep-make `4e31a03…`, gnustep-base `5bda5222`, gnustep-gui
+`8f804fd5…`, gnustep-back `bbcc3de7…`).  Two lifetime-semantics fixes
+in **gnustep-gui** are required for the 1998 code to run safely.  The
+1998 sources must stay byte-identical (except forced platform
+mappings), so anything a 1998 ownership pattern needs has to come from
+the framework — hence patches, applied by the stack build step, with
+`GNUSTEP_STACK_REV` bumped to `"2"`.
+
+Both patches were developed against the pinned gnustep-gui on the
+aarch64 dev machine with a throwaway probe (`MiscSoundView` /
+`MiscSoundViewRuler` / `ResoundMiscSoundView` in a real window,
+exactly the app's view chain, plus the 1998 pasteboard cut/copy flow)
+and verified on the hermetic stack (see *Verification* below).  They
+are **not submitted upstream yet**; each carries a suggested issue
+title to use when that happens.
+
+## G1. `NSWindow`: `isReleasedWhenClosed` defaults to NO (patch `GNUstep-0001-nswindow-released-when-closed-default.diff`)
+
+**Suggested issue title:** *NSWindow's released-when-closed default
+makes `close` a reference consumer: `[w close]` + `[w release]`
+double-frees*
+
+**Symptom.** Any code that closes a window it allocated and then
+releases it (the natural 1998 teardown; e.g. Resound's
+`[loadPanel close]` on the nib-outlet panel in `ModuleController.m`)
+leaves the window freed: the next dispatch to it (often the explicit
+`[w release]` a few lines later, or an event reaching it first) reads
+the freed object header through the message dispatch and dies in
+`objc_msg_lookup_sender` (wild isa → wild dtable) with a SIGSEGV.  The
+probe hit this in 8/10 natural runs and 5/5 under gdb; the freed chunk
+is usually reused by the time the second dispatch lands, which is why
+the crash site varies (dispatch of `close` vs dispatch of `release`)
+and the corrupting data (here SndKit sample data) looks random.
+
+**Explanation.** `-[NSWindow close]` (NSWindow.m:3226) implements the
+OpenStep "release when closed" contract:
+
+```objc
+if (!_f.is_released_when_closed)
+  { RETAIN(self); }
+...
+RELEASE(self);           /* unconditional */
+```
+
+i.e. it *consumes one reference* — and `_initDefaults` (NSWindow.m:6155)
+sets `_f.is_released_when_closed = YES`, so for the default window the
+`RELEASE` has no balancing `RETAIN`: a window whose only reference is
+the caller's is deallocated *inside* `close`, and the caller's later
+`[w release]` is a use-after-free.  This is faithful to OpenStep, but
+it is the one 1998 semantic that the 1998 authors themselves fought:
+`FileController.m:449` carries the comment
+
+```
+// By default windows are sent a *release* message when they are closed.
+// This was rather poor thinking on NeXT's part IMHO, because it violates
+// the retain/release guarantee ... I'd rather have the guarantee in force,
+// so after autoreleasing the window, I tell it not to do its stupid
+// default behavior:
+[theWindow setReleasedWhenClosed:NO];
+```
+
+and sets exactly that for the main window — but the panel path
+(`ModuleController.m:171 [loadPanel close]`, a nib outlet) never got the
+treatment, and the 1998 file may not be changed.  GNUstep's own
+`NSMiniWindow` `_initDefaults` (NSWindow.m:459-461) already opts out of
+the default with `setReleasedWhenClosed: NO`; Cocoa's
+`releasedWhenClosed` default is likewise NO.  The patch changes the
+default in `_initDefaults` to NO, i.e. `close` always does the
+balanced RETAIN/RELEASE (net zero) and the caller's reference survives
+`close` — the retain/release guarantee the 1998 code is written
+against.
+
+**Trade-off.** Code that relies on the OpenStep default — allocating a
+window, taking no other reference, and expecting `close` to release it
+— now leaks that window until it is explicitly released (or calls
+`setReleasedWhenClosed: YES`).  Inside Resound this changes nothing:
+the main window already sets NO explicitly, `NSMiniWindow` already
+does, and the only pattern the patch alters is the panel path, which
+becomes *correct* instead of double-freeing (the nib keeps its
+reference, `close` no longer consumes it, and the nib's
+`releaseConnections` balances it at the end).
+
+**Proposed fix** (`Source/NSWindow.m`, in `_initDefaults`):
+
+```diff
+@@ -6152,7 +6152,7 @@ current key view.<br />
+ //  _f.is_key = NO;
+ //  _f.is_main = NO;
+ //  _f.is_edited = NO;
+-  _f.is_released_when_closed = YES;
++  _f.is_released_when_closed = NO;
+ //  _f.is_miniaturized = NO;
+ //  _f.menu_exclude = NO;
+ //  _f.hides_on_deactivate = NO;
+```
+
+## G2. `NSPasteboard`: retain the wrapper in the name→pasteboard map (patch `GNUstep-0002-nspasteboard-retained-wrapper-map.diff`)
+
+**Suggested issue title:** *NSPasteboard wrappers die with the
+autorelease pool while their DO target proxy is still in use: FFI
+use-after-free in `GSFFIInvocationCallback`*
+
+**Symptom.** Pasteboard operations on a wrapper that outlives its
+creating autorelease pool can die inside the DO/FFI trampoline
+(`GSFFIInvocationCallback`, `obj = *(id*)args[0]` on a freed target
+proxy).  The probe reproduced it under gdb on the 1998 cut/copy flow
+(a second `changeCount` after `copy:`); the crash object is the
+wrapper's `target` ivar — the local proxy for the pasteboard-server
+object — not the wrapper the caller holds.
+
+**Explanation.** `+[NSPasteboard initialize]` builds the name→wrapper
+registry with *non-retained* values:
+
+```objc
+pasteboards = NSCreateMapTable (NSObjectMapKeyCallBacks,
+  NSNonRetainedObjectMapValueCallBacks, 0);
+```
+
+while `-_pasteboardWithTarget:name:` creates new wrappers with
+`[p autorelease]` and stores the server proxy in the wrapper's
+`target` ivar (`ASSIGN`).  `-dealloc` then does `[target release]`.
+The consequence: the wrapper's lifetime is the enclosing autorelease
+pool's.  When that pool drains, the wrapper deallocates and releases
+the target — even though the caller (and any in-flight DO round trip or
+callback) still uses it; the next FFI dispatch on the dead proxy
+crashes.  Retaining the wrapper in the registry breaks the chain: the
+wrapper (and with it the target) now lives until `releaseGlobally`,
+which removes the registry entry *after* telling the server to destroy
+its side.  Unique pasteboards — the only ones `releaseGlobally`
+applies to; general/font/ruler/find/drag are protected by the existing
+illegal-release exception — are still freed completely, exactly as
+before; the general pasteboard becomes one long-lived object, which
+matches Cocoa's long-lived `NSPasteboard` objects.  No caller-visible
+API changes.
+
+**Proposed fix** (`Source/NSPasteboard.m`, in `+initialize`):
+
+```diff
+@@ -1106,7 +1106,7 @@ static  NSMapTable              *mimeMap = NULL;
+       [self setVersion: 1];
+       dictionary_lock = [[NSRecursiveLock alloc] init];
+       pasteboards = NSCreateMapTable (NSObjectMapKeyCallBacks,
+-	NSNonRetainedObjectMapValueCallBacks, 0);
++	NSObjectMapValueCallBacks, 0);
+     }
+ }
+```
+
+## Verification (GNUstep patches)
+
+Developed and verified on the aarch64 dev machine against the pinned
+gnustep-gui on the hermetic stack, with the throwaway probe of the
+app's view chain + pasteboard flow (two variants: full, and one
+skipping the pasteboard sections), run 15 times each before and after
+the patches:
+
+- **before**: the full-variant probe (the 1998 `close`+`release`
+  teardown and an unretained pasteboard, i.e. the 1998 patterns left
+  unguarded) crashed in **8/10** natural runs (all at the window
+  teardown; the pasteboard FFI manifestation additionally under gdb);
+  the no-pasteboard variant in **7/15** (its plain build: 2/10–7/15).
+- **after** (both patches in): **0/15** for every variant, including
+  the full one; the app's 10 s live run is clean.
+- A control probe written with the *corrected* patterns (`setReleased
+  WhenClosed: NO` + retaining the pasteboard) ran 0/40 across both
+  variants (15 natural + 15 natural + 10 under gdb) before *and* after
+  the patches — confirming that the two patched semantics, and nothing
+  else, were the root cause.
+
