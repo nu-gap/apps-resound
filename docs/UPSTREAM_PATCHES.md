@@ -462,7 +462,9 @@ in **gnustep-gui** are required for the 1998 code to run safely.  The
 1998 sources must stay byte-identical (except forced platform
 mappings), so anything a 1998 ownership pattern needs has to come from
 the framework — hence patches, applied by the stack build step, with
-`GNUSTEP_STACK_REV` bumped to `"2"`.
+`GNUSTEP_STACK_REV` bumped to `"2"`.  (`third_party/build-sndkit.sh`
+deliberately picks up only `MusicKit-*.diff`, so the two patch families
+in `patches/` do not interfere.)
 
 Both patches were developed against the pinned gnustep-gui on the
 aarch64 dev machine with a throwaway probe (`MiscSoundView` /

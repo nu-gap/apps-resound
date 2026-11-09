@@ -40,8 +40,12 @@ SRC="$ROOT/third_party/MusicKit/MusicKit"
 # Port patches against the pinned snapshot.  -N keeps this idempotent on
 # re-runs; a failed application (e.g. after a submodule bump) aborts the
 # build loudly.
+#
+# Only MusicKit-*.diff: the GNUstep-*.diff in the same directory belong
+# to the CI GNUstep stack build (they apply to the fetched gnustep-gui
+# source, see .github/workflows/build.yml), not to this submodule.
 echo "==> applying port patches"
-for p in "$ROOT"/patches/*.diff; do
+for p in "$ROOT"/patches/MusicKit-*.diff; do
   [ -e "$p" ] || continue
   (
     cd "$ROOT/third_party/MusicKit"
