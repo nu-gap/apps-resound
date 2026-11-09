@@ -18,8 +18,19 @@ name: Build
 
 on:
   push:
+    # The screenshot step publishes to this branch with the workflow
+    # token; exclude it so the bot's own pushes do not re-trigger the
+    # build (see docs/README_SCREENSHOT.md).
+    branches-ignore:
+      - screenshot
   pull_request:
   workflow_dispatch:
+
+# The screenshot step pushes its result to the 'screenshot' branch with
+# the per-run GITHUB_TOKEN, which is read-only by default; grant write
+# (see docs/README_SCREENSHOT.md for the mechanics).
+permissions:
+  contents: write
 
 env:
   GNUSTEP_PREFIX: ${{ github.workspace }}/gnustep
@@ -91,7 +102,8 @@ jobs:
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
             libgnutls28-dev libxslt1-dev \
             portaudio19-dev libsndfile1-dev libportmidi-dev libasound2-dev \
-            xvfb openbox fonts-dejavu-core
+            xvfb openbox fonts-dejavu-core \
+            imagemagick xdotool
 
       - name: Build GNUstep stack from source
         if: steps.gnustep-cache.outputs.cache-hit != 'true'
@@ -341,3 +353,89 @@ jobs:
             echo "launch check failed (rc=$rc)"
             exit "$rc"
           fi
+
+      - name: Capture app screenshot (for the README)
+        # The real app under xvfb + openbox; the *whole screen* is
+        # captured with ImageMagick, so that every window the app shows
+        # up (there will be several once the port matures) is in the
+        # picture.  The app currently shows a 1x1 window (no main nib
+        # yet), so the image is a blank desktop for now; the same
+        # capture shows the UI as the ported units land, and the
+        # publish step below ships it to the 'screenshot' branch that
+        # the README links (docs/README_SCREENSHOT.md).  Non-fatal,
+        # like the launch check: a flaky display must not mask a build
+        # result.  (A per-window capture does not work: the current
+        # 1x1 window fails ImageMagick's XGetImage with a bad resource
+        # while the root window is always capturable.)
+        continue-on-error: true
+        run: |
+          # Not -u: GNUstep.sh references unset shell-variant variables.
+          set -ex
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          EXE=$(find Resound.app -type f -name Resound | head -n 1)
+          test -n "$EXE"
+          OUT="$RUNNER_TEMP/Resound-screenshot.png"
+          timeout 60 xvfb-run -a -s "-screen 0 1280x800x24" bash -c '
+            openbox >/dev/null 2>&1 &
+            sleep 1
+            "$1" >/dev/null 2>&1 &
+            app=$!
+            # Readiness gate: wait for the app to have at least one
+            # window, then give it a moment to draw.
+            ready=0
+            for i in $(seq 1 30); do
+              if [ -n "$(xdotool search --name Resound 2>/dev/null | head -n 1 || true)" ]; then
+                ready=1
+                break
+              fi
+              sleep 0.5
+            done
+            if [ "$ready" -ne 1 ]; then
+              echo "no app window appeared - no capture"
+              kill "$app" 2>/dev/null || true
+              exit 1
+            fi
+            sleep 2
+            import -window root -strip "$2"
+            kill "$app" 2>/dev/null || true
+          ' _ "$EXE" "$OUT"
+          ls -la "$OUT"
+          identify "$OUT"
+
+      - name: Publish the screenshot to the 'screenshot' branch
+        # The README (on any branch) links the raw URL of the PNG on
+        # this dedicated branch, so no README edit - and no rebuild -
+        # is ever needed when the image changes.  Push events only
+        # (fork PRs would not be able to push anyway); byte-identical
+        # captures are skipped, so a stable UI costs no bot commits.
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          set -ex
+          PNG="$RUNNER_TEMP/Resound-screenshot.png"
+          if [ ! -s "$PNG" ]; then
+            echo "no capture from the previous step - skipping"
+            exit 0
+          fi
+          DIR="$RUNNER_TEMP/screenshot-push"
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q
+          git config user.name "Resound Screenshot Bot"
+          git config user.email "resound-screenshot@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads origin screenshot >/dev/null 2>&1; then
+            git fetch -q --depth 1 origin screenshot
+            git checkout -q -B screenshot FETCH_HEAD
+            if git show screenshot:Resound-screenshot.png 2>/dev/null | cmp -s - "$PNG"; then
+              echo "screenshot unchanged - no bot commit"
+              exit 0
+            fi
+          fi
+          cp "$PNG" Resound-screenshot.png
+          git add Resound-screenshot.png
+          git commit -q -m "update app screenshot (from $GITHUB_SHA)"
+          git push -q origin screenshot
+          echo "published the screenshot branch"
