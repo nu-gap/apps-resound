@@ -1,0 +1,163 @@
+diff --git a/Plugins/Nib/GormNibWrapperLoader.h b/Plugins/Nib/GormNibWrapperLoader.h
+index 08b80926..79b6c62a 100644
+--- a/Plugins/Nib/GormNibWrapperLoader.h
++++ b/Plugins/Nib/GormNibWrapperLoader.h
+@@ -39,6 +39,7 @@ GS_EXPORT_CLASS
+ {
+   NSIBObjectData *_container;
+   id _nibFilesOwner;
++  NSMutableArray *_decodeOrder;
+ }
+ /**
+  * Performs isTopLevelObject  operation.
+diff --git a/Plugins/Nib/GormNibWrapperLoader.m b/Plugins/Nib/GormNibWrapperLoader.m
+index f2985a66..a4c5040d 100644
+--- a/Plugins/Nib/GormNibWrapperLoader.m
++++ b/Plugins/Nib/GormNibWrapperLoader.m
+@@ -80,7 +80,7 @@
+ 	  GormClassManager *classManager = [document classManager];
+ 	  id               docFilesOwner;
+ 	  NSMapTable       *objects;
+-	  NSArray          *objs;
++	  NSSet            *objs;
+ 	  NSEnumerator     *en;
+ 	  id               o;
+ 	  NSMapTable       *classesTable;
+@@ -147,6 +147,11 @@
+ 
+ 	      u = [[NSKeyedUnarchiver alloc] initForReadingWithData: data];
+ 	      [u setDelegate: self];
++	      /*
++	       * Record the objects in decode order (a pure function of the
++	       * archive) for the deterministic graph walk below.
++	       */
++	      _decodeOrder = [[NSMutableArray alloc] init];
+ 	      
+ 	      /*
+ 	       * Special internal classes
+@@ -188,10 +193,32 @@
+ 		  objects = [_container names];
+ 		  /* Historical nibs may name only File's Owner.  The ownership
+                    * map, not the names map, defines the complete graph. */
+-                  objs = [[NSSet setWithArray: [NSAllMapTableKeys(objects)
+-                    arrayByAddingObjectsFromArray:
+-                      NSAllMapTableKeys([_container objects])]] allObjects];
+-		  en = [objs objectEnumerator];
++		  objs = [NSSet setWithArray: [NSAllMapTableKeys(objects)
++		    arrayByAddingObjectsFromArray:
++		      NSAllMapTableKeys([_container objects])]];
++		  /*
++		   * Walk the graph in decode order, not set order.  A set's
++		   * enumeration order is pointer-hash dependent and varies with
++		   * each run's memory layout, but the -attachObject: calls
++		   * below run in this order and each one names its object:
++		   * -setName:forObject: in GormDocument picks the first free
++		   * index of the class base name, so the walk order decides
++		   * the names of every unnamed object, and those names are
++		   * written into the gorm.  The unarchiver delegate records
++		   * the graph in decode order, a pure function of the nib;
++		   * anything missing from the record (should not occur) is
++		   * appended last in set order.
++		   */
++		  {
++		   NSMutableArray *ordered = [NSMutableArray array];
++		   for (id x in _decodeOrder)
++		     if ([objs containsObject: x] && ![ordered containsObject: x])
++		  	[ordered addObject: x];
++		   for (id x in [objs allObjects])
++		     if (![ordered containsObject: x])
++		  	[ordered addObject: x];
++		   en = [ordered objectEnumerator];
++		  }
+ 		  o = nil;
+ 		  
+ 		  //
+@@ -273,8 +300,22 @@
+ 			}
+ 		    }
+ 		  
+-                  /* Preserve explicit names after all parents are attached. */
+-                  en = [NSAllMapTableKeys([_container names]) objectEnumerator];
++                  /* Preserve explicit names after all parents are attached,
++                    * in decode order so that explicit-name collisions
++                    * resolve the same way on every run. */
++                  {
++                    NSSet *named = [NSSet setWithArray:
++                      NSAllMapTableKeys([_container names])];
++                    NSMutableArray *ordered = [NSMutableArray array];
++                    for (id x in _decodeOrder)
++                      if ([named containsObject: x]
++                          && ![ordered containsObject: x])
++                        [ordered addObject: x];
++                    for (id x in [named allObjects])
++                      if (![ordered containsObject: x])
++                        [ordered addObject: x];
++                    en = [ordered objectEnumerator];
++                  }
+                   while ((o = [en nextObject]) != nil)
+                     {
+                       id obj = [o isKindOfClass: [NSWindowTemplate class]]
+@@ -285,6 +326,34 @@
+                         [document setName: name forObject: obj];
+                     }
+ 
++                  /*
++                   * Legacy OpenStep/Rhapsody nibs named the application main
++                   * menu "MainMenu" (or "_NSMainMenu").  The GNUstep gorm
++                   * runtime loader (GSNibContainer -awakeWithContext:) auto-
++                   * wires the main menu by looking up the name table for the
++                   * key "NSMenu", so a converted gorm that keeps the legacy
++                   * name would leave the menu orphaned: no menu bar appears
++                   * and the menu key-equivalents (File > Open, ...) are
++                   * dead.  Modern gorm documents already name the main menu
++                   * "NSMenu" (see -attachObject: in GormDocument), so rename
++                   * the legacy main menu to the name the runtime expects.
++                   * The object is already attached and named by the loop
++                   * above; renaming it here updates the name table, and
++                   * because connections reference it by object identity,
++                   * every written connection and the name table follow to
++                   * "NSMenu".  -setName:forObject: bails out if the name is
++                   * already taken, so a nib that genuinely has both a
++                   * "MainMenu" and an "NSMenu" object is left untouched.
++                   */
++                  {
++                    id mainMenu = [document objectForName: @"MainMenu"];
++                    if (mainMenu == nil)
++                      mainMenu = [document objectForName: @"_NSMainMenu"];
++                    if ([mainMenu isKindOfClass: [NSMenu class]]
++                        && [document objectForName: @"NSMenu"] == nil)
++                      [document setName: @"NSMenu" forObject: mainMenu];
++                  }
++
+ 		  //
+ 		  // Add custom classes...
+ 		  //
+@@ -395,6 +464,8 @@
+   [u release];
+   _container = nil;
+   _nibFilesOwner = nil;
++  [_decodeOrder release];
++  _decodeOrder = nil;
+ 
+   // return the result.
+   return result;
+@@ -448,6 +519,19 @@
+       obj = o; // replace the object if it's an NSCustomObject...
+     }
+ 
++  /*
++   * Record the final (possibly replaced) object in decode order, for
++   * the deterministic graph walk in -loadFileWrapper:withDocument:.
++   */
++  if (_decodeOrder != nil)
++    [_decodeOrder addObject: obj];
++
+   return obj;
+ }
++
++- (void) dealloc
++{
++  RELEASE(_decodeOrder);
++  [super dealloc];
++}
+ @end

@@ -17,8 +17,8 @@ See also: [https://nu-gap.github.io/apps-resound/README.html](https://nu-gap.git
 - [x] Audio engine — playback and recording
 - [x] View chain and console — sound view, volume meter, sound tracker
 - [x] NIB migration — the 1998 `.nib` folders converted to `.gorm` (43/44, one documented exception), gated in CI
-- [ ] File browser (`FileController`) — the app's main window; the next unit
-- [ ] Volume controls and tapper
+- [x] File unit — the 1998 main model live at app startup (main window + menu; the `FileController` and its document table ported in FU1–FU3, FU4 stubs the model's still-blocked classes)
+- [ ] Volume controls and tapper — the next unit
 - [ ] Module API and the ten module implementations
 - [ ] Packaging and validation on the target platforms
 

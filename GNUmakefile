@@ -41,13 +41,16 @@ Resound_RESOURCE_FILES_DIR =	Resources
 Resound_PRINCIPAL_CLASS=	NSApplication
 Resound_APPLICATION_ICON=	Resound.tiff
 
-# The main nib (NSMainNibFile) is left unset for now: the Resound.nib
-# conversion to .gorm is done (see below and docs/RESOUND_SNDKIT_PLAN.md,
-# NIB migration section), but loading it would instantiate the
-# FileController, which is still blocked.  Once the FileController unit
-# lands, set:
-#   Resound_MAIN_MODEL_FILE = Resound
-#
+# The main nib (NSMainNibFile): the Resound.gorm main model, converted
+# from the 1998 Resound.nib (docs/RESOUND_SNDKIT_PLAN.md, NIB migration
+# section).  It was left unset until the FileController unit landed,
+# because loading it instantiates the FileController; since FU2 it is
+# set (gnustep-make turns it into NSMainNibFile in the generated
+# Info-gnustep.plist), so the app comes up with its 1998 main window.
+# The ModuleController object in the nib comes up nil under the no-modules
+# build (the 1998 FileController nil-guards every use, see FU2).
+Resound_MAIN_MODEL_FILE = Resound
+
 # Resource files (added step by step as they are migrated).
 #
 # Note: ResoundInfo.plist (next to this GNUmakefile) is a build-time
@@ -103,6 +106,7 @@ Resound_OBJC_FILES= \
 	Source/SoundDocumentTable.m \
 	Source/FileController.m \
 	Source/ResoundScrollView.m \
+	Source/ResoundMissingClasses.m \
 	Source/SoundManager.m \
 	Source/MiscVolumeMeter.m \
 	Source/ResoundMiscVolumeMeter.m \

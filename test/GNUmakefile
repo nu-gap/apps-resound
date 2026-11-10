@@ -48,18 +48,27 @@ resoundio_OBJC_FILES = resoundio.m ../Source/Sound-ResoundSound.m
 
 # The NIB tests compile the ported app sources the way the app does
 # (minus Resound_main.m, whose NSApplicationMain the test replaces):
-# that is what makes the console fully loadable under --load, since
-# the console is the only unit whose classes are ported so far.
+# that is what makes the console and the main model fully loadable
+# under --load - the main model needs the file unit's classes plus
+# the ResoundMissingClasses stubs (see there), which stand in for the
+# blocked classes it instantiates.
 resoundnib_OBJC_FILES = resoundnib.m \
 	../Source/ResoundNibs.m \
 	../Source/Extra.m \
 	../Source/ModuleMenuNode.m \
 	../Source/Sound-ResoundSound.m \
+	../Source/SoundDocumentTable.m \
+	../Source/FileController.m \
+	../Source/ResoundScrollView.m \
+	../Source/ResoundMissingClasses.m \
 	../Source/SoundManager.m \
 	../Source/MiscVolumeMeter.m \
 	../Source/ResoundMiscVolumeMeter.m \
 	../Source/MiscSoundTracker.m \
-	../Source/ConsoleManager.m
+	../Source/ConsoleManager.m \
+	../Source/MiscSoundView.m \
+	../Source/MiscSoundViewRuler.m \
+	../Source/ResoundMiscSoundView.m
 
 resoundnib_C_FILES = ../Source/fft.c
 
