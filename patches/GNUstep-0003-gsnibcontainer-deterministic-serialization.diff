@@ -1,0 +1,185 @@
+diff --git a/Source/GSGormLoading.m b/Source/GSGormLoading.m
+index efd14906e..392c5c767 100644
+--- a/Source/GSGormLoading.m
++++ b/Source/GSGormLoading.m
+@@ -35,6 +35,7 @@
+ #import <Foundation/NSNotification.h>
+ #import <Foundation/NSArchiver.h>
+ #import <Foundation/NSSet.h>
++#import <Foundation/NSMapTable.h>
+ #import "AppKit/NSApplication.h"
+ #import "AppKit/NSControl.h"
+ #import "AppKit/NSMenu.h"
+@@ -116,6 +117,88 @@ static NSString *GSInternalNibItemAddedNotification = @"_GSInternalNibItemAddedN
+ }
+ @end
+ 
++/*
++ * .gorm files archive the container's collections in their in-memory
++ * order.  topLevelObjects is a set, and a set's enumeration order is
++ * pointer-hash dependent, i.e. it varies with the memory layout of
++ * each run; the writers likewise populate visibleWindows and
++ * deferredWindows from document sets.  Serializing a collection in
++ * that order makes the archive bytes a function of the run rather
++ * than of the model: converting the same source twice produced
++ * different objects.gorm files, so the gorm conversion output was
++ * not reproducible.
++ *
++ * The collections are instead archived in canonical name order: an
++ * object's name-table key is a pure function of the input model, so
++ * the archive no longer depends on the run-time memory layout.  The
++ * name table maps names to objects, while the sort needs the name of
++ * each object, so the encoder builds the reversed mapping (an
++ * object-keyed map table, see gsnibNamesOf) and passes it as the
++ * sort context.  Objects without a name (which shouldn't occur for
++ * top-level objects) sort after the named ones, keeping their input
++ * order among themselves.
++ */
++static NSComparisonResult
++gsnibCompareObjectsByName (id objA, id objB, void *context)
++{
++  NSMapTable	*names = (NSMapTable *)context;
++  NSString	*nameA = [names objectForKey: objA];
++  NSString	*nameB = [names objectForKey: objB];
++
++  if (nameA == nil)
++    {
++      if (nameB == nil)
++	return 0;
++      return NSOrderedDescending;	/* named objects first */
++    }
++  if (nameB == nil)
++    return NSOrderedAscending;
++  return [nameA compare: nameB];
++}
++
++/*
++ * The reversed name table: a mapping from an object to its name, for
++ * use as the context of gsnibCompareObjectsByName.  Returns an
++ * autoreleased map table.
++ */
++static NSMapTable *
++gsnibNamesOf (NSDictionary *nameTable)
++{
++  NSMapTable	*names;
++  NSEnumerator	*ken;
++  id		key;
++
++  names = [NSMapTable mapTableWithKeyOptions: NSMapTableStrongMemory
++		       valueOptions: NSMapTableStrongMemory];
++  ken = [nameTable keyEnumerator];
++  while ((key = [ken nextObject]) != NULL)
++    [names setObject: key forKey: [nameTable objectForKey: key]];
++  return names;
++}
++
++/*
++ * A canonical (name-sorted) copy of a collection, for deterministic
++ * serialization.  Returns an autoreleased mutable array; the encoder
++ * archives it as an array, and -initWithCoder: normalizes the
++ * decoded top-level array back to a set.
++ */
++static NSMutableArray *
++gsnibDeterministicArray (id collection, NSMapTable *names)
++{
++  NSArray	*array;
++
++  /*
++   * NSSet is not an NSArray subclass in GNUstep; go through the
++   * allObjects bridge for sets.
++   */
++  if ([collection isKindOfClass: [NSSet class]])
++    array = [collection allObjects];
++  else
++    array = collection;
++  return [[array sortedArrayUsingFunction: gsnibCompareObjectsByName
++			         context: names] mutableCopy];
++}
++
+ /*
+  *	The GSNibContainer class manages the internals of a nib file.
+  */
+@@ -341,12 +424,23 @@ static NSString *GSInternalNibItemAddedNotification = @"_GSInternalNibItemAddedN
+ 
+ - (void) encodeWithCoder: (NSCoder*)aCoder
+ {
++  /*
++   * Object -> name: the reversed name table, for the canonical
++   * collection order in the branches below.
++   */
++  NSMapTable	*names = gsnibNamesOf (nameTable);
++
+   int version = [GSNibContainer version];
+   if (version == GNUSTEP_NIB_VERSION)
+     {
+-      [aCoder encodeObject: topLevelObjects];
+-      [aCoder encodeObject: visibleWindows];
+-      [aCoder encodeObject: deferredWindows];
++      /*
++       * Archive the collections in canonical (name-sorted) order;
++       * their in-memory order is run-dependent (see
++       * gsnibDeterministicArray above).
++       */
++      [aCoder encodeObject: gsnibDeterministicArray (topLevelObjects, names)];
++      [aCoder encodeObject: gsnibDeterministicArray (visibleWindows, names)];
++      [aCoder encodeObject: gsnibDeterministicArray (deferredWindows, names)];
+       [aCoder encodeObject: nameTable];
+       [aCoder encodeObject: connections];
+       [aCoder encodeObject: customClasses];
+@@ -354,22 +448,22 @@ static NSString *GSInternalNibItemAddedNotification = @"_GSInternalNibItemAddedN
+   else if (version == 1)
+     {
+       NSMutableDictionary *nt = [NSMutableDictionary dictionaryWithDictionary: nameTable];
+-      [nt setObject: [NSMutableArray arrayWithArray: visibleWindows]
++      [nt setObject: gsnibDeterministicArray (visibleWindows, names)
+ 	  forKey: @"NSVisible"];
+-      [nt setObject: [NSMutableArray arrayWithArray: deferredWindows]
++      [nt setObject: gsnibDeterministicArray (deferredWindows, names)
+ 	  forKey: @"NSDeferred"];
+       [nt setObject: [NSMutableDictionary dictionaryWithDictionary: customClasses]
+ 	  forKey: @"GSCustomClassMap"];
+       [aCoder encodeObject: nt];
+       [aCoder encodeObject: connections];
+-      [aCoder encodeObject: topLevelObjects];
++      [aCoder encodeObject: gsnibDeterministicArray (topLevelObjects, names)];
+     }
+   else if (version == 0)
+     {
+       NSMutableDictionary *nt = [NSMutableDictionary dictionaryWithDictionary: nameTable];
+-      [nt setObject: [NSMutableArray arrayWithArray: visibleWindows]
++      [nt setObject: gsnibDeterministicArray (visibleWindows, names)
+ 	  forKey: @"NSVisible"];
+-      [nt setObject: [NSMutableArray arrayWithArray: deferredWindows]
++      [nt setObject: gsnibDeterministicArray (deferredWindows, names)
+ 	  forKey: @"NSDeferred"];
+       [nt setObject: [NSMutableDictionary dictionaryWithDictionary: customClasses]
+ 	  forKey: @"GSCustomClassMap"];
+@@ -463,6 +557,28 @@ static NSString *GSInternalNibItemAddedNotification = @"_GSInternalNibItemAddedN
+ 		   format: @"Unable to read GSNibContainer version #%d.  GSNibContainer version for the installed gui lib is %d.  Please upgrade to a more recent version of the gui library.", version, GNUSTEP_NIB_VERSION];
+     }
+ 
++  /*
++   * Deterministically serialized files store the top-level objects as
++   * a name-sorted array (see -encodeWithCoder:); older files store a
++   * set.  Normalize to the set the in-process consumers expect (the
++   * version 0 path builds the set itself, so it is skipped; a missing
++   * collection stays nil).
++   */
++  if (topLevelObjects != nil
++      && [topLevelObjects isKindOfClass: [NSSet class]] == NO)
++    {
++      NSMutableSet	*set;
++
++      /*
++       * The object decoded from a deterministically serialized file
++       * is an array (the ivar's declared type is a historical
++       * artifact); hand it over as a plain object reference.
++       */
++      set = [[NSMutableSet alloc] initWithArray: (id)topLevelObjects];
++      RELEASE(topLevelObjects);
++      topLevelObjects = set;
++    }
++
+   return self;
+ }
+ 

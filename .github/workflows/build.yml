@@ -73,7 +73,7 @@ jobs:
     env:
       # Bump when the pinned commits below or the port patches applied to
       # them (patches/GNUstep-*.diff) change (invalidates the cache).
-      GNUSTEP_STACK_REV: "2"
+      GNUSTEP_STACK_REV: "3"
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
@@ -200,14 +200,18 @@ jobs:
           # 4. gnustep-gui (AppKit).
           fetch gnustep/libs-gui 8f804fd520c60800961e0bee072066f4bbadca94
           cd libs-gui-8f804fd520c60800961e0bee072066f4bbadca94
-          # Port patches (patches/GNUstep-0001/0002, documented in
-          # docs/UPSTREAM_PATCHES.md): the 1998 close/release window pattern
-          # and the pasteboard wrapper/target lifetimes.  Failing to apply
-          # fails the build, like the MusicKit patches (set -e above).
+          # Port patches (patches/GNUstep-0001/0002/0003, documented in
+          # docs/UPSTREAM_PATCHES.md): the 1998 close/release window
+          # pattern, the pasteboard wrapper/target lifetimes, and
+          # deterministic .gorm serialization of the container's
+          # top-level collections.  Failing to apply fails the build,
+          # like the MusicKit patches (set -e above).
           patch -p1 --dry-run < "${GITHUB_WORKSPACE}/patches/GNUstep-0001-nswindow-released-when-closed-default.diff"
           patch -p1 --dry-run < "${GITHUB_WORKSPACE}/patches/GNUstep-0002-nspasteboard-retained-wrapper-map.diff"
+          patch -p1 --dry-run < "${GITHUB_WORKSPACE}/patches/GNUstep-0003-gsnibcontainer-deterministic-serialization.diff"
           patch -p1 --forward < "${GITHUB_WORKSPACE}/patches/GNUstep-0001-nswindow-released-when-closed-default.diff"
           patch -p1 --forward < "${GITHUB_WORKSPACE}/patches/GNUstep-0002-nspasteboard-retained-wrapper-map.diff"
+          patch -p1 --forward < "${GITHUB_WORKSPACE}/patches/GNUstep-0003-gsnibcontainer-deterministic-serialization.diff"
           # Release trees ship the prebuilt configure that Gershwin's build
           # (and the sandbox rehearsal) ran; regenerate only if missing.
           [ -f configure ] || { aclocal && autoconf; }
@@ -327,8 +331,9 @@ jobs:
           path: Resound.app
 
       - name: Launch check (non-fatal)
-        # The app has no main nib yet, so a healthy launch just sits in
-        # its event loop until the timer fires: exit 124 is a pass.
+        # The app starts with its 1998 main window (the converted main
+        # model is live at startup) and then just sits in its event loop
+        # until the timer fires: exit 124 is a pass.
         # Non-fatal for now so that a flaky display environment can not
         # mask a build result; the build step is the hard gate.
         #
@@ -357,15 +362,14 @@ jobs:
       - name: Capture app screenshot (for the README)
         # The real app under xvfb + openbox; the *whole screen* is
         # captured with ImageMagick, so that every window the app shows
-        # up (there will be several once the port matures) is in the
-        # picture.  The app currently shows a 1x1 window (no main nib
-        # yet), so the image is a blank desktop for now; the same
-        # capture shows the UI as the ported units land, and the
-        # publish step below ships it to the 'screenshot' branch that
-        # the README links (docs/README_SCREENSHOT.md).  Non-fatal,
-        # like the launch check: a flaky display must not mask a build
-        # result.  (A per-window capture does not work: the current
-        # 1x1 window fails ImageMagick's XGetImage with a bad resource
+        # up is in the picture.  The app comes up with its 1998 main
+        # window and menu (the converted main model is live at startup),
+        # and the same capture shows the UI further as the ported units
+        # land; the publish step below ships it to the 'screenshot'
+        # branch that the README links (docs/README_SCREENSHOT.md).
+        # Non-fatal, like the launch check: a flaky display must not mask
+        # a build result.  (A per-window capture does not work: app
+        # windows can fail ImageMagick's XGetImage with a bad resource
         # while the root window is always capturable.)
         continue-on-error: true
         run: |

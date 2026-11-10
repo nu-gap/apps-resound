@@ -1,6 +1,6 @@
 # Upstream patches
 
-This project carries small port patches for two pinned third-party
+This project carries small port patches for three pinned third-party
 codebases, all kept in `patches/`:
 
 - **leighsmith/MusicKit** (the SndKit source, vendored as the pinned
@@ -13,7 +13,14 @@ codebases, all kept in `patches/`:
   CI prefix by `.github/workflows/build.yml`; there is no submodule —
   the CI fetches the trees, and the stack build step applies the
   patches to the fetch): two lifetime-semantics fixes in gnustep-gui
-  that the 1998 code (which must stay byte-identical) depends on.
+  that the 1998 code (which must stay byte-identical) depends on, plus
+  a serialization-determinism fix in the same library for reproducible
+  `.gorm` conversion.
+- **gnustep/apps-gorm** (the `gormtool` nib→gorm converter, pinned
+  source commit; a dev-time tool — the CI validates the files it
+  produces but never builds or runs it): a main-menu rename and a
+  deterministic object-graph walk, so converting the same 1998 `.nib`
+  twice yields byte-identical `.gorm` files.
 
 MusicKit patches apply from the repository root:
 
@@ -33,13 +40,27 @@ first, so a stale patch fails the build before it half-applies):
 cd libs-gui-8f804fd520c60800961e0bee072066f4bbadca94
 patch -p1 --dry-run < ../GNUstep-0001-nswindow-released-when-closed-default.diff
 patch -p1 --dry-run < ../GNUstep-0002-nspasteboard-retained-wrapper-map.diff
+patch -p1 --dry-run < ../GNUstep-0003-gsnibcontainer-deterministic-serialization.diff
 patch -p1 < ../GNUstep-0001-nswindow-released-when-closed-default.diff
 patch -p1 < ../GNUstep-0002-nspasteboard-retained-wrapper-map.diff
+patch -p1 < ../GNUstep-0003-gsnibcontainer-deterministic-serialization.diff
+```
+
+The apps-gorm patch applies the same way from the root of a source
+checkout of the pinned converter (`d11b5291`, branch
+`OPENSTEP_nib_support`; a dev-time recipe — see the *apps-gorm*
+section below):
+
+```sh
+cd apps-gorm-d11b5291
+patch -p1 --dry-run < ../Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff
+patch -p1 < ../Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff
 ```
 
 (When a fix lands upstream, drop the corresponding patch and bump the
 pin — for the stack, that means `GNUSTEP_STACK_REV` in
-`.github/workflows/build.yml`.)
+`.github/workflows/build.yml`; the converter pin is the checkout this
+project converts from, recorded in `docs/RESOUND_SNDKIT_PLAN.md`.)
 
 ---
 
@@ -458,23 +479,28 @@ The CI builds a hermetic GNUstep stack from pinned source commits into
 its own prefix (`.github/workflows/build.yml`: libobjc2 `c9f4002a`,
 gnustep-make `4e31a03…`, gnustep-base `5bda5222`, gnustep-gui
 `8f804fd5…`, gnustep-back `bbcc3de7…`).  Two lifetime-semantics fixes
-in **gnustep-gui** are required for the 1998 code to run safely.  The
-1998 sources must stay byte-identical (except forced platform
-mappings), so anything a 1998 ownership pattern needs has to come from
-the framework — hence patches, applied by the stack build step, with
-`GNUSTEP_STACK_REV` bumped to `"2"`.  (`third_party/build-sndkit.sh`
-deliberately picks up only `MusicKit-*.diff`, so the two patch families
-in `patches/` do not interfere.)
+in **gnustep-gui** are required for the 1998 code to run safely, and
+a third, serialization-determinism fix in the same library makes the
+port's `.gorm` conversion reproducible.  The 1998 sources must stay
+byte-identical (except forced platform mappings), so anything a 1998
+ownership pattern needs has to come from the framework — hence
+patches, applied by the stack build step, with `GNUSTEP_STACK_REV`
+bumped to `"3"`.  (`third_party/build-sndkit.sh`
+deliberately picks up only `MusicKit-*.diff`, so the three patch
+families in `patches/` do not interfere.)
 
-Both patches were developed against the pinned gnustep-gui on the
-aarch64 dev machine with a throwaway probe (`MiscSoundView` /
-`MiscSoundViewRuler` / `ResoundMiscSoundView` in a real window,
-exactly the app's view chain, plus the 1998 pasteboard cut/copy flow)
-and verified on the hermetic stack (see *Verification* below).  Both
-were submitted upstream on 2026-11-09 (G1 as libs-gui issue #1028, G2
-as issue #1029, referenced in their sections below); when one of them
-lands, drop the corresponding patch on the next stack pin bump (and
-bump `GNUSTEP_STACK_REV`).
+The lifetime fixes (G1, G2) were developed against the pinned
+gnustep-gui on the aarch64 dev machine with a throwaway probe
+(`MiscSoundView` / `MiscSoundViewRuler` / `ResoundMiscSoundView` in a
+real window, exactly the app's view chain, plus the 1998 pasteboard
+cut/copy flow) and submitted upstream on 2026-11-09 (G1 as libs-gui
+issue #1028, G2 as issue #1029, referenced in their sections below);
+when one of them lands, drop the corresponding patch on the next stack
+pin bump (and bump `GNUSTEP_STACK_REV`).  The determinism fix (G3) was
+developed against the same pinned tree with a differential conversion
+of the 1998 nibs (convert the same source twice, compare bytes) and is
+not submitted upstream yet.  All three were verified on the hermetic
+stack (see *Verification* below).
 
 ## G1. `NSWindow`: `isReleasedWhenClosed` defaults to NO (patch `GNUstep-0001-nswindow-released-when-closed-default.diff`)
 
@@ -612,13 +638,60 @@ API changes.
  }
 ```
 
+## G3. `GSNibContainer`: serialize the top-level collections in canonical order (patch `GNUstep-0003-gsnibcontainer-deterministic-serialization.diff`)
+
+**Suggested issue title** (not submitted upstream yet): *Gorm serialization is not reproducible: the container's top-level collections are sets whose enumeration order is pointer-hash dependent, so converting the same nib twice yields different `.gorm` bytes*
+
+**Symptom.** Converting the same 1998 `.nib` to `.gorm` twice
+produces different files: the objects appear in a different sequence
+on each run, and for the menu-heavy main model the auto-generated
+names differ as well (the names are the converter's half of the
+story, see the *apps-gorm* section).  The model is identical; the
+archive bytes are not.
+
+**Explanation.** `GSNibContainer`'s `topLevelObjects` is a
+`NSMutableSet`, and a GNUstep set enumerates in pointer-hash order —
+which member comes first depends on the run's memory layout, not on
+the model; the writers likewise populate `visibleWindows` and
+`deferredWindows` from document sets.  The keyed archiver assigns
+object ids in first-encounter order, so serializing a collection in
+set order makes the whole objects section a function of the run.  The
+name table, in contrast, maps *names* to objects, and a name is a
+pure function of the input model.  The fix therefore archives the
+three collections as arrays in canonical (name-sorted) order — the
+sort needs each object's name while the name table is the other
+direction, so the encoder builds a reversed object→name map table,
+and `NSSet` is not an `NSArray` subclass in the pinned Foundation, so
+the sort goes through the `allObjects` bridge — and the decoder
+normalizes a decoded top-level array back to the set the in-process
+consumers expect.  Objects without a name (which should not occur for
+top-level objects) sort after the named ones, keeping their input
+order among themselves.
+
+**Compatibility.** Files written by an unpatched stack store the
+top-level objects as a set; the decoder accepts both encodings, so
+older files load unmodified in the patched one, and the
+newly-converted main-model gorm (the only file the port re-converts)
+loads in the CI-built stack.  The CI never re-converts a nib — it
+only validates the committed files — so this patch is a
+reproducibility feature for anyone who re-converts a 1998 nib with
+the hermetic stack, not a gate dependency.
+
+**Verified.** With the deterministic converter of the *apps-gorm*
+section running against the patched stack, the 1998 `Console.nib`
+(22146 bytes) and `Resound.nib` (15188 bytes) convert to
+byte-identical files across 10 consecutive runs, a `.gorm` re-
+converted to `.gorm` is byte-stable, and the regenerated main-model
+gorm loads in the app (1998 main window + menu; 25 s run clean) and
+passes `resoundnib --check` on all 43 folders.
+
 ## Verification (GNUstep patches)
 
-Developed and verified on the aarch64 dev machine against the pinned
-gnustep-gui on the hermetic stack, with the throwaway probe of the
-app's view chain + pasteboard flow (two variants: full, and one
-skipping the pasteboard sections), run 15 times each before and after
-the patches:
+G1 and G2 were developed and verified on the aarch64 dev machine
+against the pinned gnustep-gui on the hermetic stack, with the
+throwaway probe of the app's view chain + pasteboard flow (two
+variants: full, and one skipping the pasteboard sections), run 15
+times each before and after the patches:
 
 - **before**: the full-variant probe (the 1998 `close`+`release`
   teardown and an unretained pasteboard, i.e. the 1998 patterns left
@@ -632,4 +705,72 @@ the patches:
   variants (15 natural + 15 natural + 10 under gdb) before *and* after
   the patches — confirming that the two patched semantics, and nothing
   else, were the root cause.
+
+G3 was verified with a differential conversion of the 1998 menu nibs
+(`Console`, `Resound`) on the same machine: with the stock converter,
+converting the same nib twice differs; with the full pipeline (G3 +
+the apps-gorm patch below) the output is byte-identical across 10
+runs (22146 / 15188 bytes) with a stable name-key multiset, and the
+regenerated main-model gorm passes `resoundnib --check` on all 43
+folders with the app's 25 s live run clean.
+
+---
+
+# Upstream patches for the nib converter (gnustep/apps-gorm)
+
+The `.gorm` files in this repository were converted from the 1998
+`.nib` folders with `gormtool` from `gnustep/apps-gorm` (branch
+`OPENSTEP_nib_support`, tip `d11b5291`) — the only converter that
+reads the 1998 typed streams (see `docs/RESOUND_SNDKIT_PLAN.md`,
+*NIB / Interface Builder file migration*).  The converter is a
+**dev-time** tool: the CI never builds or runs it — it only validates
+the files it produced (`resoundnib --check`) — so this patch is a
+reproducibility fix for anyone who re-converts a nib with the pinned
+converter, not a gate dependency.  It applies from the root of a
+source checkout of the pinned tree (it carries both changes of the
+conversion, see below).
+
+## Gorm-0001. `GormNibWrapperLoader`: the main menu name and a deterministic object walk (patch `Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff`)
+
+**1. The main menu.** Legacy OpenStep/Rhapsody nibs name the
+application's main menu `MainMenu` (or `_NSMainMenu`).  The gorm
+runtime loader (`GSNibContainer -awakeWithContext:`) wires the menu
+bar by looking up the name-table key `NSMenu` — so a converted gorm
+that keeps the legacy name leaves the menu orphaned: the app runs
+with no menu bar and the menu key-equivalents (File → Open, …) are
+dead.  The fix renames the legacy main menu to `NSMenu` after the
+loader's name-preserving attach loop (the object is already attached;
+the rename updates the name-table entry the runtime looks up).  Modern
+gorm documents already name the main menu `NSMenu` (the gorm document
+model's `-attachObject:` does), so only the legacy conversion is
+affected.
+
+**2. The deterministic walk.** Converting the same nib twice
+produced different *names*: the loader walks the object graph in set
+enumeration order (a `NSSet` union of the container's two map
+tables' keys, then the names map table's keys — both pointer-hash
+ordered, so ASLR-ordered), and the document model's
+`-setName:forObject:` names each unnamed object with the *first free
+index* of its class base name — so the walk order decides which name
+strings exist at all (converting `Resound.nib` twice gave
+`MenuItem(2)` + `MenuItem(42)` in one run and `Menu(8)` +
+`MenuItem(35)` in the next).  The fix records the graph in **decode
+order**: the keyed unarchiver's `-unarchiver:didDecodeObject:`
+delegate fires once per decoded object in a pure function of the
+archive (the reader's typed-stream visitor is byte-ordered), and both
+walks run in that order, with a set-order fallback for anything
+missing from the record (should not occur).  The recording array is
+allocated with `alloc/init`: the autoreleased `[NSMutableArray array]`
+was double-freed through the pool drain at exit (11/11
+`malloc_consolidate` aborts in bisection).
+
+**Verified.** With this patch plus *G3* (the serialization half of
+the same story), the 1998 `Console.nib` and `Resound.nib` convert to
+byte-identical `.gorm` files across 10 runs, the name-table key
+multiset is stable (83 keys for `Resound`), and a `.gorm`→`.gorm`
+round-trip is byte-stable.  The only semantic difference versus the
+old non-deterministic conversion: three auto-named objects carry a
+different (now canonical) index; the menu structure is identical.  The
+known-bad `WaveBuilder.bad.nib` (the pre-`NS`-prefix typed stream the
+reader rejects) is untouched.
 
