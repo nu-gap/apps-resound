@@ -559,6 +559,17 @@ the end-to-end proof — app launch, window close, screenshot, fatal
 gates — runs in CI on the new stack rev.  Issue #1028 can be
 closed: no change requested.
 
+**Independent re-confirmation (2026-11-12).** The #1029 pristine
+repros re-create exactly this teardown crash at the smallest possible
+size: a 15-line program (pure AppKit, no pasteboard, no SndKit)
+running the same `close` + `release` sequence dies 15/15 under the
+stock `YES` default and 0/15 with the one hunk applied, and the full
+Resound.app flow probe agrees.  That is the audit's "probe artifact"
+explanation reproduced at the cleanest possible size — the modern
+`alloc` + `close` + `release` pattern, which no compiled 1998 path
+uses — and it leaves the retirement unchanged: the no-G1 stack is
+what ships.
+
 ## G2. `NSPasteboard`: retain the wrapper in the name→pasteboard map (patch `GNUstep-0002-nspasteboard-retained-wrapper-map.diff`)
 
 **Submitted upstream:** gnustep/libs-gui issue [#1029](https://github.com/gnustep/libs-gui/issues/1029) (2026-11-09), carrying this section verbatim.
@@ -577,7 +588,38 @@ callback vs. a too-early release — is exactly the open question).
 A minimal testcase reply (the autorelease-pool-boundary snippet,
 with the two candidate fix sites) was posted 2026-11-11 (noting
 that the crash was established on the modern libobjc2 runtime
-without ARC); awaiting the maintainers' verdict.
+without ARC).  rfm replied 2026-11-12: no crash on his x86_64 in
+either of his two environments (gcc+GNU runtime, clang+recent
+libobjc2), with or without gpbs running, using "current build from
+github".  A pristine (unpatched) rebuild of the pinned stack then
+reproduced the full picture (2026-11-11/12): `NSPasteboard.m` is
+byte-identical between the pin and the master tip (474 commits
+apart, zero changes to the file), and the pinned `-dealloc` removes
+the registry slot, so the posted snippet cannot crash on current
+code on *any* platform (pointer identity verified; 30/30 clean on
+aarch64) — his non-reproduction is expected, not a counterexample.
+Two programs were then measured against the pristine stack: the
+15-line window program (pure AppKit — `close` + `release`, no
+pasteboard, no SndKit) and the full Resound.app flow probe — both
+die 15/15 SIGSEGV on pristine, and neither crashes again once the
+#1028 one-line hunk is present (15-line program: 0/15 against a
+pin + hunk-only gui; app-flow probe: 0/30 against the 3-patch
+stack).  The crash they die in is the window close/release UAF of
+#1028 (a pattern no compiled 1998 path uses and no modern app
+uses), not the pasteboard-FFI variant of this issue.  The
+pasteboard-specific half is then reproduced as a plain crasher
+(2026-11-13): a ~45-line pure-AppKit program (no SndKit, no
+pasteboard dependency beyond gpbs) that re-uses the
+generalPasteboard wrapper across the pool boundary — the 1998 app
+flow pattern the posted snippet never does — with the
+application-like heap traffic that makes the re-use fatal: 30/30
+SIGSEGV on the pristine pinned gui (scribbled isa from the re-used
+chunk, dies in the class lookup), 0/30 with the one-line
+registry-retain hunk (the wrapper pointer survives the pool), and
+10/10 vs 0/10 on the ASAN build of the same stack (the
+heap-use-after-free with allocation/free/use stacks, independent of
+re-use luck).  A postable repro document (program inline +
+backtrace + the A/B) is ready for the issue comment.
 
 **Suggested issue title:** *NSPasteboard wrappers die with the
 autorelease pool while their DO target proxy is still in use: FFI
@@ -637,10 +679,21 @@ API changes.
 maintainer (fredkiefer): *"Having byte identical reproducible archives
 is not an aim for the Gorm format. @gcasa introduced a new format in
 Gorm that is human readable and version control friendly that should
-fulfill your expectations. Closing this issue as not relevant."*  This
-is a reasonable upstream call — a new human-readable gorm format
-addresses the version-control concern from the other side, and
-byte-identical *archives* is not a goal the project is taking on.
+fulfill your expectations. Closing this issue as not relevant."*  gcasa
+concurred: the determinism part is "at best a feature request" — the
+.gorm format was *never* designed to be deterministic in that way and
+it does not help with merging (GUX is for that) — though he took the
+`_NSMainMenu` remapping part of the patch ("glad you caught that"),
+the rest to be reconsidered after the release.  This is a reasonable
+upstream call — a new human-readable gorm format addresses the
+version-control concern from the other side, and byte-identical
+*archives* is not a goal the project is taking on.  The maintainer
+was also confused by the "1998" in the issue texts (suspecting the
+port's AI agent of using it as an unexplained name); it was clarified
+as the app's vintage — from now on the upstream texts say
+*Resound.app*.  He likewise flagged "lengthy confusing output" (human
+or AI) as something he does not like and which "could be avoided
+easily" in the AI case; noted for the follow-up comments.
 **The patch stays in the hermetic stack regardless:** it is applied
 from this repository's `patches/` directory (not pulled from
 upstream), and the port needs a *reproducible conversion of the pinned
@@ -755,7 +808,7 @@ conversion, see below).
 
 ## Gorm-0001. `GormNibWrapperLoader`: the main menu name and a deterministic object walk (patch `Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff`)
 
-**Submitted upstream:** gnustep/apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (2026-11-10), carrying both changes and the full diff, cross-referencing the runtime half (libs-gui issue #1032) and back.  No maintainer response yet.  (The patch is a dev-time reproducibility fix — the converter is never built by CI — so its upstream status does not gate anything; it is submitted for the benefit of anyone who re-converts 1998-era nibs with the pinned tree.)
+**Submitted upstream:** gnustep/apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (2026-11-10), carrying both changes and the full diff, cross-referencing the runtime half (libs-gui issue #1032) and back.  gcasa replied 2026-11-11: he **took the `_NSMainMenu` remapping part** of the patch ("we can reconsider this after the release"); the determinism half is "at best a feature request" in his reading (the .gorm format was never designed to be deterministic; it does not help with merging — "this is what GUX is for").  The patch stays in the stack on the unchanged retirement rule (it leaves only on a pin bump to a commit that carries it).  (The patch is a dev-time reproducibility fix — the converter is never built by CI — so its upstream status does not gate anything; it is submitted for the benefit of anyone who re-converts 1998-era nibs with the pinned tree.)
 
 **1. The main menu.** Legacy OpenStep/Rhapsody nibs name the
 application's main menu `MainMenu` (or `_NSMainMenu`).  The gorm
