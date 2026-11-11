@@ -12,10 +12,10 @@ codebases, all kept in `patches/`:
 - **the hermetic GNUstep stack** (pinned source commits, built into the
   CI prefix by `.github/workflows/build.yml`; there is no submodule —
   the CI fetches the trees, and the stack build step applies the
-  patches to the fetch): two lifetime-semantics fixes in gnustep-gui
-  that the 1998 code (which must stay byte-identical) depends on, plus
-  a serialization-determinism fix in the same library for reproducible
-  `.gorm` conversion.
+  patches to the fetch): one lifetime-semantics fix in gnustep-gui
+  that the 1998 code (which must stay byte-identical) depends on,
+  plus a serialization-determinism fix in the same library for
+  reproducible `.gorm` conversion.
 - **gnustep/apps-gorm** (the `gormtool` nib→gorm converter, pinned
   source commit; a dev-time tool — the CI validates the files it
   produces but never builds or runs it): a main-menu rename and a
@@ -38,10 +38,8 @@ first, so a stale patch fails the build before it half-applies):
 
 ```sh
 cd libs-gui-8f804fd520c60800961e0bee072066f4bbadca94
-patch -p1 --dry-run < ../GNUstep-0001-nswindow-released-when-closed-default.diff
 patch -p1 --dry-run < ../GNUstep-0002-nspasteboard-retained-wrapper-map.diff
 patch -p1 --dry-run < ../GNUstep-0003-gsnibcontainer-deterministic-serialization.diff
-patch -p1 < ../GNUstep-0001-nswindow-released-when-closed-default.diff
 patch -p1 < ../GNUstep-0002-nspasteboard-retained-wrapper-map.diff
 patch -p1 < ../GNUstep-0003-gsnibcontainer-deterministic-serialization.diff
 ```
@@ -478,111 +476,85 @@ lands.
 The CI builds a hermetic GNUstep stack from pinned source commits into
 its own prefix (`.github/workflows/build.yml`: libobjc2 `c9f4002a`,
 gnustep-make `4e31a03…`, gnustep-base `5bda5222`, gnustep-gui
-`8f804fd5…`, gnustep-back `bbcc3de7…`).  Two lifetime-semantics fixes
-in **gnustep-gui** are required for the 1998 code to run safely, and
-a third, serialization-determinism fix in the same library makes the
-port's `.gorm` conversion reproducible.  The 1998 sources must stay
+`8f804fd5…`, gnustep-back `bbcc3de7…`).  One lifetime-semantics fix
+in **gnustep-gui** (G2) is required for the 1998 code to run safely,
+and a second (G3), serialization-determinism, makes the port's
+`.gorm` conversion reproducible.  The 1998 sources must stay
 byte-identical (except forced platform mappings), so anything a 1998
 ownership pattern needs has to come from the framework — hence
 patches, applied by the stack build step, with `GNUSTEP_STACK_REV`
-bumped to `"3"`.  (`third_party/build-sndkit.sh`
+bumped to `"4"` (2026-11-11: the retired G1 lifetime fix of the
+earlier rev left the stack).  (`third_party/build-sndkit.sh`
 deliberately picks up only `MusicKit-*.diff`, so the three patch
 families in `patches/` do not interfere.)
 
-The lifetime fixes (G1, G2) were developed against the pinned
-gnustep-gui on the aarch64 dev machine with a throwaway probe
-(`MiscSoundView` / `MiscSoundViewRuler` / `ResoundMiscSoundView` in a
-real window, exactly the app's view chain, plus the 1998 pasteboard
-cut/copy flow) and submitted upstream on 2026-11-09 (G1 as libs-gui
-issue #1028, G2 as issue #1029, referenced in their sections below);
-when one of them lands, drop the corresponding patch on the next stack
-pin bump (and bump `GNUSTEP_STACK_REV`).  The determinism fix (G3) was
-developed against the same pinned tree with a differential conversion
-of the 1998 nibs (convert the same source twice, compare bytes) and is
-not submitted upstream yet.  All three were verified on the hermetic
-stack (see *Verification* below).
+The lifetime fix (G2) was developed against the pinned gnustep-gui
+on the aarch64 dev machine with a throwaway probe (`MiscSoundView` /
+`MiscSoundViewRuler` / `ResoundMiscSoundView` in a real window,
+exactly the app's view chain, plus the 1998 pasteboard cut/copy
+flow) and submitted upstream on 2026-11-09 as libs-gui issue #1029
+(referenced in its section below); when it lands, drop the
+corresponding patch on the next stack pin bump (and bump
+`GNUSTEP_STACK_REV`).  A second lifetime fix (G1, the `NSWindow`
+released-when-closed default) was likewise submitted as issue #1028
+and **retired 2026-11-11**: the maintainer declined the change, and
+a full audit of the built 1998 sources shows nothing the build
+compiles needs it (see the G1 section).  The determinism fix (G3)
+was developed against the same pinned tree with a differential
+conversion of the 1998 nibs (convert the same source twice, compare
+bytes) and is not submitted upstream yet.  All three were verified on
+the hermetic stack (see *Verification* below).
 
-## G1. `NSWindow`: `isReleasedWhenClosed` defaults to NO (patch `GNUstep-0001-nswindow-released-when-closed-default.diff`)
+## G1. `NSWindow`: `isReleasedWhenClosed` defaults to NO — **retired 2026-11-11**
 
-**Submitted upstream:** gnustep/libs-gui issue [#1028](https://github.com/gnustep/libs-gui/issues/1028) (2026-11-09), carrying this section verbatim.
+The patch `GNUstep-0001-nswindow-released-when-closed-default.diff`
+flipped the `_initDefaults` default (`_f.is_released_when_closed =
+YES` → `NO`, one hunk in `Source/NSWindow.m`) so that `-[NSWindow
+close]`'s unconditional `RELEASE` is always balanced by a `RETAIN` —
+the retain/release guarantee the 1998 code is written against, and
+the one `NSMiniWindow` already opts into.  It was submitted as
+gnustep/libs-gui issue [#1028](https://github.com/gnustep/libs-gui/issues/1028)
+(2026-11-09) and **dropped from the stack on 2026-11-11**
+(`GNUSTEP_STACK_REV` → `"4"`): the maintainer declined the change,
+and a full audit of the built sources confirms it is not needed by
+anything the build compiles.
 
-**Suggested issue title:** *NSWindow's released-when-closed default
-makes `close` a reference consumer: `[w close]` + `[w release]`
-double-frees*
+**Maintainer position** (fredkiefer, #1028): *"I see no reason to
+change this. In NSPanel _initDefaults we already have `[self
+setReleasedWhenClosed: NO]`; so even a well behaved panel should
+already behave as you expect it. If there is an issue inside of
+Resound it might have a different reason and you should try to
+address that instead."*
 
-**Symptom.** Any code that closes a window it allocated and then
-releases it (the natural 1998 teardown; e.g. Resound's
-`[loadPanel close]` on the nib-outlet panel in `ModuleController.m`)
-leaves the window freed: the next dispatch to it (often the explicit
-`[w release]` a few lines later, or an event reaching it first) reads
-the freed object header through the message dispatch and dies in
-`objc_msg_lookup_sender` (wild isa → wild dtable) with a SIGSEGV.  The
-probe hit this in 8/10 natural runs and 5/5 under gdb; the freed chunk
-is usually reused by the time the second dispatch lands, which is why
-the crash site varies (dispatch of `close` vs dispatch of `release`)
-and the corrupting data (here SndKit sample data) looks random.
+**The audit — the maintainer is right.** The crash that motivated
+the patch (`objc_msg_lookup_sender`, wild isa → wild dtable, 8/10
+natural runs of the dev probe) came from the probe's *own* teardown:
+a **modern** `alloc` + `close` + `release` on a plain `NSWindow` —
+a pattern the OpenStep contract does not support and the 1998 code
+does not use.  Enumerating every window-close/release idiom in the
+**built** 1998 sources:
 
-**Explanation.** `-[NSWindow close]` (NSWindow.m:3226) implements the
-OpenStep "release when closed" contract:
+- the only `setReleasedWhenClosed` is `FileController`'s explicit
+  `NO` for the main window — the 1998 authors' own fix, exactly
+  what the patch would impose as a default; the only `NSWindow`
+  allocation is that same main window;
+- the only `[w close]` is `ModuleController.m:171 [loadPanel
+  close]` — a file the no-modules build does not compile at all;
+  its `loadPanel` ("LoadingPanel") is an `NSPanel`, whose
+  `_initDefaults` already sets `NO` (the maintainer's point);
+- the console nib's windows are `NSPanel` ("Console", "Record
+  Format") plus one `NSWindow` ("Window") that no code closes;
+  `FileController`'s `performClose`/`windowShouldClose` paths
+  target the main window (explicit `NO`); `MiscVolumeMeter`'s
+  `windowShouldClose` stops the meter and never releases a window.
 
-```objc
-if (!_f.is_released_when_closed)
-  { RETAIN(self); }
-...
-RELEASE(self);           /* unconditional */
-```
-
-i.e. it *consumes one reference* — and `_initDefaults` (NSWindow.m:6155)
-sets `_f.is_released_when_closed = YES`, so for the default window the
-`RELEASE` has no balancing `RETAIN`: a window whose only reference is
-the caller's is deallocated *inside* `close`, and the caller's later
-`[w release]` is a use-after-free.  This is faithful to OpenStep, but
-it is the one 1998 semantic that the 1998 authors themselves fought:
-`FileController.m:449` carries the comment
-
-```
-// By default windows are sent a *release* message when they are closed.
-// This was rather poor thinking on NeXT's part IMHO, because it violates
-// the retain/release guarantee ... I'd rather have the guarantee in force,
-// so after autoreleasing the window, I tell it not to do its stupid
-// default behavior:
-[theWindow setReleasedWhenClosed:NO];
-```
-
-and sets exactly that for the main window — but the panel path
-(`ModuleController.m:171 [loadPanel close]`, a nib outlet) never got the
-treatment, and the 1998 file may not be changed.  GNUstep's own
-`NSMiniWindow` `_initDefaults` (NSWindow.m:459-461) already opts out of
-the default with `setReleasedWhenClosed: NO`; Cocoa's
-`releasedWhenClosed` default is likewise NO.  The patch changes the
-default in `_initDefaults` to NO, i.e. `close` always does the
-balanced RETAIN/RELEASE (net zero) and the caller's reference survives
-`close` — the retain/release guarantee the 1998 code is written
-against.
-
-**Trade-off.** Code that relies on the OpenStep default — allocating a
-window, taking no other reference, and expecting `close` to release it
-— now leaks that window until it is explicitly released (or calls
-`setReleasedWhenClosed: YES`).  Inside Resound this changes nothing:
-the main window already sets NO explicitly, `NSMiniWindow` already
-does, and the only pattern the patch alters is the panel path, which
-becomes *correct* instead of double-freeing (the nib keeps its
-reference, `close` no longer consumes it, and the nib's
-`releaseConnections` balances it at the end).
-
-**Proposed fix** (`Source/NSWindow.m`, in `_initDefaults`):
-
-```diff
-@@ -6152,7 +6152,7 @@ current key view.<br />
- //  _f.is_key = NO;
- //  _f.is_main = NO;
- //  _f.is_edited = NO;
--  _f.is_released_when_closed = YES;
-+  _f.is_released_when_closed = NO;
- //  _f.is_miniaturized = NO;
- //  _f.menu_exclude = NO;
- //  _f.hides_on_deactivate = NO;
-```
+So under the stock default no compiled path double-frees: the main
+window opts out explicitly, every other closable window is a panel,
+and the one bare-NSWindow nib object is never closed.  A no-G1
+stack (canonical gui, the hunk reverted) was built for verification;
+the end-to-end proof — app launch, window close, screenshot, fatal
+gates — runs in CI on the new stack rev.  Issue #1028 can be
+closed: no change requested.
 
 ## G2. `NSPasteboard`: retain the wrapper in the name→pasteboard map (patch `GNUstep-0002-nspasteboard-retained-wrapper-map.diff`)
 
@@ -687,24 +659,38 @@ passes `resoundnib --check` on all 43 folders.
 
 ## Verification (GNUstep patches)
 
-G1 and G2 were developed and verified on the aarch64 dev machine
-against the pinned gnustep-gui on the hermetic stack, with the
-throwaway probe of the app's view chain + pasteboard flow (two
-variants: full, and one skipping the pasteboard sections), run 15
-times each before and after the patches:
+G2 (and, at the time, G1) were developed and verified on the aarch64
+dev machine against the pinned gnustep-gui on the hermetic stack,
+with the throwaway probe of the app's view chain + pasteboard flow
+(two variants: full, and one skipping the pasteboard sections), run
+15 times each before and after the patches:
 
-- **before**: the full-variant probe (the 1998 `close`+`release`
-  teardown and an unretained pasteboard, i.e. the 1998 patterns left
-  unguarded) crashed in **8/10** natural runs (all at the window
-  teardown; the pasteboard FFI manifestation additionally under gdb);
-  the no-pasteboard variant in **7/15** (its plain build: 2/10–7/15).
-- **after** (both patches in): **0/15** for every variant, including
-  the full one; the app's 10 s live run is clean.
+- **before** (stock gui): the full-variant probe crashed in **8/10**
+  natural runs, all at the *window teardown* — the probe's own
+  modern `close`+`release` idiom, which the stock default does not
+  support (G1's territory, since retired); the no-pasteboard
+  variant in **7/15** (its plain build: 2/10–7/15), likewise.  The
+  pasteboard section — an unretained wrapper, the 1998 pattern left
+  unguarded — crashed in the DO/FFI trampoline, additionally
+  visible under gdb (G2's territory).
+- **after** (both patches in, the original matrix): **0/15** for
+  every variant, including the full one; the app's 10 s live run is
+  clean.
 - A control probe written with the *corrected* patterns (`setReleased
   WhenClosed: NO` + retaining the pasteboard) ran 0/40 across both
-  variants (15 natural + 15 natural + 10 under gdb) before *and* after
-  the patches — confirming that the two patched semantics, and nothing
-  else, were the root cause.
+  variants (15 natural + 15 natural + 10 under gdb) before *and*
+  after the patches — confirming that the two patched semantics, and
+  nothing else, were the root cause.
+
+With G1 dropped from the stack (2026-11-11) the window-teardown half
+of that matrix reverts to stock behaviour in the probe — by design:
+its teardown idiom is a modern pattern the 1998 code does not use
+(the G1 section carries the audit; the probe is a dev-machine tool,
+not part of the build).  G2's half is untouched by the drop: the
+pasteboard wrapper lifetime it fixes is what the 1998 cut/copy flow
+needs.  The end-to-end app verification on the two-patch stack
+(launch, window close, screenshot, fatal gates) runs in CI on the
+new stack rev.
 
 G3 was verified with a differential conversion of the 1998 menu nibs
 (`Console`, `Resound`) on the same machine: with the stock converter,

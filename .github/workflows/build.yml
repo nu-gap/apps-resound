@@ -73,7 +73,7 @@ jobs:
     env:
       # Bump when the pinned commits below or the port patches applied to
       # them (patches/GNUstep-*.diff) change (invalidates the cache).
-      GNUSTEP_STACK_REV: "3"
+      GNUSTEP_STACK_REV: "4"
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
@@ -200,16 +200,17 @@ jobs:
           # 4. gnustep-gui (AppKit).
           fetch gnustep/libs-gui 8f804fd520c60800961e0bee072066f4bbadca94
           cd libs-gui-8f804fd520c60800961e0bee072066f4bbadca94
-          # Port patches (patches/GNUstep-0001/0002/0003, documented in
-          # docs/UPSTREAM_PATCHES.md): the 1998 close/release window
-          # pattern, the pasteboard wrapper/target lifetimes, and
-          # deterministic .gorm serialization of the container's
-          # top-level collections.  Failing to apply fails the build,
-          # like the MusicKit patches (set -e above).
-          patch -p1 --dry-run < "${GITHUB_WORKSPACE}/patches/GNUstep-0001-nswindow-released-when-closed-default.diff"
+          # Port patches (patches/GNUstep-0002/0003, documented in
+          # docs/UPSTREAM_PATCHES.md): the pasteboard wrapper/target
+          # lifetimes, and deterministic .gorm serialization of the
+          # container's top-level collections.  (GNUstep-0001, the
+          # released-when-closed default, was retired 2026-11-11: the
+          # maintainer declined the change, and the audit of the built
+          # sources shows nothing the build compiles needs it - see
+          # the G1 section.)  Failing to apply fails the build, like
+          # the MusicKit patches (set -e above).
           patch -p1 --dry-run < "${GITHUB_WORKSPACE}/patches/GNUstep-0002-nspasteboard-retained-wrapper-map.diff"
           patch -p1 --dry-run < "${GITHUB_WORKSPACE}/patches/GNUstep-0003-gsnibcontainer-deterministic-serialization.diff"
-          patch -p1 --forward < "${GITHUB_WORKSPACE}/patches/GNUstep-0001-nswindow-released-when-closed-default.diff"
           patch -p1 --forward < "${GITHUB_WORKSPACE}/patches/GNUstep-0002-nspasteboard-retained-wrapper-map.diff"
           patch -p1 --forward < "${GITHUB_WORKSPACE}/patches/GNUstep-0003-gsnibcontainer-deterministic-serialization.diff"
           # Release trees ship the prebuilt configure that Gershwin's build
