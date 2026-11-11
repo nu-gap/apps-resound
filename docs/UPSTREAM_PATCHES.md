@@ -503,8 +503,10 @@ compiles needs it (see the G1 section).  The determinism fix (G3)
 was developed against the same pinned tree with a differential
 conversion of the 1998 nibs (convert the same source twice, compare
 bytes) and submitted upstream on 2026-11-10 (libs-gui #1032, the
-converter half as apps-gorm #105).  All three were verified on the
-hermetic stack (see *Verification* below).
+converter half as apps-gorm #105); #1032 was closed by the
+maintainer as not relevant (see the G3 section), the patch stays in
+the stack.  All three were verified on the hermetic stack (see
+*Verification* below).
 
 ## G1. `NSWindow`: `isReleasedWhenClosed` defaults to NO — **retired 2026-11-11**
 
@@ -573,9 +575,9 @@ meantime: the 1998 cut/copy flow is live, and the audit pinned the
 wrapper/target lifetime as the root cause (the *where* — map
 callback vs. a too-early release — is exactly the open question).
 A minimal testcase reply (the autorelease-pool-boundary snippet,
-with the two candidate fix sites) is queued for the issue; running
-it needs the dev machine's GUI session (the pasteboard server DO
-round trip), hence after the 2026-11-11 reboot.
+with the two candidate fix sites) was posted 2026-11-11 (noting
+that the crash was established on the modern libobjc2 runtime
+without ARC); awaiting the maintainers' verdict.
 
 **Suggested issue title:** *NSPasteboard wrappers die with the
 autorelease pool while their DO target proxy is still in use: FFI
@@ -629,7 +631,25 @@ API changes.
 
 ## G3. `GSNibContainer`: serialize the top-level collections in canonical order (patch `GNUstep-0003-gsnibcontainer-deterministic-serialization.diff`)
 
-**Submitted upstream:** gnustep/libs-gui issue [#1032](https://github.com/gnustep/libs-gui/issues/1032) (2026-11-10), carrying this section verbatim plus the full diff, under the title *Gorm serialization is not reproducible: the container's top-level collections are sets whose enumeration order is pointer-hash dependent, so converting the same nib twice yields different `.gorm` bytes*; the converter half is cross-referenced there as apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (and back).  No maintainer response yet.
+**Submitted upstream:** gnustep/libs-gui issue [#1032](https://github.com/gnustep/libs-gui/issues/1032) (2026-11-10), carrying this section verbatim plus the full diff, under the title *Gorm serialization is not reproducible: the container's top-level collections are sets whose enumeration order is pointer-hash dependent, so converting the same nib twice yields different `.gorm` bytes*; the converter half is cross-referenced there as apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (and back).
+
+**Upstream status (2026-11-11): closed as not relevant.**  The
+maintainer (fredkiefer): *"Having byte identical reproducible archives
+is not an aim for the Gorm format. @gcasa introduced a new format in
+Gorm that is human readable and version control friendly that should
+fulfill your expectations. Closing this issue as not relevant."*  This
+is a reasonable upstream call — a new human-readable gorm format
+addresses the version-control concern from the other side, and
+byte-identical *archives* is not a goal the project is taking on.
+**The patch stays in the hermetic stack regardless:** it is applied
+from this repository's `patches/` directory (not pulled from
+upstream), and the port needs a *reproducible conversion of the pinned
+1998 `.nib` input* to regenerate byte-identical `.gorm` artifacts — a
+property of the pinned converter's process, which the new format (a
+future, different input) does not supply for the 1998 streams.  So the
+retirement rule inverts here: this patch leaves the stack only on a
+pin bump to a commit that already carries it, never on the issue's
+closure.
 
 **Symptom.** Converting the same 1998 `.nib` to `.gorm` twice
 produces different files: the objects appear in a different sequence
