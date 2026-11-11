@@ -502,8 +502,9 @@ a full audit of the built 1998 sources shows nothing the build
 compiles needs it (see the G1 section).  The determinism fix (G3)
 was developed against the same pinned tree with a differential
 conversion of the 1998 nibs (convert the same source twice, compare
-bytes) and is not submitted upstream yet.  All three were verified on
-the hermetic stack (see *Verification* below).
+bytes) and submitted upstream on 2026-11-10 (libs-gui #1032, the
+converter half as apps-gorm #105).  All three were verified on the
+hermetic stack (see *Verification* below).
 
 ## G1. `NSWindow`: `isReleasedWhenClosed` defaults to NO — **retired 2026-11-11**
 
@@ -560,6 +561,22 @@ closed: no change requested.
 
 **Submitted upstream:** gnustep/libs-gui issue [#1029](https://github.com/gnustep/libs-gui/issues/1029) (2026-11-09), carrying this section verbatim.
 
+**Upstream status (2026-11-11):** the maintainers dispute the
+proposed mechanism.  rfm: *"I already looked, and agree that the
+proposed fix looks wrong. My inclination would be to look again after
+the next release. Possibly there's something just released too soon
+and a simple retain and autorelease in the right place would fix
+it."* — a pasteboard wrapper that lives in the registry forever is
+not a fix they will take — and then: *"Is there a testcase to
+reproduce the problem?"*  The patch stays in the stack in the
+meantime: the 1998 cut/copy flow is live, and the audit pinned the
+wrapper/target lifetime as the root cause (the *where* — map
+callback vs. a too-early release — is exactly the open question).
+A minimal testcase reply (the autorelease-pool-boundary snippet,
+with the two candidate fix sites) is queued for the issue; running
+it needs the dev machine's GUI session (the pasteboard server DO
+round trip), hence after the 2026-11-11 reboot.
+
 **Suggested issue title:** *NSPasteboard wrappers die with the
 autorelease pool while their DO target proxy is still in use: FFI
 use-after-free in `GSFFIInvocationCallback`*
@@ -612,7 +629,7 @@ API changes.
 
 ## G3. `GSNibContainer`: serialize the top-level collections in canonical order (patch `GNUstep-0003-gsnibcontainer-deterministic-serialization.diff`)
 
-**Suggested issue title** (not submitted upstream yet): *Gorm serialization is not reproducible: the container's top-level collections are sets whose enumeration order is pointer-hash dependent, so converting the same nib twice yields different `.gorm` bytes*
+**Submitted upstream:** gnustep/libs-gui issue [#1032](https://github.com/gnustep/libs-gui/issues/1032) (2026-11-10), carrying this section verbatim plus the full diff, under the title *Gorm serialization is not reproducible: the container's top-level collections are sets whose enumeration order is pointer-hash dependent, so converting the same nib twice yields different `.gorm` bytes*; the converter half is cross-referenced there as apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (and back).  No maintainer response yet.
 
 **Symptom.** Converting the same 1998 `.nib` to `.gorm` twice
 produces different files: the objects appear in a different sequence
@@ -717,6 +734,8 @@ source checkout of the pinned tree (it carries both changes of the
 conversion, see below).
 
 ## Gorm-0001. `GormNibWrapperLoader`: the main menu name and a deterministic object walk (patch `Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff`)
+
+**Submitted upstream:** gnustep/apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (2026-11-10), carrying both changes and the full diff, cross-referencing the runtime half (libs-gui issue #1032) and back.  No maintainer response yet.  (The patch is a dev-time reproducibility fix — the converter is never built by CI — so its upstream status does not gate anything; it is submitted for the benefit of anyone who re-converts 1998-era nibs with the pinned tree.)
 
 **1. The main menu.** Legacy OpenStep/Rhapsody nibs name the
 application's main menu `MainMenu` (or `_NSMainMenu`).  The gorm
