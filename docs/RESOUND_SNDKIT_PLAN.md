@@ -106,20 +106,20 @@ test-first:
   the category is in the app build (`Resound_OBJC_LIBS` links SndKit).
   One deliberate divergence: unreadable files return `nil` (Rhapsody
   returned an empty sound) — the Phase 2 `open:` flow must guard for it.
-- [ ] Replace all `#import <SoundKit/SoundKit.h>` with SndKit framework imports in the remaining files:
+- [x] **Done (2026-11-06 → 2026-11-14):** Replace all `#import <SoundKit/SoundKit.h>` with SndKit framework imports in the app files:
   - ~~`Source/SoundManager.{h,m}`~~ — done 2026-11-06 (Phase 2, unit 1)
-  - `Source/FileController.{h,m}` (class part)
-  - `Source/MiscSoundView.{h,m}`, `Source/ResoundMiscSoundView.{h,m}`, `Source/ResoundMiscVolumeMeter.{h,m}`
-  - `Source/ModuleSound.{h,m}`, `Source/ModuleSoundView.{h,m}`
-  - `Source/ConsoleManager.{h,m}`, `Source/MiscTapper.{h,m}`, `Source/MiscVolumeMeter.{h,m}`, `Source/MiscSoundTracker.{h,m}`, `Source/VolumeController.{h,m}`
-  - `Source/Modules/**` (all module implementations + controllers)
-  - inspectors (`AttributesInspector`, `InfoStringInspector`, `SelectionInspector`, `ZoomInspector`, `MarksInspector`, …)
+  - ~~`Source/FileController.{h,m}`~~ (class part) — done 2026-11-09 (file unit)
+  - ~~`Source/MiscSoundView.{h,m}`, `Source/ResoundMiscSoundView.{h,m}`, `Source/ResoundMiscVolumeMeter.{h,m}`~~ — done 2026-11-07/08 (console / view-chain units)
+  - ~~`Source/ModuleSound.{h,m}`, `Source/ModuleSoundView.{h,m}`~~ — done 2026-11-14 (SndKit-leftovers unit)
+  - ~~`Source/ConsoleManager.{h,m}`, `Source/MiscVolumeMeter.{h,m}`, `Source/MiscSoundTracker.{h,m}`, `Source/VolumeController.{h,m}`~~ — done 2026-11-07/14 (console / SndKit-leftovers units); `Source/MiscTapper.{h,m}` remains (not in the 1998 `CLASSES` list — a MiscKit helper, see below)
+  - `Source/Modules/**` (all module implementations + controllers) — remains, Phase 3
+  - ~~inspectors (`AttributesInspector`, `InfoStringInspector`, `SelectionInspector`, `ZoomInspector`, `MarksInspector`, …) + `ModuleController`/`InspectorManager`/`Module`~~ — done 2026-11-14 (SndKit-leftovers unit)
 
   (These are GUI-heavy and untestable headless; they belong with the
-  Phase 2 playback/view chain and will be ported file by file with
+  Phase 2 playback/view chain and were ported file by file with
   `Sound` → `Snd`, `SoundView` → `SndView` renames rather than new tests.)
-- [ ] Migrate `Sound` → `Snd` types in the above: ivars, `SNDSoundStruct*` → `SndFormat`, sample-size helpers → `SndSampleWidth`/`SndFrameSize`/`SndDataSize`, `sampleCount` → `lengthInSampleFrames`, `samplingRate` (double), `dataFormat` (`SndSampleFormat`).
-- [ ] Update info-string handling in the views/inspector: `Snd info` (`NSString *`) replaces the `SNDSoundStruct` info-string hack (category side done; `ResoundMiscSoundView`'s `char* info`/`loadInfo:` become `NSString`).
+- [x] **Done (2026-11-14, for the app files):** Migrate `Sound` → `Snd` types: ivars, `SNDSoundStruct*` → `SndFormat`, sample-size helpers → `SndSampleWidth`/`SndFrameSize`/`SndDataSize`, `sampleCount` → `lengthInSampleFrames`, `samplingRate` (double), `dataFormat` (`SndSampleFormat`). All 1998 `CLASSES` files except `PreferencesManager` (it uses no legacy API) are migrated; the remainder is `MiscTapper` and `Source/Modules/**` (Phase 3).
+- [x] **Done (2026-11-14, for the app):** Update info-string handling in the views/inspector: `Snd info` (`NSString *`) replaces the `SNDSoundStruct` info-string hack (category side done in Phase 1; `ResoundMiscSoundView`'s `char* info`/`loadInfo:` became `NSString` with the view-chain unit; `InfoStringInspector`'s round-trips and the `ModuleSoundView` `info`/`setInfo:` pair with the SndKit-leftovers unit). The module-local view copies under `Source/Modules/**` remain with Phase 3.
 - [x] `FileController saveToSoundFile:` → `[snd writeSoundfile:…]` (+ error handling via `SND_ERR_*`/`SndSoundError`, which returns an `NSString` under SndKit) and `initFromForeignSoundFile:` — done in the category above.
 
 ### Phase 2 — Playback / recording / monitoring / volume
@@ -152,13 +152,13 @@ test-first:
   - Two local protocols bridged the not-yet-migrated neighbours (both receivers are `id`; plain-`id` dispatch of an unknown selector would warn under this toolchain, a selector declared *anywhere visible* suppresses it): `ConsoleFileController` (`currentSound:` — `FileController` is the file unit; its header was imported transitively via `SoundDocumentTable.h` and dropped — **still in place**, the protocol is its only bridge until the file unit) and `ConsoleSoundViewCompat` (the 1998 SoundView play-position API the console's auto-scrolling needs — `xAxisDisplayed`/`scrollToReflectPlaying`/`getSelection:size:`/`scrollToSample:`/`setPlayMark:`/`window`): **dropped in the 2026-11-08 follow-up** — the view chain implements the real methods, the 1998 `ResoundMiscSoundView.h` import is restored, and the two `cv` locals return to the 1998 untyped `id`. `isKindOf:` (a 1998 alias) became `isKindOfClass:`.
   - The 1998 six-argument `record: r: c: bytes: e : self` call is **byte-identical** (the preserved `record:::::` selector, see the `SoundManager` entry); the 1998 `NX_SoundStreamDataEncoding_*`→`SND_FORMAT_*` switch is gone because the encoding menu is now built from the `SND_FORMAT_*` table directly. Compiles with **zero new warnings** (the four `-Wmissing-selector-name` from the `SoundManager.h` 1998 idiom remain — documented there).
   - **Verified in-app** (headless probe): `[[ConsoleManager alloc] init]` (the in-app path; it loads the 1998 `Console.nib` — see below), the manager wired to a fresh `SoundManager`, `recordDown:` → `SndStreamRecorder` capture of the **silent virtual input on the dev machine** (unit 1b's capture verification was Pi-only) → user `stop:` at ~2 s → the restored `_finishRecording`: recorder stop, read-back, convert to the console-requested 44.1 kHz/2 ch/linear-16, flag resets, temp-file/recorder/timer cleanup — all clean, no stray file, exit 0. **Nib finding:** the 1998 `Console.nib` **does not load** under the GNUstep reader (`Failed to load Nib`; zero windows born; the manager's outlets stay nil) — the OpenStep-4.2/Gorm conversion package below is a confirmed prerequisite for the console UI in-app. The console code is nil-safe without it (every control is an outlet), and the app bootstrap loads no nib until `FileController` lands, so the unit is self-contained.
-- [ ] Port the tapper and volume controls: `MiscTapper` (the 1998 tap meter; not in the original `CLASSES` list — a MiscKit helper — and absent from `Console.nib`, so no unit needs it yet) and `VolumeController` from `NXSoundOut`/`NX_SoundDevice*` to `SndStreamMixer`/`SndAudioFader` / `+[Snd isMuted]` / `+setMute:` (the volume unit).
-- [ ] Port `VolumeController` accordingly.
+- [ ] Port the tapper: `MiscTapper` (the 1998 tap meter; not in the original `CLASSES` list — a MiscKit helper — and absent from `Console.nib`, so no unit needs it yet).
+- [x] **Done (2026-11-14, SndKit-leftovers unit):** Port `VolumeController` — the lighter half of the item above: its `NXSoundOut*` ivar is functionally dead (alloc/release only, the 1998 knobs are `MiscSoundTracker`-drained) and becomes an `SndStreamMixer*` (SndKit's `SndStreamMixer init` is light — array + lock + processor chain, no device enumeration), the app-global `[Sound setMute:]` becomes `+[Snd setMute:]`, and the 1998 knob/tracker wiring is otherwise unchanged.
 
 ### Phase 3 — Module API and module implementations
 
-- [ ] Port `Sound(ModuleSound)` → `Snd(ModuleSound)`: `sampleSizePerChannel` → Snd sample-width API; `performFFTFromSoundData:…toFFTData:…`, `performIFFTFromSoundData:…fromFFTData:…`, `nextPositivePowerOfTwo:`; use `SndSwapBigEndianSoundToHost`, `SndMuLawToLinear/LinearToMuLaw`, `SndChangeSampleType`, or Resound's own `fft()` on float buffers.
-- [ ] Port `SoundView(ModuleSoundView) convertToFormat:samplingRate:channelCount:` → `convertToSampleFormat:samplingRate:channelCount:` (selection-preserving conversion).
+- [ ] Port `Sound(ModuleSound)` → `Snd(ModuleSound)`: `sampleSizePerChannel` → Snd sample-width API; `performFFTFromSoundData:…toFFTData:…`, `performIFFTFromSoundData:…fromFFTData:…`, `nextPositivePowerOfTwo:`; use `SndSwapBigEndianSoundToHost`, `SndMuLawToLinear/LinearToMuLaw`, `SndChangeSampleType`, or Resound's own `fft()` on float buffers. *(The top-level `Source/ModuleSound.{h,m}` category shipped with the SndKit-leftovers unit 2026-11-14 — mu-law renames + `Snd(ModuleSound)` header; the per-module copies under `Source/Modules/**` remain, with the modules.)*
+- [ ] Port `SoundView(ModuleSoundView) convertToFormat:samplingRate:channelCount:` → `convertToSampleFormat:samplingRate:channelCount:` (selection-preserving conversion). *(Top-level `Source/ModuleSoundView.{h,m}` done with the SndKit-leftovers unit 2026-11-14; the per-module copies remain, with the modules.)*
 - [ ] Port all modules (`Channel`, `EchoChamber`, `Envelope`, `FFT`, `Filter`, `Gate`, `Math`, `Mix`, `WaveBuilder`, `Zero`):
   - Replace `SNDSwapSoundToHost` / `SNDSwapHostToSound` / `SNDiMulaw` / `SNDMulaw` raw-buffer loops with SndKit buffers/conversion APIs or `SndAudioProcessorChain` / `SndAudioUnitProcessor`.
   - Adapt FFT module (`drawFFT:…` uses `SNDSwapSoundToHost`, `[this_sound sampleCount]`, `[Sound performFFTFromSoundData:…]`, `needsCompacting`).

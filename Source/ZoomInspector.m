@@ -34,7 +34,7 @@ IMPLIED WARRANTIES.
 #import "InspectorManager.h"
 #import "FileController.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import "ResoundMiscSoundView.h"
 #import <stdio.h>
 

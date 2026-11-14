@@ -98,6 +98,10 @@ Resound_RESOURCE_FILES= \
 Resound_OBJC_LIBS = -lSndKit -lMKPerformSndMIDI -lstdc++ -lm
 
 # READY (compiles and links against the GNUstep toolchain):
+# The SndKit-leftovers unit (2026-11-14) landed the twelve remaining
+# SoundKit-blocked CLASSES files (all 1998 CLASSES minus the
+# PreferencesManager, which compiles but ships with the preferences
+# unit - see docs/GNUSTEP_BUILD.md):
 Resound_OBJC_FILES= \
 	Source/Resound_main.m \
 	Source/Extra.m \
@@ -115,16 +119,27 @@ Resound_OBJC_FILES= \
 	Source/MiscSoundView.m \
 	Source/MiscSoundViewRuler.m \
 	Source/ResoundMiscSoundView.m \
-	Source/ResoundNibs.m
+	Source/ResoundNibs.m \
+	Source/AttributesInspector.m \
+	Source/EditController.m \
+	Source/InfoStringInspector.m \
+	Source/InspectorManager.m \
+	Source/MarksInspector.m \
+	Source/Module.m \
+	Source/ModuleController.m \
+	Source/ModuleSound.m \
+	Source/ModuleSoundView.m \
+	Source/SelectionInspector.m \
+	Source/VolumeController.m \
+	Source/ZoomInspector.m
 
 Resound_C_FILES= \
 	Source/fft.c
 
-# BLOCKED by SoundKit (needs the SndKit migration, see
-# docs/RESOUND_SNDKIT_PLAN.md phases 1-3): AttributesInspector,
-# EditController, InfoStringInspector, InspectorManager, MarksInspector,
-# Module, ModuleController, ModuleSound, ModuleSoundView, PreferencesManager,
-# SelectionInspector, VolumeController, ZoomInspector
+# NOT IN THE BUILD: PreferencesManager (compiles unchanged - unblocked
+# by the view-chain unit, 2026-11-08; deliberately not added there, it
+# loads the Preferences nib lazily - it ships with the preferences
+# unit, see docs/GNUSTEP_BUILD.md).
 
 -include GNUmakefile.preamble
 

@@ -30,10 +30,10 @@ IMPLIED WARRANTIES.
 
 
 #import "ModuleSound.h"
-#import <SoundKit/convertsound.h>
+#import <SndKit/SndKit.h>
 #import "fft.h"
 
-@implementation Sound(ModuleSound)
+@implementation Snd(ModuleSound)
 
 
 /*** sampleSize
@@ -106,7 +106,7 @@ IMPLIED WARRANTIES.
       case SND_FORMAT_MULAW_8: 
 	for(x=0;x<sample_length;x++)
 	  {
-	  fft_data[x*2]=((float)(SNDiMulaw(data[x+start_sample])))/SHRT_MAX;
+	  fft_data[x*2]=((float)(SndMuLawToLinear(data[x+start_sample])))/SHRT_MAX;
 	  fft_data[x*2+1]=0;
 	  } break;
       case SND_FORMAT_LINEAR_8: for(x=0;x<sample_length;x++)
@@ -184,7 +184,7 @@ IMPLIED WARRANTIES.
       case SND_FORMAT_MULAW_8: 
 	for(x=0;x<sample_length;x++)
 	    {
-	    data[x+start_sample]=SNDMulaw((signed short)(fft_data[x*2]*SHRT_MAX));
+	    data[x+start_sample]=SndLinearToMuLaw((signed short)(fft_data[x*2]*SHRT_MAX));
 	    } 
 	break;
       case SND_FORMAT_LINEAR_8: for(x=0;x<sample_length;x++)

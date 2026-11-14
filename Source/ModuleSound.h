@@ -27,9 +27,9 @@ IMPLIED WARRANTIES.
  information.
 ************************************************************************/
 
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 
-@interface Sound(ModuleSound)
+@interface Snd(ModuleSound)
 
 - (int)sampleSize;
 - (int)sampleSizePerChannel;

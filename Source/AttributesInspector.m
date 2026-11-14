@@ -25,6 +25,15 @@ IMPLIED WARRANTIES.
   the sound type and sound length, file name, and whether or not the sound
   is fragmented.
   
+  SndKit migration notes (GNUstep port, docs/RESOUND_SNDKIT_PLAN.md Phase 1):
+  - The file-scope pragma below silences the -Wobjc-multiple-method-names
+    warning the channelCount send in changeInfo: produces: the 1998
+    declaration keeps its untyped receiver ("- changeInfo:thisSound"), and
+    SndKit's Snd and GNUstep's GSSoundSource (pulled in by AppKit via
+    GNUstepGUI) both declare channelCount with different return types, so
+    clang cannot disambiguate the id dispatch.  At runtime the receiver is
+    always the current sound's Snd, and the dispatch is unambiguous.
+  
   ****************************************************************************/
 
 
@@ -34,7 +43,10 @@ IMPLIED WARRANTIES.
 #import "FileController.h"
 #import "InspectorManager.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wobjc-multiple-method-names"
 
 @implementation AttributesInspector
 
@@ -120,13 +132,13 @@ IMPLIED WARRANTIES.
 	    // SET STANDARD INFORMATION
 	    
 	    [channels setIntValue:[thisSound channelCount]];
-	    [samples setIntValue:[thisSound sampleCount]];
-	    if ([thisSound sampleCount]==0)
+	    [samples setIntValue:[thisSound lengthInSampleFrames]];
+	    if ([thisSound lengthInSampleFrames]==0)
 		{[seconds setFloatValue:0.0];}
 	    else
 		{
 		[seconds setFloatValue:(float) 
-		 (((double)[thisSound sampleCount])/[thisSound samplingRate])];
+		 (((double)[thisSound lengthInSampleFrames])/[thisSound samplingRate])];
 		}
 
 	    dataform=[thisSound dataFormat];
@@ -277,3 +289,5 @@ IMPLIED WARRANTIES.
 
 
 @end
+
+#pragma clang diagnostic pop

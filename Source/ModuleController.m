@@ -530,7 +530,7 @@ if (helpResource)
 - (BOOL) isOwner:this_sound_or_soundview
     {
     void* k=(void*)[[NSPasteboard generalPasteboard] owner];
-    if ([this_sound_or_soundview isKindOf:[SoundView class]])
+    if ([this_sound_or_soundview isKindOf:[SndView class]])
 	{
 	if (k==nil) return NO;
 	return (k==this_sound_or_soundview||
@@ -553,7 +553,7 @@ if (helpResource)
 
 
 
-- (void)newWindow:(NSWindow**) theWindowPointer:(NSScrollView**) theScrollViewPointer:(SoundView**)theSoundViewPointer
+- (void)newWindow:(NSWindow**) theWindowPointer:(NSScrollView**) theScrollViewPointer:(SndView**)theSoundViewPointer
 // creates and returns a new window, scrollview, and sound view without adding them to
 // the Sound Table.
 	{

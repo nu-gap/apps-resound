@@ -30,7 +30,7 @@ IMPLIED WARRANTIES.
 
 #import "ModuleSound.h"
 
-@implementation SoundView(ModuleSoundView)
+@implementation SndView(ModuleSoundView)
 
 
 /**** convertToFormat:samplingRate:channelCount
@@ -46,13 +46,13 @@ IMPLIED WARRANTIES.
  
  /* we attempt to preserve the selection across new sampling rates */
     {
-    double oldrate=[sound samplingRate];
+    double oldrate=[[self sound] samplingRate];
     int selection;
     int size;
     int error;
     
-    [self getSelection:&selection size:&size];
-    error=[sound convertToFormat:newFormat 
+    [self getSelection:(unsigned int*)&selection size:(unsigned int*)&size];
+    error=[[self sound] convertToSampleFormat:newFormat 
 	 samplingRate:newRate channelCount:newChannelCount];
     
     if (oldrate==0) oldrate=newRate;		// just in case
@@ -72,7 +72,7 @@ IMPLIED WARRANTIES.
   really does, this is just a sanity-preservation formality).
   */
 
-- (char*)info
+- (NSString*)info
     {
     return NULL;
     }
@@ -83,7 +83,7 @@ IMPLIED WARRANTIES.
   really does, this is just a sanity-preservation formality).
   */
 
-- setInfo:(const char*)this
+- setInfo:(NSString*)this
     {
     return self;
     }

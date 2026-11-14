@@ -17,7 +17,7 @@ IMPLIED WARRANTIES.
 */
 
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <Foundation/Foundation.h>
 #import "MiscSoundTracker.h"
 
@@ -48,7 +48,7 @@ IMPLIED WARRANTIES.
     
     id volumePanel;
     
-    NXSoundOut* sound_out;
+    SndStreamMixer* sound_out;
     int		loaded;
     
     

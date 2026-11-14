@@ -44,7 +44,7 @@ IMPLIED WARRANTIES.
 - init
     {
     id returnval=[super init];
-    sound_out=[[NXSoundOut alloc] init];
+    sound_out=[[SndStreamMixer alloc] init];
     loaded=0;
     return returnval;
     }
@@ -119,7 +119,7 @@ IMPLIED WARRANTIES.
 
 - setMute:sender
     {
-    [Sound setMute:(BOOL) [muteKnob intValue]];
+    [Snd setMute:(BOOL) [muteKnob intValue]];
     return self;
     }
 

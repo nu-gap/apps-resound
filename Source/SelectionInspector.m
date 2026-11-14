@@ -43,7 +43,7 @@ IMPLIED WARRANTIES.
 #import "InspectorManager.h"
 #import "ResoundMiscSoundView.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 
 @implementation SelectionInspector
 
@@ -52,7 +52,7 @@ IMPLIED WARRANTIES.
   Utility function, converts seconds to samples given the sound's sampling rate.
 */
 
-int secondsTosamples(Sound* x, float seconds)
+int secondsTosamples(Snd* x, float seconds)
     {
     return (int) floor(seconds*[x samplingRate]);
     }
@@ -63,11 +63,11 @@ int secondsTosamples(Sound* x, float seconds)
   Utility function, converts percent to samples given a sound's sample count.
 */
 
-int percentTosamples(Sound* x, float percent)
+int percentTosamples(Snd* x, float percent)
 // value from 0 to 100
     {
-    if (percent==100.0) return [x sampleCount];
-    return (int) floor(percent*[x sampleCount]/100.0);
+    if (percent==100.0) return [x lengthInSampleFrames];
+    return (int) floor(percent*[x lengthInSampleFrames]/100.0);
     }
 
 
@@ -117,7 +117,7 @@ int percentTosamples(Sound* x, float percent)
 	    {
 	    [selectionWindow disableFlushWindow];
 	    
-	    samples=(float)[[fileController currentSound:self] sampleCount];
+	    samples=(float)[[fileController currentSound:self] lengthInSampleFrames];
 	    samplingRate = (double)[[fileController currentSound:self] samplingRate];
 	    [[fileController currentSoundView:self] getSelection: &firstSample
 	   size: &sampleCount];
@@ -232,7 +232,7 @@ int percentTosamples(Sound* x, float percent)
 - changeSelectionSamples:sender
     {
     id sound_view=[fileController currentSoundView:self];
-    int sc=[[(SoundView*)sound_view sound] sampleCount];	// TypeCast for OS X server
+    int sc=[[(SndView*)sound_view sound] lengthInSampleFrames];	// TypeCast for OS X server
     if (sound_view!=nil)
 	{
 	if ([selectionStart intValue]<0) [selectionStart setIntValue:0];
@@ -254,7 +254,7 @@ int percentTosamples(Sound* x, float percent)
 - changeSelectionSamplesLength:sender
     {
     id sound_view=[fileController currentSoundView:self];
-    int sc=[[(SoundView*)sound_view sound] sampleCount];	// TypeCast for OS X server
+    int sc=[[(SndView*)sound_view sound] lengthInSampleFrames];	// TypeCast for OS X server
     if (sound_view!=nil)
 	{
 	if ([selectionStart intValue]<0) [selectionStart setIntValue:0];

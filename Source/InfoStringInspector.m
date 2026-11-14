@@ -41,7 +41,7 @@ IMPLIED WARRANTIES.
 #import "FileController.h"
 #import "InspectorManager.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import "ResoundMiscSoundView.h"
 
 @implementation InfoStringInspector
@@ -111,8 +111,7 @@ IMPLIED WARRANTIES.
 
 	    [infoWindow disableFlushWindow];
 	    
-	    if (sv!=nil) [infoString setString:
-            [NSString stringWithCString:[sv info]]];
+	    if (sv!=nil) [infoString setString:[sv info]];
 	    else [infoString setString:@""];
 	    
 	    [infoWindow enableFlushWindow];
@@ -144,7 +143,7 @@ IMPLIED WARRANTIES.
 - okay:sender
     {
     // Here we update the sound to reflect new info string
-    Sound* curSound=[fileController currentSound:self];
+    Snd* curSound=[fileController currentSound:self];
     ResoundMiscSoundView* cv=[fileController currentSoundView:self];
 
     if (curSound==nil)
@@ -156,8 +155,8 @@ IMPLIED WARRANTIES.
 	}
     
 	{
-        [cv setInfo:[[infoString string] lossyCString]];
-        [infoString setString:[NSString stringWithCString:[cv info]]];
+        [cv setInfo:[infoString string]];
+        [infoString setString:[cv info]];
         [fileController soundChanged:curSound];
 	}
     

@@ -145,17 +145,27 @@ Port patches (see `patches/`):
   write for some input durations, overrunning the buffer and aborting
   in `free()`. Full diagnosis in `docs/UPSTREAM_PATCHES.md` §5.
 
-Smoke test (`test/`):
+The test tools (`test/`, `make -C test` builds `test/obj/`):
+
+- `sndsmoke input.wav output.au` — exercises SndKit's libsndfile file
+  I/O (load, write, reload) without any audio device or display.
+- `resoundio input.wav workdir` — the 44-check contract suite for the
+  `Snd (ResoundSound)` file-I/O category (compiled in), pinned
+  test-first for Phase 1; headless.
+- `resoundnib --check [roots …]` — verifies the converted `.gorm`
+  asset format (the GNUstep archive magic + class descriptions, in the
+  tree and the built bundle); headless.  `resoundnib --load` runs the
+  runtime half (loads every `.gorm` in a child process); it needs a
+  display, so CI runs `--check` and `--load` runs locally.
 
 ```sh
-make -C test                                   # builds test/obj/sndsmoke
+make -C test                                   # builds the three tools
 LD_LIBRARY_PATH=<prefix>/lib \
   ./test/obj/sndsmoke test/Tone.wav /tmp/out.au   # .wav -> .au round trip
 ```
 
-`sndsmoke` exercises SndKit's libsndfile file I/O (load, write, reload)
-without any audio device or display, so it is safe to run headless; it
-fails the build (CI) if the framework is broken.
+All three run headless except `--load`; the first two and
+`resoundnib --check` are fatal in CI.
 
 ## Continuous integration (GitHub Actions)
 
@@ -192,11 +202,14 @@ submodule (`third_party/build-sndkit.sh`; the frameworks are installed
 into the hermetic prefix **after** the stack is saved to the cache, so
 every run rebuilds them fresh from the pinned submodule instead of
 trusting a stale cached copy — a couple of minutes, while the expensive
-stack stays cached), runs the `test/sndsmoke` SndKit smoke test (fatal),
-runs `make -f GNUmakefile` (in-tree, as locally), and finishes with a
-non-fatal launch check under `xvfb` + `openbox` (the app has no main
-nib yet, so "ran until the 10 s timer" counts as a pass). The built
-`Resound.app` is uploaded as a workflow artifact.
+stack stays cached). The gates, all fatal: `sndsmoke` (the SndKit file
+I/O round trip), `resoundio` (the file-I/O contract suite), and
+`resoundnib --check` (the `.gorm` asset format). Then `make -f
+GNUmakefile` (in-tree, as locally), a non-fatal launch check under
+`xvfb` + `openbox` (the app starts with its 1998 main window and sits
+in its event loop until the 10 s timer; exit 124 is a pass), and a
+screenshot of the running app is published. The built `Resound.app`
+is uploaded as a workflow artifact.
 
 ## Adding sources step by step
 
@@ -230,7 +243,7 @@ Guidelines:
   session's PipeWire/Pulse socket; the launch check itself does not
   need it (nothing initialises audio until a sound is played).
 
-## Source classification status (2026-11-02)
+## Source classification status (2026-11-14)
 
 Classification of the original Rhapsody app sources (the 26 `CLASSES` of the
 Project Builder `Source/Makefile`, plus `Resound_main.m` and `fft.c`)
@@ -250,36 +263,29 @@ against the GNUstep toolchain:
 | `Source/MiscVolumeMeter.{h,m}`, `Source/ResoundMiscVolumeMeter.{h,m}`, `Source/MiscSoundTracker.{h,m}` | **Phase 2, unit 1c (2026-11-07)**: the console's meter and second tracker, migrated to SndKit in the same unit — the 1998 `SoundMeter` casts become the migrated class names, the legacy `NX_Sound*` status groups map to `Snd isPlaying` / `SndPerformance isPaused` (the recording group is undetectable on an Snd — SndKit never records into one — and reports idle), and the 1998 `samplesProcessed` maps to the last performance's `samplesPerformedOfPerformance:`. Verified in-app by the same console probe (the meter receives the console's token sound during the capture). |
 | `Source/ResoundNibs.{h,m}` | **NIB conversion unit (2026-11-08)**: the platform-aware nib-load helper (`+loadNibNamed:owner:` with the logical name, no extension) through which every nib-load call site in the tree now goes; resolves to the converted `.gorm` on GNUstep and the 1998 `.nib` on a native build (see `docs/RESOUND_SNDKIT_PLAN.md`, NIB migration). |
 | `Source/MiscSoundView.{h,m}`, `Source/MiscSoundViewRuler.{h,m}`, `Source/ResoundMiscSoundView.{h,m}` | **Phase 2, view-chain unit (2026-11-08)**: the three core document views, migrated to SndKit on `SndView` (`SoundView`→`SndView`, `Sound*`→`Snd*`, `sampleCount`→`lengthInSampleFrames`, `SNDConvertDecibelsToLinear`, `setContinuous:`→`setContinuousSelectionUpdates:`, `NXSoundPboardType`→`SndPasteboardType`, `char*` info-string chain→`NSString*`; `ModuleSoundView.h`/`SelectionInspector.h` imports dropped — the latter is a legacy-SoundKit drag nothing in the file needs). Three platform rewrites (documented in `docs/RESOUND_SNDKIT_PLAN.md`): the ruler labels are drawn via `NSString` drawing (GNUstep has no `PSselectfont`/`PSstringwidth`), the 1998 `selectionRect` 1.1x fudge becomes a 10% wider frame selection (SndKit's `setSelection:` doesn't clamp; its `selectionRect` is a read-only derived method), and the 1998 buggy `pasteboard:provideData:` super call becomes the `provideDataForType:` it always should have been. `getSelection:size:` keeps the 1998 `int*` (the super call casts to SndKit's `unsigned int*` — an `unsigned int*` override would warn at every call site); `pasteboardChangedOwner:` stays byte-identical but GNUstep's `NSPasteboard` never sends it (no such symbol in `libgnustep-gui`), so the 1998 paste-bug retains accumulate (two per `cut:` — SndKit's `cut:` dispatches its internal `copy:` back into the 1998 override — plus one per `copy:`): documented difference, not a regression. The 1998 multi-arg `set:`/`update:` idiom is kept verbatim and is runtime-safe (registered `set:::::::::`/`update::::::::::`; the real callers' argument counts match); the 50 re-emitted `-Wmissing-selector-name` warnings are the file set's documented baseline (the `MiscSoundView.h` 8 re-emit into every TU importing it; zero other warning classes). Verified with a display probe (both display modes, the selection fudge, zoom 1/10/100/1000, ruler via the 1998 `set:` idiom incl. the NSString labels, pasteboard cut/copy/data materialisation, info chain, teardown — all pass, no exceptions) + all fatal gates green + app launch clean. |
+| `Source/AttributesInspector.{h,m}`, `Source/EditController.{h,m}`, `Source/InfoStringInspector.{h,m}`, `Source/InspectorManager.{h,m}`, `Source/MarksInspector.{h,m}`, `Source/Module.{h,m}`, `Source/ModuleController.{h,m}`, `Source/ModuleSound.{h,m}`, `Source/ModuleSoundView.{h,m}`, `Source/SelectionInspector.{h,m}`, `Source/VolumeController.{h,m}`, `Source/ZoomInspector.{h,m}` | **SndKit-leftovers unit (2026-11-14)**: the twelve remaining `CLASSES` files (all but `PreferencesManager`) — with them, **25 of the 26 1998 `CLASSES` classes** are in the build. The mappings are the documented Phase-1 set (`docs/RESOUND_SNDKIT_PLAN.md`): the import swap to `<SndKit/SndKit.h>` (11 lines, incl. `ModuleSound.m`'s `<SoundKit/convertsound.h>`), the 1998 type renames (`Sound`→`Snd` / `SoundView`→`SndView`, incl. the `Snd(ModuleSound)` / `SndView(ModuleSoundView)` category headers and the `SndView**` of `newWindow:` in `ModuleController.{h,m}` + `ModuleProtocol.h`), `sampleCount`→`lengthInSampleFrames`, `convertToFormat:`→`convertToSampleFormat:`, the `char*` info-string chain→`NSString*` (`InfoStringInspector`'s `stringWithCString:`/`lossyCString` round-trips, the `ModuleSoundView` `info`/`setInfo:` pair — now matching the view chain), the functionally-dead `NXSoundOut*` ivar→`SndStreamMixer*` (alloc/release only; SndKit's `SndStreamMixer init` is light — no device enumeration), `SNDiMulaw`/`SNDMulaw`→`SndMuLawToLinear`/`SndLinearToMuLaw`, `[Sound setMute:]`→`[Snd setMute:]`, the bare `sound` ivar→`[self sound]`, the `getSelection:` `unsigned int*` casts (view-chain precedent), and the `<objc/List.h>` import dropped from `ModuleController.h` (absent from the GNUstep prefix; the 1998 `PAStringList` mention is a comment). SndKit keeps the rest of the 1998 API with identical values/signatures — all 24 `SND_FORMAT_*`/`SND_RATE_*` constants, `isEmpty`/`isPlayable`/`needsCompacting`/`compactSamples`, `displayMode` + the `NX_SOUNDVIEW_*` aliases — so those lines stay byte-identical. Three files (`InspectorManager`, `MarksInspector`, `Module`) use no legacy API and come in with the import swap alone. The nine main-model stubs in `ResoundMissingClasses.m` (the eight inspector/controller classes + `ZoomInspector`; `Module`/`ModuleSound`/`ModuleSoundView` never had stubs — the main model doesn't instantiate them) are retired with the unit; `test/GNUmakefile`'s `resoundnib` file list mirrors the app list (the twelve files added there) so `--load` resolves them. Warning baseline (gsbuild full build): 169 → 428 — the +257 are all `-Wmissing-selector-name`, the 1998 multi-arg idiom re-emitted from the migrated neighbour headers into the twelve new TUs (the documented inheritance, same class as the view-chain baseline: `ModuleSound.h` 10×, `ModuleController.h` 1×, `ModuleProtocol.h` 2×, plus the already-migrated `FileController.h`/`SoundManager.h`/`SoundDocumentTable.h`/view headers re-emitting). Two new single-instance warnings on 1998 byte-identical lines, documented baselines never fixed (the `Extra.m` precedent): `-Wparentheses` @ `ModuleSound.m:77` (the `nextPositivePowerOfTwo:` shift loop `for(t=0;value=value>>1;t++);`) and `-Wmisleading-indentation` @ `MarksInspector.m:160`. One port-side byproduct, suppressed with a file-scope pragma (the `SoundManager` pattern): `-Wobjc-multiple-method-names` @ `AttributesInspector.m` — the 1998 untyped `changeInfo:thisSound` receiver resolves against both SndKit's `Snd channelCount` and GNUstep's `GSSoundSource channelCount` (via AppKit). Verified: full build green; all fatal gates green (`sndsmoke`, `resoundio` 44/44, `resoundnib --check` 43/0); `resoundnib --load` 43/0 with a display; app launch clean — the main model now instantiates the real `EditController`/`InspectorManager`/five inspectors/`VolumeController`/`ModuleController`, the main window comes up viewable, zero class-not-found (the `ModuleController` module-load dialog appears and completes). |
 
-### Blocked by SoundKit (15 files, not in the build yet)
+### Not in the build yet (1 file)
 
-All 15 fail with `fatal error: 'SoundKit/SoundKit.h' file not found`
-(directly or via their headers: `FileController.h`,
-`SelectionInspector.h`, `SoundDocumentTable.h`,
-`VolumeController.h`, `ModuleProtocol.h`, `ModuleSound.h`,
-`ModuleSoundView.h`). They unblock with the SndKit migration
-(`docs/RESOUND_SNDKIT_PLAN.md`, phases 1-3):
+`Source/PreferencesManager.{h,m}` — the last of the 1998 `CLASSES`
+files. It unblocked with the view-chain unit (2026-11-08) — its only
+path to SoundKit was through `ResoundMiscSoundView.h` →
+`MiscSoundView.h`, both migrated by that unit — and compiles with
+zero errors and **no changes** (nothing in it needed the legacy API).
+It is deliberately **not** added to the build: it loads the
+`Preferences` nib lazily from its menu action
+(`startPreferencesPanel:`), and it ships with the preferences unit,
+which re-wires that flow (the 1998 `NX_Sound*` volume/filter settings
+it reads have no SndKit device counterparts — see the
+`VolumeController` row above for the SndKit volume story). Its stub
+in `Source/ResoundMissingClasses.m` stays until then, and
+`Resound_MAIN_MODEL_FILE` keeps working through it.
 
-AttributesInspector, EditController, FileController,
-InfoStringInspector, InspectorManager, MarksInspector,
-Module, ModuleController, ModuleSound, ModuleSoundView,
-ResoundScrollView,
-SelectionInspector, SoundDocumentTable, VolumeController,
-ZoomInspector
-
-(FileController no longer contains the `Snd (ResoundSound)` category or
-the legacy reader imports; those moved to
-`Source/Sound-ResoundSound.{h,m}` / were dropped with the SndKit port —
-the class itself remains blocked with the Phase 2 GUI chain.)
-
-The view-chain unit (2026-11-08) unblocked one more file from the original
-19: `Source/PreferencesManager.{h,m}` — its only path to SoundKit was
-through `ResoundMiscSoundView.h` → `MiscSoundView.h`, both migrated by that
-unit. It now compiles with zero errors and **no changes** (nothing in it
-needed the legacy API). It is deliberately **not** added to the build in
-that unit: it loads the `Preferences` nib lazily from its menu action
-(`startPreferencesPanel:`), which nothing in the current app reaches — it
-ships with the file/inspector chain that instantiates it.
+Every other 1998 app source is in the build: the twelve
+`CLASSES` files of the SndKit-leftovers unit (2026-11-14, row above),
+the file unit's `FileController`/`SoundDocumentTable`/`ResoundScrollView`
+(2026-11-09), the SoundManager/console/view-chain units, and the
+bootstrap four.
 
 ### Not part of the app
 
@@ -306,10 +312,14 @@ ships with the file/inspector chain that instantiates it.
   `docs/RESOUND_SNDKIT_PLAN.md`, NIB migration). Call sites load the
   logical name without extension through `Source/ResoundNibs.{h,m}`,
   which appends `.nib` on a native build, where the 1998 files would be
-  listed instead. `Resound_MAIN_MODEL_FILE` (i.e. `NSMainNibFile`) is
-  therefore still empty — `Resound.nib`'s conversion is done, but it would
-  instantiate the still-blocked `FileController` — and the app launches
-  with no main window until the file unit lands.
+  listed instead. `Resound_MAIN_MODEL_FILE` is set to `Resound`: since
+  the file unit (2026-11-09) the main model is live — the gorm loader
+  resolves the 1998 class names to the real classes (file / console /
+  sound-manager chain, and since the SndKit-leftovers unit the inspector
+  and controller chain) and to the `ResoundMissingClasses.m` stubs
+  (the `PreferencesManager` and the nib-internal chain names), so the
+  app comes up with its 1998 main window (verified: launch check in
+  each unit, `resoundnib --load` 43/0).
 - The Rhapsody `Source/Makefile` (Project Builder) is kept for reference and
   history; it is superseded by this build system on this branch.
 - `GNUmakefile.postamble` carries a fallback for the bundle's `.desktop`

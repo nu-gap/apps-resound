@@ -5,11 +5,12 @@
  the NSMainNibFile) references that are not linked into the app yet.
 
  The 1998 main nib instantiates the FileController, the ConsoleManager
- and the SoundManager (all ported), plus the PreferencesManager, the
- EditController, the InspectorManager, the five inspectors
- (InfoString/Attributes/Marks/Selection/Zoom), the VolumeController
- and the ModuleController(+Instance) objects (all blocked on their
- units).  The 1998 Rhapsody nib loader skipped unknown classes: the
+  and the SoundManager (all ported), the EditController, the
+ InspectorManager, the five inspectors (InfoString/Attributes/Marks/
+ Selection/Zoom), the VolumeController and the ModuleController
+ (all ported 2026-11-14, the SndKit-leftovers unit - their nine stubs
+ were deleted with it), plus the PreferencesManager, the only one
+ still stubbed below (it ships with the preferences unit).  The 1998 Rhapsody nib loader skipped unknown classes: the
  object came up nil, the rest of the model loaded, and the 1998 code
  nil-guards every use.  The GNUstep gorm loader is strict: a class it
  cannot resolve raises and the whole main model fails to load
@@ -31,10 +32,14 @@
  (the id-bridges and protocol bridges the other units use until a
  neighbour lands).  Each stub is deleted with the unit that ports its
  real class - never keep a stub and its real class in the build at
- the same time.  FileController.m imports three of the 1998 stubbed
- headers (EditController/PreferencesManager/InspectorManager); that
- is harmless: an @interface re-declaration with the same NSObject
- superclass is legal, and the real class is emitted only here.
+ the same time.  FileController.m imports the 1998
+ EditController/PreferencesManager/InspectorManager headers (the 1998
+ import block, restored by the file unit): EditController and
+ InspectorManager are real classes in the build now, and the
+ PreferencesManager declaration is inert there - the sends to the
+ preferencesManager ivar (soundComingIn, minMaxDisplay, ...) are id
+ dispatch that resolve to this stub's swallow until the preferences
+ unit lands.
 */
 
 #import <Foundation/Foundation.h>
@@ -71,99 +76,6 @@ static BOOL ResoundStubResolve(Class theClass, SEL sel)
 }
 @end
 
-/* Retired with the edit unit (Phase 2). */
-@interface EditController : NSObject
-@end
-@implementation EditController
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
-/* Retired with the inspector-manager unit (Phase 2). */
-@interface InspectorManager : NSObject
-@end
-@implementation InspectorManager
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
-/* Retired with the info-string-inspector unit (Phase 2). */
-@interface InfoStringInspector : NSObject
-@end
-@implementation InfoStringInspector
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
-/* Retired with the attributes-inspector unit (Phase 2). */
-@interface AttributesInspector : NSObject
-@end
-@implementation AttributesInspector
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
-/* Retired with the marks-inspector unit (Phase 2). */
-@interface MarksInspector : NSObject
-@end
-@implementation MarksInspector
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
-/* Retired with the selection-inspector unit (Phase 2). */
-@interface SelectionInspector : NSObject
-@end
-@implementation SelectionInspector
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
-/* Retired with the volume unit (Phase 2). */
-@interface VolumeController : NSObject
-@end
-@implementation VolumeController
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
-/* Retired with the zoom-inspector unit (Phase 2). */
-@interface ZoomInspector : NSObject
-@end
-@implementation ZoomInspector
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
-/* Retired with the module unit (Phase 3).  The 1998 ModuleController.h
-   (a different @interface for the same name) is guarded out of every
-   built TU by NOT_COMPILING_WITH_MODULES, so it never meets this stub
-   in a translation unit; the two retire together. */
-@interface ModuleController : NSObject
-@end
-@implementation ModuleController
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
-
 /* Retired with the module unit (Phase 3).  A nib-internal 1998 class
    with no source file in the tree (it appears only in Resound.nib /
    Resound.gorm); the stub stands in for it. */
@@ -193,9 +105,13 @@ static BOOL ResoundStubResolve(Class theClass, SEL sel)
 @end
 
 /* The 1998 Inspector base class: nib-internal (no source file in the
-   tree; the 1998 inspectors descend from it in the nib's class table).
-   Stays until the inspector units land (Phase 2), with the inspector
-   stubs above. */
+   tree; the 1998 inspectors are listed under it in the nib's class
+   table, so the main model's class chain references the name).  The
+   five real inspectors landed 2026-11-14 (SndKit-leftovers unit) with
+   their 1998 NSObject superclass - the names in the chain resolve to
+   the real classes now, but this chain name still must resolve, so the
+   stub stays until the main model is re-nibbed without it (as with
+   the ErrorHandler below). */
 @interface Inspector : NSObject
 @end
 @implementation Inspector

@@ -37,7 +37,7 @@ IMPLIED WARRANTIES.
 #import "EditController.h"
 #import "ResoundNibs.h"
 #import "FileController.h"
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 
 
 /**** This used to be one of the biggest classes, but most of its gunk has been 
@@ -179,7 +179,7 @@ IMPLIED WARRANTIES.
 	[currentSoundView checkForCurrentDataOnPasteboard];
 
 // now convert that sucker
-    error=[currentSoundView convertToFormat: format 
+    error=[currentSoundView convertToSampleFormat: format 
 	 samplingRate:   sampling_rate 
 	 channelCount:   channel_count];
     

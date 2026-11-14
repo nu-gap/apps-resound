@@ -19,7 +19,7 @@ IMPLIED WARRANTIES.
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import "InspectorManager.h"
 
 @interface SelectionInspector:NSObject

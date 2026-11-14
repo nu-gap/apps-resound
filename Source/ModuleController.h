@@ -20,7 +20,6 @@ IMPLIED WARRANTIES.
 
 #import <Foundation/Foundation.h>
 #import "ModuleProtocol.h"
-#import <objc/List.h>
 
 @interface ModuleController:NSObject <ModuleProtocol>
     {
