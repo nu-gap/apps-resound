@@ -10,9 +10,11 @@ Imported on November 1, 2026 from [IOOI-SqAR/Resound](https://github.com/IOOI-Sq
 
 ## Status and build requirements
 
-Resound 3.0 is Sean Luke’s historical sound editor for Rhapsody, with editing and effects modules. This is a source preservation import for future GNUstep work, not a completed GNUstep port or a tested release. No build or runtime verification was performed.
+Resound 3.0 is Sean Luke’s historical sound editor for Rhapsody, with editing and effects modules. At import, this was a source preservation import for future GNUstep work: no build or runtime verification had been performed; the source uses Rhapsody SoundKit, AppKit, Project Builder makefiles, and legacy interface files; the bundled binaries target Rhapsody PPC/Intel and are not modern GNUstep binaries.
 
-Read `README.html` for the original distribution documentation and `Source/README.COMPILING` for historical build instructions. The source uses Rhapsody SoundKit, AppKit, Project Builder makefiles, and legacy interface files. The bundled binaries target Rhapsody PPC/Intel; they are not modern GNUstep binaries. A GNUstep port will require audio-framework, build-system, and interface work.
+Since the import, the `gnustep-port` branch has become an active GNUstep port (SoundKit → SndKit, Project Builder → gnustep-make, the 1998 `.nib` interfaces → converted `.gorm` archives); the current state, build instructions, and the port plan are in the root `README.md` and `docs/GNUSTEP_BUILD.md` / `docs/RESOUND_SNDKIT_PLAN.md`.
+
+Read `README.html` for the original distribution documentation and `Source/README.COMPILING` for the historical build instructions.
 
 ## Original licenses
 
