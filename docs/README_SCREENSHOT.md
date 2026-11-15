@@ -23,13 +23,33 @@ no README edit and no manual re-trigger in between.
    least one window, then for the tone document window, and stages a
    scene before capturing the **whole screen** with ImageMagick's
    `import -window root -strip`:
+   - the **background**: `xsetroot -solid "#666695"` paints the root
+     window the brand purple (102,102,149) right after openbox
+     starts — the X server leaves the root black and openbox does not
+     paint it, so without this the inter-window gaps would be black,
    - the 1998 menu bar (the ~86x182 window named `Resound`) is moved
-     to (1030,300) — where its submenus fit inside the canvas,
+     to (1030,300) — where its submenus fit inside the canvas — and
+     raised, so nothing can sit over the bar rows,
+   - **staging**: openbox (Smart + center placement) puts the app's
+     *managed* windows wherever it likes, so the tone document and
+     the console are already moved to their tile spots before the
+     menu dances — where openbox lands them they could otherwise sit
+     over the bar rows or the popups and swallow the dance's press
+     or release.  (The main model and the six inspectors are
+     override-redirect, so openbox leaves them at their nib
+     positions, which fall off the canvas.)
    - two menu selections open their panels: `xdotool` presses a bar
      row, slides to the next so the 1998 bar attaches the submenu,
-     finds the popup by id diff and releases on its last row —
-     **Tools → Record Format**, then **Edit → Preferences** (each
-     retried once if the panel did not appear),
+     finds the popup by id diff — and `windowraise`s it (openbox
+     does not manage the override-redirect popup, so a plain
+     `XRaiseWindow` pins it above whatever stacked over it; the
+     raise is repeated after the aim move) — then releases on the
+     popup's last row: **Tools → Record Format**, then **Edit →
+     Preferences** (each retried twice if the panel did not
+     appear).  Right after the Record panel opens it is moved to
+     its final tile spot (359,330) — openbox's placement of this
+     managed window could otherwise cover the bar's Edit row for
+     the second dance,
    - the five windows are tiled: tone document (39,40), console
      (39,330), record panel (359,330), preferences panel (679,40),
      menu bar (1030,300).  Windows are moved by their frame id (the

@@ -102,7 +102,7 @@ jobs:
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
             libgnutls28-dev libxslt1-dev \
             portaudio19-dev libsndfile1-dev libportmidi-dev libasound2-dev \
-            xvfb openbox fonts-dejavu-core \
+            xvfb openbox fonts-dejavu-core x11-utils \
             imagemagick xdotool
 
       - name: Build GNUstep stack from source
@@ -370,7 +370,13 @@ jobs:
         # open document), the 1998 menu bar is moved aside, and two
         # menu selections open their panels (Tools -> Record Format,
         # Edit -> Preferences, driven by xdotool mouse events on the
-        # bar); the five windows are then tiled across the canvas.
+        # bar); the five windows are then tiled across the canvas.  The
+        # root window is painted the brand purple (xsetroot) so the
+        # inter-window gaps read as a backdrop instead of Xvfb black.
+        # The Record panel is an openbox-managed window whose placement
+        # openbox chooses, so it is moved to its tile spot right after
+        # it opens (before the Edit dance) - where it sits it could
+        # otherwise swallow the press or release of that dance.
         # The same capture shows the UI further as the ported units
         # land; the publish step below ships the PNG to the
         # 'screenshot' branch that the README links
@@ -396,6 +402,10 @@ jobs:
             set -x
             openbox >/dev/null 2>&1 &
             sleep 1
+            # Scene background: the X server leaves the root window
+            # black and openbox does not paint it, so set the brand
+            # purple (102,102,149 = #666695) before anything maps.
+            xsetroot -solid "#666695" 2>/dev/null || true
             "$1" "$2" >/dev/null 2>&1 &
             app=$!
 
@@ -474,6 +484,20 @@ jobs:
             # windows, so they are found by id diff.
             xdotool search --name "" 2>/dev/null | sort -n > /tmp/resound-shot-baseline.txt
 
+            # Staging: openbox (Smart+center placement) puts the managed
+            # app windows wherever it likes, so take the ones that
+            # could land in the bar/popup zone out of it before the
+            # dances - a window over the Edit row of the bar swallows
+            # the press, one over the popup swallows the release. (The
+            # main model and the inspectors are override-redirect, so
+            # openbox leaves them at their nib positions, which fall
+            # off the canvas; the bar is unmanaged and already raised.)
+            tile "Tone.wav" 39 40
+            tile "Console" 39 330
+            if [ -n "$BAR" ]; then
+              xdotool windowraise "$BAR" 2>/dev/null || true
+            fi
+
             if [ -n "$BAR" ]; then
               # dance ROW HLO HHI FBX FBY: press bar row ROW (0 =
               # Resound; rows sit 20px apart, 11px below the bar top),
@@ -502,8 +526,15 @@ jobs:
                   fi
                 done
                 if [ -n "$sub" ]; then
+                  # Pure-server raise: openbox does not manage the
+                  # override-redirect popup, so XRaiseWindow pins it above
+                  # whatever the app or the WM stacked over it - and again
+                  # after the aim move, in case the pointer travel made the
+                  # WM raise a managed window over it.
+                  xdotool windowraise "$sub" 2>/dev/null || true
                   echo "dance: aiming at the last row of popup $sub"
                   xdotool mousemove $((sx+sw/2)) $((sy+sh-5))
+                  xdotool windowraise "$sub" 2>/dev/null || true
                 else
                   echo "dance: no popup found - using the fallback aim"
                   xdotool mousemove $((X0+fbx)) $((Y0+fby))
@@ -520,11 +551,23 @@ jobs:
                 echo "record panel missing - retrying the tools dance"
                 dance 3 80 130 144 90
               fi
+              if [ -z "$(xdotool search --name "Record" 2>/dev/null | head -n 1)" ]; then
+                echo "record panel still missing - final tools dance retry"
+                dance 3 80 130 144 90
+              fi
+              # The Record panel is openbox-managed: its placement may sit
+              # over the Edit row of the bar, where it would swallow the
+              # press of the next dance.  Move it to its final tile spot now.
+              tile "Record" 359 330
               # Edit (row 2): the menu is ~147x362.  The last row is
               # Preferences.
               dance 2 300 499 161 357
               if [ -z "$(xdotool search --name "Preferences" 2>/dev/null | head -n 1)" ]; then
                 echo "preferences panel missing - retrying the edit dance"
+                dance 2 300 499 161 357
+              fi
+              if [ -z "$(xdotool search --name "Preferences" 2>/dev/null | head -n 1)" ]; then
+                echo "preferences panel still missing - final edit dance retry"
                 dance 2 300 499 161 357
               fi
             fi
