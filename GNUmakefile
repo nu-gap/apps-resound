@@ -98,10 +98,9 @@ Resound_RESOURCE_FILES= \
 Resound_OBJC_LIBS = -lSndKit -lMKPerformSndMIDI -lstdc++ -lm
 
 # READY (compiles and links against the GNUstep toolchain):
-# The SndKit-leftovers unit (2026-11-14) landed the twelve remaining
-# SoundKit-blocked CLASSES files (all 1998 CLASSES minus the
-# PreferencesManager, which compiles but ships with the preferences
-# unit - see docs/GNUSTEP_BUILD.md):
+# All 26 of the 1998 CLASSES files are in the build - the bootstrap
+# four, the SoundKit-port units, the twelve SndKit-leftovers files and
+# the PreferencesManager (both 2026-11-14; see docs/GNUSTEP_BUILD.md):
 Resound_OBJC_FILES= \
 	Source/Resound_main.m \
 	Source/Extra.m \
@@ -129,6 +128,7 @@ Resound_OBJC_FILES= \
 	Source/ModuleController.m \
 	Source/ModuleSound.m \
 	Source/ModuleSoundView.m \
+	Source/PreferencesManager.m \
 	Source/SelectionInspector.m \
 	Source/VolumeController.m \
 	Source/ZoomInspector.m
@@ -136,10 +136,11 @@ Resound_OBJC_FILES= \
 Resound_C_FILES= \
 	Source/fft.c
 
-# NOT IN THE BUILD: PreferencesManager (compiles unchanged - unblocked
-# by the view-chain unit, 2026-11-08; deliberately not added there, it
-# loads the Preferences nib lazily - it ships with the preferences
-# unit, see docs/GNUSTEP_BUILD.md).
+# NOT PART OF THE APP (not in the 1998 CLASSES list, see
+# docs/GNUSTEP_BUILD.md): MiscTapper/MiscVolumeLight (MiscKit
+# helpers), the Source/Modules/** tree (own build targets, Phase 3),
+# the Source/FileType.subproj legacy readers (dropped by decision),
+# and Source/streams (Phase 4).
 
 -include GNUmakefile.preamble
 

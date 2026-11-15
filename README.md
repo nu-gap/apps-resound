@@ -19,7 +19,7 @@ See also: [https://nu-gap.github.io/apps-resound/README.html](https://nu-gap.git
 - [x] NIB migration — the 1998 `.nib` folders converted to `.gorm` (43 of 44, one documented exception), gated in CI
 - [x] File unit — the 1998 main model live at app startup (main window + menu)
 - [x] Inspector and controller chain — 25 of the 26 1998 application classes in the build; the main model instantiates the real inspector and controller objects
-- [ ] Preferences — the next unit
+- [x] Preferences — the 1998 preferences panel, live from the Edit menu and runtime-verified end to end
 - [ ] Module API and the ten module implementations
 - [ ] Packaging and validation on the target platforms
 
@@ -91,7 +91,7 @@ cd Source
 
 ## The GNUstep port
 
-The port proceeds unit by unit against the 1998 sources, each unit small, build-verified against the CI stack, and committed on its own: the 1998 files stay byte-identical except for the documented SndKit mappings, and every behaviour change is called out where it happens. What remains: the `PreferencesManager` and its panel wiring (the next unit), the module system (the ten module implementations and the DSP architecture decision), the one non-app helper (`MiscTapper`), and packaging plus validation on the target platforms (GNUstep/Linux, Mac OS X Server 1.2, modern macOS).
+The port proceeds unit by unit against the 1998 sources, each unit small, build-verified against the CI stack, and committed on its own: the 1998 files stay byte-identical except for the documented SndKit mappings, and every behaviour change is called out where it happens. What remains: the module system (the ten module implementations and the DSP architecture decision), the one non-app helper (`MiscTapper`), and packaging plus validation on the target platforms (GNUstep/Linux, Mac OS X Server 1.2, modern macOS).
 
 Please describe your operating system, toolchain, and steps to reproduce when [reporting an issue](https://github.com/nu-gap/apps-resound/issues). Preserve the original copyright and license notices when contributing.
 

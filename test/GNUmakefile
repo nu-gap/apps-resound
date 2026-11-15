@@ -50,9 +50,10 @@ resoundio_OBJC_FILES = resoundio.m ../Source/Sound-ResoundSound.m
 # (minus Resound_main.m, whose NSApplicationMain the test replaces):
 # that is what makes the console and the main model fully loadable
 # under --load - the main model needs the file unit's classes plus
-# the SndKit-leftovers unit's twelve inspector/controller classes,
-# and the ResoundMissingClasses stubs (see there), which now stand in
-# only for the PreferencesManager and the nib-internal chain names.
+# the SndKit-leftovers unit's twelve inspector/controller classes
+# and the PreferencesManager, and the ResoundMissingClasses stubs
+# (see there), which now stand in only for the nib-internal chain
+# names.
 resoundnib_OBJC_FILES = resoundnib.m \
 	../Source/ResoundNibs.m \
 	../Source/Extra.m \
@@ -79,6 +80,7 @@ resoundnib_OBJC_FILES = resoundnib.m \
 	../Source/ModuleController.m \
 	../Source/ModuleSound.m \
 	../Source/ModuleSoundView.m \
+	../Source/PreferencesManager.m \
 	../Source/SelectionInspector.m \
 	../Source/VolumeController.m \
 	../Source/ZoomInspector.m

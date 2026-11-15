@@ -9,8 +9,10 @@
  InspectorManager, the five inspectors (InfoString/Attributes/Marks/
  Selection/Zoom), the VolumeController and the ModuleController
  (all ported 2026-11-14, the SndKit-leftovers unit - their nine stubs
- were deleted with it), plus the PreferencesManager, the only one
- still stubbed below (it ships with the preferences unit).  The 1998 Rhapsody nib loader skipped unknown classes: the
+ were deleted with it), and the PreferencesManager (the
+ preferences unit, same day) - with it, every 1998 app class the
+ main model instantiates is real, and the five nib-internal names
+ below are the only stubs left.  The 1998 Rhapsody nib loader skipped unknown classes: the
  object came up nil, the rest of the model loaded, and the 1998 code
  nil-guards every use.  The GNUstep gorm loader is strict: a class it
  cannot resolve raises and the whole main model fails to load
@@ -34,12 +36,8 @@
  real class - never keep a stub and its real class in the build at
  the same time.  FileController.m imports the 1998
  EditController/PreferencesManager/InspectorManager headers (the 1998
- import block, restored by the file unit): EditController and
- InspectorManager are real classes in the build now, and the
- PreferencesManager declaration is inert there - the sends to the
- preferencesManager ivar (soundComingIn, minMaxDisplay, ...) are id
- dispatch that resolve to this stub's swallow until the preferences
- unit lands.
+ import block, restored by the file unit); all three are real classes
+ in the build now.
 */
 
 #import <Foundation/Foundation.h>
@@ -65,16 +63,6 @@ static BOOL ResoundStubResolve(Class theClass, SEL sel)
 }
 
 /* ------------------------------------------------------------------ */
-
-/* Retired with the preferences unit (Phase 2). */
-@interface PreferencesManager : NSObject
-@end
-@implementation PreferencesManager
-+ (BOOL) resolveInstanceMethod:(SEL) sel
-{
-    return ResoundStubResolve(self, sel);
-}
-@end
 
 /* Retired with the module unit (Phase 3).  A nib-internal 1998 class
    with no source file in the tree (it appears only in Resound.nib /
