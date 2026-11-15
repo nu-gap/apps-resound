@@ -363,15 +363,24 @@ jobs:
       - name: Capture app screenshot (for the README)
         # The real app under xvfb + openbox; the *whole screen* is
         # captured with ImageMagick, so that every window the app shows
-        # up is in the picture.  The app comes up with its 1998 main
-        # window and menu (the converted main model is live at startup),
-        # and the same capture shows the UI further as the ported units
-        # land; the publish step below ships it to the 'screenshot'
-        # branch that the README links (docs/README_SCREENSHOT.md).
-        # Non-fatal, like the launch check: a flaky display must not mask
-        # a build result.  (A per-window capture does not work: app
-        # windows can fail ImageMagick's XGetImage with a bad resource
-        # while the root window is always capturable.)
+        # up is in the picture.  Before the capture the step stages a
+        # scene: the app is launched with test/Tone.wav as a file
+        # argument (GNUstep hands non-dash arguments to
+        # application:openFile:, so it comes up with the tone as an
+        # open document), the 1998 menu bar is moved aside, and two
+        # menu selections open their panels (Tools -> Record Format,
+        # Edit -> Preferences, driven by xdotool mouse events on the
+        # bar); the five windows are then tiled across the canvas.
+        # The same capture shows the UI further as the ported units
+        # land; the publish step below ships the PNG to the
+        # 'screenshot' branch that the README links
+        # (docs/README_SCREENSHOT.md).  Non-fatal, like the launch
+        # check: a flaky display must not mask a build result.  Every
+        # scene step is best effort, so a flaky piece degrades the
+        # picture (fewer windows) instead of the build.  (A per-window
+        # capture does not work: app windows can fail ImageMagick
+        # XGetImage with a bad resource while the root window is always
+        # capturable.)
         continue-on-error: true
         run: |
           # Not -u: GNUstep.sh references unset shell-variant variables.
@@ -381,16 +390,20 @@ jobs:
           export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           EXE=$(find Resound.app -type f -name Resound | head -n 1)
           test -n "$EXE"
+          test -f test/Tone.wav
           OUT="$RUNNER_TEMP/Resound-screenshot.png"
-          timeout 60 xvfb-run -a -s "-screen 0 1280x800x24" bash -c '
+          timeout 120 xvfb-run -a -s "-screen 0 1280x800x24" bash -c '
+            set -x
             openbox >/dev/null 2>&1 &
             sleep 1
-            "$1" >/dev/null 2>&1 &
+            "$1" "$2" >/dev/null 2>&1 &
             app=$!
+
             # Readiness gate: wait for the app to have at least one
-            # window, then give it a moment to draw.
+            # window, then for the tone document window to appear
+            # (best effort: a missing document only thins the scene).
             ready=0
-            for i in $(seq 1 30); do
+            for i in $(seq 1 40); do
               if [ -n "$(xdotool search --name Resound 2>/dev/null | head -n 1 || true)" ]; then
                 ready=1
                 break
@@ -402,10 +415,141 @@ jobs:
               kill "$app" 2>/dev/null || true
               exit 1
             fi
+            for i in $(seq 1 40); do
+              if [ -n "$(xdotool search --name "Tone.wav" 2>/dev/null | head -n 1 || true)" ]; then
+                break
+              fi
+              sleep 0.5
+            done
+            sleep 1
+
+            # top_id PATTERN: the top-level (frame) id among the name
+            # matches.  A reparented client and its frame share the
+            # name, but the frame is taller - and windowmove must hit
+            # the frame, since the client id would only shift inside
+            # it under a plain WM.
+            top_id() {
+              local id best="" bh=0
+              for id in $(xdotool search --name "$1" 2>/dev/null); do
+                eval "$(xdotool getwindowgeometry --shell "$id" 2>/dev/null)"
+                if [ "${HEIGHT:-0}" -gt "$bh" ]; then bh=${HEIGHT:-0}; best=$id; fi
+              done
+              echo "$best"
+            }
+            tile() {
+              local id
+              id=$(top_id "$1")
+              if [ -n "$id" ]; then
+                xdotool windowmove "$id" "$2" "$3"
+              else
+                echo "tile: no window matching [$1]"
+              fi
+            }
+
+            # The 1998 menu bar: the only ~86x182 window named
+            # Resound.  Undecorated (a root child), so getwindowgeometry
+            # reports true absolute coordinates for it.  It is moved to
+            # the upper right of the tiled scene, with room below and to
+            # the right of it for the popups (which attach at the bar
+            # right edge, top-aligned, and run ~362px tall).
+            BAR=""
+            for id in $(xdotool search --name "Resound" 2>/dev/null); do
+              eval "$(xdotool getwindowgeometry --shell "$id" 2>/dev/null)"
+              if [ "${WIDTH:-0}" -ge 80 ] && [ "${WIDTH:-0}" -le 100 ] \
+                 && [ "${HEIGHT:-0}" -ge 170 ] && [ "${HEIGHT:-0}" -le 190 ]; then
+                BAR=$id
+              fi
+            done
+            if [ -z "$BAR" ]; then
+              echo "menu bar not found - skipping the menu dances"
+              X0=0; Y0=0
+            else
+              xdotool windowmove "$BAR" 1030 300
+              sleep 0.5
+              eval "$(xdotool getwindowgeometry --shell "$BAR" 2>/dev/null)"
+              X0=$X; Y0=$Y
+            fi
+
+            # Baseline window list: the menu popups are nameless new
+            # windows, so they are found by id diff.
+            xdotool search --name "" 2>/dev/null | sort -n > /tmp/resound-shot-baseline.txt
+
+            if [ -n "$BAR" ]; then
+              # dance ROW HLO HHI FBX FBY: press bar row ROW (0 =
+              # Resound; rows sit 20px apart, 11px below the bar top),
+              # slide down one row - the 1998 bar then attaches the
+              # submenu at (barX+86, barY) - and release on the LAST
+              # row of the popup of the expected size: the target item
+              # is the last row of both menus, so the exact row height
+              # does not matter.  A 147x362 twin of the Edit menu
+              # appears alongside every popup; the H band picks the
+              # real one.  FBX/FBY is the fallback aim, relative to
+              # the bar, when no popup is found.
+              dance() {
+                local row=$1 hlo=$2 hhi=$3 fbx=$4 fby=$5
+                local sub="" sx=0 sy=0 sw=0 sh=0 id
+                xdotool mousemove $((X0+43)) $((Y0+11+20*row)) mousedown 1
+                sleep 0.4
+                xdotool mousemove $((X0+43)) $((Y0+31+20*row))
+                sleep 0.8
+                xdotool search --name "" 2>/dev/null | sort -n > /tmp/resound-shot-press.txt
+                for id in $(comm -13 /tmp/resound-shot-baseline.txt /tmp/resound-shot-press.txt); do
+                  eval "$(xdotool getwindowgeometry --shell "$id" 2>/dev/null)"
+                  if [ "${X:-0}" -ge $((X0+80)) ] && [ "${X:-0}" -le $((X0+110)) ] \
+                     && [ "${Y:-0}" -ge $((Y0-5)) ] && [ "${Y:-0}" -le $((Y0+5)) ] \
+                     && [ "${HEIGHT:-0}" -ge $hlo ] && [ "${HEIGHT:-0}" -le $hhi ]; then
+                    sub=$id; sx=$X; sy=$Y; sw=${WIDTH:-0}; sh=${HEIGHT:-0}
+                  fi
+                done
+                if [ -n "$sub" ]; then
+                  echo "dance: aiming at the last row of popup $sub"
+                  xdotool mousemove $((sx+sw/2)) $((sy+sh-5))
+                else
+                  echo "dance: no popup found - using the fallback aim"
+                  xdotool mousemove $((X0+fbx)) $((Y0+fby))
+                fi
+                sleep 0.3
+                xdotool mouseup 1
+                sleep 1
+              }
+
+              # Tools (row 3): the real menu is ~117x102.  The last
+              # row is Record Format.
+              dance 3 80 130 144 90
+              if [ -z "$(xdotool search --name "Record" 2>/dev/null | head -n 1)" ]; then
+                echo "record panel missing - retrying the tools dance"
+                dance 3 80 130 144 90
+              fi
+              # Edit (row 2): the menu is ~147x362.  The last row is
+              # Preferences.
+              dance 2 300 499 161 357
+              if [ -z "$(xdotool search --name "Preferences" 2>/dev/null | head -n 1)" ]; then
+                echo "preferences panel missing - retrying the edit dance"
+                dance 2 300 499 161 357
+              fi
+            fi
+
+            # Tile the scene (frame targets; the openbox title bar
+            # keeps the client areas where the tiles want them): the
+            # tone document top-left, console and record below it,
+            # preferences right, menu bar far right.  The remaining
+            # 1998 windows (the main model, the inspectors) keep their
+            # nib positions, which fall off the 1280x800 canvas.
+            tile "Tone.wav" 39 40
+            tile "Console" 39 330
+            tile "Record" 359 330
+            tile "Preferences" 679 40
+            if [ -n "$BAR" ]; then
+              xdotool windowmove "$BAR" 1030 300
+            fi
             sleep 2
-            import -window root -strip "$2"
+
+            import -window root -strip "$3"
             kill "$app" 2>/dev/null || true
-          ' _ "$EXE" "$OUT"
+            sleep 1
+            kill -9 "$app" 2>/dev/null || true
+            exit 0
+          ' _ "$EXE" "$GITHUB_WORKSPACE/test/Tone.wav" "$OUT"
           ls -la "$OUT"
           identify "$OUT"
 

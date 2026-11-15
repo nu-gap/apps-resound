@@ -7,24 +7,45 @@ https://raw.githubusercontent.com/nu-gap/apps-resound/screenshot/Resound-screens
 ```
 
 …which lives on the dedicated `screenshot` branch, maintained by the
-build workflow — never by a hand edit.  The app currently shows a 1x1
-window (no main nib yet), so the image is a blank desktop for now; the
-same capture shows the UI as the ported units land, with no README
-edit and no manual re-trigger in between.
+build workflow — never by a hand edit.  The build stages a scene
+before capturing (the tone as an open document, the console, the
+record and preferences panels, the 1998 menu bar — see below), and
+the same capture shows the UI further as the ported units land, with
+no README edit and no manual re-trigger in between.
 
 ## How it works (`.github/workflows/build.yml`)
 
 1. **Capture** (after the launch check): the freshly built app runs
-   under `xvfb-run` (1280x800x24) + openbox on the runner; the step
-   waits for the app to have at least one window
-   (`xdotool search --name Resound`), then captures the **whole
-   screen** with ImageMagick's `import -window root -strip` into
-   `$RUNNER_TEMP/Resound-screenshot.png`.  Whole screen (not the app
-   window) on purpose: once the app shows several windows, they all
-   belong in the picture — and the root window is capturable in every
-   state, while the current 1x1 window fails a per-window capture with
-   a bad X resource.  Non-fatal, like the launch check — a flaky
-   display environment must not mask a build result.
+   under `xvfb-run` (1280x800x24) + openbox on the runner, launched
+   with `test/Tone.wav` as a file argument — GNUstep hands non-dash
+   arguments to `application:openFile:`, so the app comes up with the
+   tone as an open document.  The step waits for the app to have at
+   least one window, then for the tone document window, and stages a
+   scene before capturing the **whole screen** with ImageMagick's
+   `import -window root -strip`:
+   - the 1998 menu bar (the ~86x182 window named `Resound`) is moved
+     to (1030,300) — where its submenus fit inside the canvas,
+   - two menu selections open their panels: `xdotool` presses a bar
+     row, slides to the next so the 1998 bar attaches the submenu,
+     finds the popup by id diff and releases on its last row —
+     **Tools → Record Format**, then **Edit → Preferences** (each
+     retried once if the panel did not appear),
+   - the five windows are tiled: tone document (39,40), console
+     (39,330), record panel (359,330), preferences panel (679,40),
+     menu bar (1030,300).  Windows are moved by their frame id (the
+     taller of the name matches) via `xdotool windowmove`;
+     `xdotool getwindowgeometry` reports true absolute coordinates
+     for undecorated windows, so the menu bar and popups — but not
+     the reparented client areas — are positioned from it.
+   The 1998-nib positions of the remaining windows (the main model,
+   the six inspectors) fall off the 1280x800 canvas and stay out of
+   the picture.  Whole screen (not the app windows) on purpose: every
+   window the app shows belongs in the picture, and the root window
+   is capturable in every state, while app windows fail a per-window
+   capture with a bad X resource.  Non-fatal, like the launch check —
+   a flaky display must not mask a build result; every scene step is
+   best effort, so a flaky piece degrades the picture (fewer windows)
+   instead of the build.
 2. **Publish** (push events only): a scratch `git init` directory
    whose local branch is named `screenshot` (so the very first commit
    creates the branch); if the branch already exists, it is fetched
