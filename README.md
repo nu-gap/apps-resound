@@ -56,7 +56,7 @@ git checkout gnustep-port        # the GNUstep port branch
 | `test/` | the three CI gate tools: `sndsmoke` (SndKit file I/O), `resoundio` (the file-I/O contract suite), `resoundnib` (the `.gorm` assets) + the `Tone.wav` input |
 | `third_party/` | vendored dependencies: the `MusicKit` git submodule (SndKit source, pinned) and `build-sndkit.sh` |
 | `patches/` | port patches for the pinned dependencies (see `docs/UPSTREAM_PATCHES.md`) |
-| `docs/` | project documentation: the build system, the SndKit plan, the upstream patches, the CI screenshot |
+| `docs/` | project documentation: the build system, the SndKit plan, the upstream patches, the CI screenshot, and the [architecture decision records](docs/adrs/README.md) |
 | `API/` | module API documentation |
 | `ResoundModules/` | historical compiled module bundles (Rhapsody era; the converted `.gorm` twins of their `.nib`s ride along in them) |
 | `original-archive/` | preserved original distribution archive |
@@ -91,7 +91,7 @@ cd Source
 
 ## The GNUstep port
 
-The port proceeds unit by unit against the 1998 sources, each unit small, build-verified against the CI stack, and committed on its own: the 1998 files stay byte-identical except for the documented SndKit mappings, and every behaviour change is called out where it happens. What remains: the module system (the ten module implementations and the DSP architecture decision), the one non-app helper (`MiscTapper`), and packaging plus validation on the target platforms (GNUstep/Linux, Mac OS X Server 1.2, modern macOS).
+The port proceeds unit by unit against the 1998 sources, each unit small, build-verified against the CI stack, and committed on its own: the 1998 files stay byte-identical except for the documented SndKit mappings, and every behaviour change is called out where it happens. The architecture decisions behind the port are recorded as ADRs in [`docs/adrs/`](docs/adrs/README.md). What remains: the module system (the ten module implementations and the DSP architecture decision), the one non-app helper (`MiscTapper`), and packaging plus validation on the target platforms (GNUstep/Linux, Mac OS X Server 1.2, modern macOS).
 
 Please describe your operating system, toolchain, and steps to reproduce when [reporting an issue](https://github.com/nu-gap/apps-resound/issues). Preserve the original copyright and license notices when contributing.
 
@@ -99,7 +99,7 @@ Please describe your operating system, toolchain, and steps to reproduce when [r
 
 Resound was written by Sean Luke, with contributions and incorporated code credited in the original source and documentation, including MiscKit components and Jerome Genest’s file readers.
 
-This repository was imported from [IOOI-SqAR/Resound](https://github.com/IOOI-SqAR/Resound) on November 1, 2026, preserving all three upstream commits and the `Resound-3.0-P-bs` tag. See [NU-GAP-IMPORT.md](NU-GAP-IMPORT.md) for the exact source revision. The [upstream documentation site](https://iooi-sqar.github.io/Resound/README.html) remains available as a historical reference.
+This repository was imported from [IOOI-SqAR/Resound](https://github.com/IOOI-SqAR/Resound) on November 1, 2026, preserving all three upstream commits and the `Resound-3.0-P-bs` tag. See [NU-GAP-IMPORT.md](NU-GAP-IMPORT.md) for the exact source revision. The original distribution notes remain in the tree ([`README.html`](README.html)) and in the [upstream repository](https://github.com/IOOI-SqAR/Resound/blob/Resound-3.0-P-bs/README.html); the upstream documentation site is no longer online.
 
 ## Licensing
 
