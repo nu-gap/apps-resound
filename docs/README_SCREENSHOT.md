@@ -40,16 +40,30 @@ no README edit and no manual re-trigger in between.
      positions, which fall off the canvas.)
    - two menu selections open their panels: `xdotool` presses a bar
      row, slides to the next so the 1998 bar attaches the submenu,
-     finds the popup by id diff — and `windowraise`s it (openbox
-     does not manage the override-redirect popup, so a plain
-     `XRaiseWindow` pins it above whatever stacked over it; the
-     raise is repeated after the aim move) — then releases on the
-     popup's last row: **Tools → Record Format**, then **Edit →
-     Preferences** (each retried twice if the panel did not
-     appear).  Right after the Record panel opens it is moved to
-     its final tile spot (359,330) — openbox's placement of this
-     managed window could otherwise cover the bar's Edit row for
-     the second dance,
+     finds the popup by id diff among the new windows — and
+     `windowraise`s it (openbox does not manage the
+     override-redirect popup, so a plain `XRaiseWindow` pins it
+     above whatever stacked over it; the raise is repeated after
+     the aim move) — then releases on the popup's last row:
+     **Tools → Record Format**, then **Edit → Preferences**.  Two
+     quirks are handled here: the app blocks its event loop for a
+     few seconds after the bar maps (module loading, audio
+     probing), so the press is retried (up to 8 times) until a
+     *viewable* popup actually appears; and the Edit menu renders
+     in a 147x362 (17-row) and a 170x302 (14-row) twin in the same
+     session, with the viewable twin varying run to run (a GUI
+     library layout race at nib-load time) — the 14-row twin makes
+     the last row, Preferences, unreachable, so the dance selects
+     the tallest *viewable* twin, and a scene without the panel
+     fails verification below.  Right after the Record panel opens
+     it is moved to its final tile spot (359,330) — openbox's
+     placement of this managed window could otherwise cover the
+     bar's Edit row for the second dance,
+   - **verification**: the scene is only accepted when the menu
+     bar, the Record panel, and the Preferences panel are all
+     present *and mapped* (a name match on an unmapped window does
+     not count).  A failed scene is relaunched from scratch (a new
+     nib load re-rolls the layout race), up to 5 times,
    - the five windows are tiled: tone document (39,40), console
      (39,330), record panel (359,330), preferences panel (679,40),
      menu bar (1030,300).  Windows are moved by their frame id (the
@@ -63,9 +77,16 @@ no README edit and no manual re-trigger in between.
    window the app shows belongs in the picture, and the root window
    is capturable in every state, while app windows fail a per-window
    capture with a bad X resource.  Non-fatal, like the launch check —
-   a flaky display must not mask a build result; every scene step is
-   best effort, so a flaky piece degrades the picture (fewer windows)
-   instead of the build.
+   a flaky display must not mask a build result.  But nothing in the
+   scene is "best effort" anymore: a scene that fails verification is
+   relaunched from scratch (up to 5 times), and a captured frame whose
+   pixels do not show the staged scene — the backdrop must be the
+   brand purple, the bar, the tone document, and the preferences
+   panel must be visible at their tile spots — is re-taken (up to 6
+   times).  If the scene never verifies the step writes **no**
+   screenshot and exits 0: the publish step skips an empty capture,
+   so the README keeps the last published image instead of a degraded
+   one, and the log carries a loud `LOUD:` line saying so.
 2. **Publish** (push events only): a scratch `git init` directory
    whose local branch is named `screenshot` (so the very first commit
    creates the branch); if the branch already exists, it is fetched
@@ -118,6 +139,10 @@ step skips with a clear log line instead of failing.
 - To force a refresh without any UI change: delete
   `Resound-screenshot.png` on the `screenshot` branch; the next build
   recreates it.
+- When a scene never verifies (five failed attempts) the step writes
+  no screenshot at all: the publish skips, the README keeps the last
+  published image, and the run log carries the `LOUD:` line with the
+  reason.
 - The README image carries `style="max-width:100%"`, so a large
   future window scales down to the text column instead of spilling
   out of it.
