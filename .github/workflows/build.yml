@@ -107,7 +107,7 @@ jobs:
             libicu-dev \
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
             libgnutls28-dev libxslt1-dev \
-            portaudio19-dev libsndfile1-dev libasound2-dev \
+            portaudio19-dev libsndfile1-dev libportmidi-dev libasound2-dev \
             xvfb openbox fonts-dejavu-core x11-xserver-utils \
             imagemagick xdotool
 
