@@ -92,12 +92,15 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
+          # Both x11 tool packages are needed, and both are non-optional:
           # x11-xserver-utils provides xsetroot (the scene background
-          # paint); x11-utils - the package it was looked up under -
-          # does not contain it, so the background silently stayed black.
-          # (Keep this comment above the statement: a comment in the
-          # middle of the backslash chain below would truncate the
-          # install line, since bash ends the logical line at '#'.)
+          # paint - without it the backdrop silently stays the X server's
+          # black), and x11-utils provides xwininfo, which the capture
+          # step's IsViewable verification uses - its absence makes every
+          # window report as unmapped, so no scene can ever verify.
+          # (A comment may sit above this statement, but never in the
+          # middle of the backslash chain below: bash ends the logical
+          # line at '#', which would truncate the install.)
           sudo apt-get install -y --no-install-recommends \
             clang llvm cmake git \
             autoconf automake libtool pkg-config \
@@ -108,7 +111,7 @@ jobs:
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
             libgnutls28-dev libxslt1-dev \
             portaudio19-dev libsndfile1-dev libportmidi-dev libasound2-dev \
-            xvfb openbox fonts-dejavu-core x11-xserver-utils \
+            xvfb openbox fonts-dejavu-core x11-utils x11-xserver-utils \
             imagemagick xdotool
 
       - name: Build GNUstep stack from source
@@ -502,11 +505,16 @@ jobs:
                xdotool search --name "" 2>/dev/null | sort -n > /tmp/resound-shot-press.txt
                for id in $(comm -13 /tmp/resound-shot-baseline.txt /tmp/resound-shot-press.txt); do
                  eval "$(xdotool getwindowgeometry --shell "$id" 2>/dev/null)"
+                 # Filter on the cheap geometry first: a press spawns
+                 # hundreds of 1x1 helper windows in the popup zone, and
+                 # xwininfo (one fork per window) is the expensive call.
+                 if [ "${X:-0}" -lt $1 ] || [ "${X:-0}" -gt $2 ] \
+                   || [ "${Y:-0}" -lt $3 ] || [ "${Y:-0}" -gt $4 ] \
+                   || [ "${HEIGHT:-0}" -lt $5 ] || [ "${HEIGHT:-0}" -gt $6 ]; then
+                   continue
+                 fi
                  st=$(xwininfo -id "$id" 2>/dev/null | grep -oE "IsViewable" | head -n 1 || true)
-                 if [ "${X:-0}" -ge $1 ] && [ "${X:-0}" -le $2 ] \
-                    && [ "${Y:-0}" -ge $3 ] && [ "${Y:-0}" -le $4 ] \
-                    && [ "${HEIGHT:-0}" -ge $5 ] && [ "${HEIGHT:-0}" -le $6 ] \
-                    && [ -n "$st" ] && [ "${HEIGHT:-0}" -gt "$bh" ]; then
+                 if [ -n "$st" ] && [ "${HEIGHT:-0}" -gt "$bh" ]; then
                    SUB=$id; SX=${X:-0}; SY=${Y:-0}; SW=${WIDTH:-0}; SH=${HEIGHT:-0}; bh=${HEIGHT:-0}
                  fi
                done
@@ -543,6 +551,10 @@ jobs:
                    echo "dance: no viewable popup on press attempt $attempt - retrying"
                    xdotool mouseup 1
                    sleep 2
+                   # Re-baseline the window list: each press leaves its helper
+                   # windows behind, and without this the diff above would grow
+                   # (and slow down) on every attempt.
+                   xdotool search --name "" 2>/dev/null | sort -n > /tmp/resound-shot-baseline.txt
                  fi
                done
                if [ -z "$SUB" ]; then
