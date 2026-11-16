@@ -92,6 +92,12 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
+          # x11-xserver-utils provides xsetroot (the scene background
+          # paint); x11-utils - the package it was looked up under -
+          # does not contain it, so the background silently stayed black.
+          # (Keep this comment above the statement: a comment in the
+          # middle of the backslash chain below would truncate the
+          # install line, since bash ends the logical line at '#'.)
           sudo apt-get install -y --no-install-recommends \
             clang llvm cmake git \
             autoconf automake libtool pkg-config \
@@ -101,10 +107,7 @@ jobs:
             libicu-dev \
             libjpeg-dev libpng-dev libtiff-dev libxml2-dev \
             libgnutls28-dev libxslt1-dev \
-            portaudio19-dev libsndfile1-dev libportmidi-dev libasound2-dev \
-            # x11-xserver-utils provides xsetroot (the scene background
-            # paint); x11-utils - the package it was looked up under -
-            # does not contain it, so the background silently stayed black.
+            portaudio19-dev libsndfile1-dev libasound2-dev \
             xvfb openbox fonts-dejavu-core x11-xserver-utils \
             imagemagick xdotool
 
