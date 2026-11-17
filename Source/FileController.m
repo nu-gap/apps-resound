@@ -58,15 +58,16 @@ IMPLIED WARRANTIES.
   ****************************************************************************/
 
 
-/* The 1998 no-modules build variant: ModuleController.h cannot compile
-   here - it imports <objc/List.h> (absent from the GNUstep prefix) and
-   ModuleProtocol.h, which still imports the legacy SoundKit umbrella
-   (both return with the module unit, Phase 3).  Until then the app
-   runs as the 1998 no-modules build: the 1998 modules are runtime
-   plugin bundles anyway, and the nib's ModuleController object comes
-   up nil (the 1998 code nil-guards every use).  Re-enable (comment
-   this out) with the module unit. */
-#define NOT_COMPILING_WITH_MODULES
+/* The 1998 build switch, kept exactly as the 1998 release shipped it:
+   commented out, i.e. the app builds WITH modules (Phase 3).  With the
+   module unit the SndKit-port ModuleController.h / ModuleProtocol.h
+   compile (the old blockers - <objc/List.h> and the legacy SoundKit
+   umbrella - are both gone), so the guarded blocks below are live as in
+   the 1998 release: applicationDidFinishLaunching calls
+   [moduleController loadModules], which loads every *.rmod installed
+   under $(GNUSTEP_LIBRARY)/Resound and builds its menu trees.  For the
+   1998 no-modules build variant, uncomment the line below. */
+//#define NOT_COMPILING_WITH_MODULES
 
 #import "ConsoleManager.h"
 #import "FileController.h"

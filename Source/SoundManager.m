@@ -59,58 +59,32 @@ IMPLIED WARRANTIES.
     as in unit 1; the real meter re-work is a later unit).
   - The 1998 controller imports (FileController.h / ConsoleManager.h /
     ModuleController.h) were dropped in unit 1: those headers then still
-    imported <SoundKit/SoundKit.h>.  The file unit (FU3) restores the
-    block: FileController and ConsoleManager are ported and their
-    headers compile; ModuleController.h still cannot (<objc/List.h> is
-    absent from the GNUstep prefix, and ModuleProtocol.h still imports
-    the legacy SoundKit umbrella - both return with the Phase 3 module
-    unit), so that one import is guarded by the 1998
-    NOT_COMPILING_WITH_MODULES switch, enabled here exactly as in
-    FileController.m.  All controller references are id-typed dynamic
-    dispatch, so the imports only add declarations (the 1998 idiom
-    names in them re-emit the documented -Wmissing-selector-name class
-    into this TU).
-  - The diagnostic pragma below silences the -Wobjc-method-access
-    warnings the module chain produces: getModuleController is declared
-    untyped (returns id) and ModuleController.h is guarded above, so
-    the soundDidPlay/soundNowPlaying/soundNowRecording/soundDidRecord
-    sends stay id dispatch of undeclared selectors.  It no longer covers
-    -Wobjc-multiple-method-names, whose reason is gone: SndKit declares
-    play:/pause:/resume: on both Snd and SndView, which the unit-1
-    id-typed view matched ambiguously -- but the view ivar is now the
-    typed ResoundMiscSoundView (view-chain unit), so those sends resolve
-    unambiguously and the suppression is dead weight.  Remove the pragma
-    with the module unit, which re-enables the ModuleController.h import.
-    (The -Wmissing-selector-name warnings from the 1998-style record:
-    declaration are deliberately left visible: that idiom predates the
-    port and its runtime selector is preserved exactly, see
-    docs/GNUSTEP_BUILD.md.)
+    imported <SoundKit/SoundKit.h>.  The file unit (FU3) restored the
+    FileController and ConsoleManager imports; the Phase 3 module unit
+    restores the last one (ModuleController.h now compiles - the SndKit
+    port removed its <objc/List.h> import and re-pointed ModuleProtocol.h
+    at <SndKit/SndKit.h>), so the 1998 import block is complete again.
+    All controller references are id-typed dynamic dispatch, so the
+    imports only add declarations (the 1998 idiom names in them re-emit
+    the documented -Wmissing-selector-name class into this TU, which is
+    deliberately left visible - the runtime selectors are preserved
+    exactly; see docs/GNUSTEP_BUILD.md).
   
   ****************************************************************************/
 
 
 
-/* The 1998 no-modules build variant, enabled exactly as in
-   FileController.m: ModuleController.h cannot compile here (it imports
-   <objc/List.h>, absent from the GNUstep prefix, and ModuleProtocol.h,
-   which still imports the legacy SoundKit umbrella - both return with
-   the Phase 3 module unit).  The only module reference this file makes
-   is the [fileController getModuleController] chain, which the
-   no-modules FileController nil-guards at runtime (it returns nil).
-   Re-enable (comment this out) with the module unit. */
-#define NOT_COMPILING_WITH_MODULES
-
 #import "SoundManager.h"
-/* The 1998 import block, restored with the file unit (FU3). */
+/* The 1998 import block, restored with the file unit (FU3) and
+   completed with the Phase 3 module unit: the SndKit-port
+   ModuleController.h / ModuleProtocol.h now compile, so the module
+   chain imports unconditionally, exactly as in 1998 (the 1998
+   NOT_COMPILING_WITH_MODULES no-modules variant is a FileController.m
+   switch; this file never had one). */
 #import "FileController.h"
 #import "ConsoleManager.h"
-#ifndef NOT_COMPILING_WITH_MODULES
 #import "ModuleController.h"
-#endif
 #import <unistd.h>	/* getpid, for the capture temp file name */
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wobjc-method-access"
 
 @implementation SoundManager
 
@@ -583,6 +557,3 @@ IMPLIED WARRANTIES.
     }
 
 @end
-
-#pragma clang diagnostic pop
-

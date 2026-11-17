@@ -28,7 +28,7 @@ facility, under the section "Building a Resound Module: A Walk-Though".
 
 
 	#import "ZeroModule.h"
-	#import <SoundKit/SoundKit.h>
+	#import <SndKit/SndKit.h>
 	#import <AppKit/AppKit.h>
 	#import "ModuleSoundView.h" 
 
@@ -48,16 +48,15 @@ facility, under the section "Building a Resound Module: A Walk-Though".
 		
 	- zeroSound:sender
 		{
-		Sound* current=		[moduleController currentSound];
-		SoundView* cview=	[moduleController currentSoundView];
-		
+		Snd* current=		[moduleController currentSound];
+		SndView* cview=		[moduleController currentSoundView];
+
 		int dataFormat=		[current dataFormat];
 		int channelCount=	[current channelCount];
-		int sampleCount=	[current sampleCount];
-		char* data;
+		void* data;
 		int x;
-	
-		int firstSample,sampleLength;
+
+		unsigned int firstSample,sampleLength;
 		
 		[cview getSelection: &firstSample size: &sampleLength];
 		
@@ -73,11 +72,14 @@ facility, under the section "Building a Resound Module: A Walk-Though".
 		[current compactSamples];
                 [cview checkForCurrentDataOnPasteboard];
 
-		data=(char*) [current data];
+		data=[current bytes];
 
-		SNDSwapSoundToHost
-			((void*)data, (void*)data, sampleCount, channelCount, dataFormat);
-			
+		// The 1998 code swapped the buffer to host order around the
+		// zeroing (SoundKit held its data big-endian).  SndKit holds
+		// its data in host order, so the pair is gone; the zeroing
+		// itself is endian-independent (0, and 0xFF for mu-law, are
+		// the same in every byte order).
+
 		// samples can be stereo or mono.  We need to deal with this fact.
 		firstSample*=channelCount;    sampleLength*=channelCount;
 
@@ -87,7 +89,7 @@ facility, under the section "Building a Resound Module: A Walk-Though".
 			{
 			case SND_FORMAT_MULAW_8:
                         	{
-				unsigned char mulawzero=SNDMulaw(0);  // it's probably 127
+				unsigned char mulawzero=SndLinearToMuLaw(0);  // 1998: SNDMulaw(0), "probably 127"; the G.711 code for zero is 0xFF
                         	char* d=(char*) data;
                                 for (x=firstSample;x<firstSample+sampleLength;x++) d[x]=mulawzero;
                         	break;
@@ -123,8 +125,6 @@ facility, under the section "Building a Resound Module: A Walk-Though".
 					@"Okay",NULL,NULL);
 				break;
 			}
-		SNDSwapHostToSound
-			((void*)data, (void*)data, sampleCount, channelCount, dataFormat);
 		[moduleController soundTouched];
 		return self;
 		}	

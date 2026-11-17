@@ -1,4 +1,7 @@
 obj/
 Resound.app/
 test/sndsmoke
+test/resoundmodule
+test/resoundmenu
+Source/Modules/*/*.rmod/
 *.d

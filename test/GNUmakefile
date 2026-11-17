@@ -1,5 +1,5 @@
 # Tests for the SndKit integration, the Resound file-I/O port and the
-# converted NIB assets.
+# converted NIB assets, and the first Phase 3 module.
 #
 # Builds:
 #   - sndsmoke: exercises SndKit's libsndfile-backed file I/O
@@ -13,9 +13,14 @@
 #     NIB migration section).  --check is headless and runs in CI;
 #     --load needs a display and runs locally (one child process per
 #     gorm).
+#   - resoundmodule: the Phase 3 load contract of the Zero module
+#     (docs/GNUSTEP_BUILD.md, modules): the built Zero.rmod through
+#     NSBundle - principal class, menu tree, and zeroSound: over the
+#     five 1998 data formats (mono and stereo) - headless.
 #
-# sndsmoke and resoundio run headless (no audio device, no display)
-# and are fatal in CI.
+# sndsmoke, resoundio and resoundmodule run headless (no audio
+# device, no display) and are fatal in CI; resoundnib --check is
+# headless and fatal, --load needs a display.
 #
 # Prerequisite: the SndKit chain installed into the active GNUstep
 # prefix (see ../third_party/build-sndkit.sh).
@@ -23,7 +28,7 @@
 # Build the tool instances serially.
 #
 # gnustep-make (strict v2) runs one sub-make per tool, in parallel.
-# Two of the tools below compile sources from the shared ../Source
+# Three of the tools below compile sources from the shared ../Source
 # directory, and those object files land in the SAME real directory
 # (obj/Source) reached via two different path strings
 # (obj/<tool>.obj/../Source).  Make does not normalise "..", so it
@@ -40,7 +45,7 @@ include $(GNUSTEP_MAKEFILES)/common.make
 
 GNUSTEP_INSTALLATION_DOMAIN =	SYSTEM
 
-TOOL_NAME = sndsmoke resoundio resoundnib
+TOOL_NAME = sndsmoke resoundio resoundnib resoundmodule resoundmenu
 
 sndsmoke_OBJC_FILES = sndsmoke.m
 
@@ -87,6 +92,53 @@ resoundnib_OBJC_FILES = resoundnib.m \
 
 resoundnib_C_FILES = ../Source/fft.c
 
+# The module test compiles the module's two app-side classes (the
+# bundle provides ZeroModule itself, the app provides its superclass
+# and the menu node) and its header; the shared ../Source include
+# path serves the quoted imports, as for resoundio.
+resoundmodule_OBJC_FILES = resoundmodule.m \
+	../Source/Module.m \
+	../Source/ModuleMenuNode.m
+
+# The menu diagnostic compiles the full app the way the app does
+# (minus Resound_main.m), loads the main model, and posts
+# applicationDidFinishLaunching so the real module-load path runs.
+resoundmenu_OBJC_FILES = resoundmenu.m \
+	../Source/ResoundNibs.m \
+	../Source/Extra.m \
+	../Source/ModuleMenuNode.m \
+	../Source/Sound-ResoundSound.m \
+	../Source/SoundDocumentTable.m \
+	../Source/FileController.m \
+	../Source/ResoundScrollView.m \
+	../Source/ResoundMissingClasses.m \
+	../Source/SoundManager.m \
+	../Source/MiscVolumeMeter.m \
+	../Source/ResoundMiscVolumeMeter.m \
+	../Source/MiscSoundTracker.m \
+	../Source/ConsoleManager.m \
+	../Source/MiscSoundView.m \
+	../Source/MiscSoundViewRuler.m \
+	../Source/ResoundMiscSoundView.m \
+	../Source/AttributesInspector.m \
+	../Source/EditController.m \
+	../Source/InfoStringInspector.m \
+	../Source/InspectorManager.m \
+	../Source/MarksInspector.m \
+	../Source/Module.m \
+	../Source/ModuleController.m \
+	../Source/ModuleSound.m \
+	../Source/ModuleSoundView.m \
+	../Source/PreferencesManager.m \
+	../Source/SelectionInspector.m \
+	../Source/VolumeController.m \
+	../Source/ZoomInspector.m
+
+resoundmenu_C_FILES = ../Source/fft.c
+
+resoundmenu_TOOL_LIBS = -lSndKit -lMKPerformSndMIDI \
+                        -lgnustep-gui -lgnustep-base -lstdc++ -lm
+
 # The contract tests compile the category straight from the app tree;
 # its header is needed for the quoted import in resoundio.m.
 # (Global on purpose: gnustep-make strict v2 does not honour the
@@ -101,5 +153,8 @@ resoundio_TOOL_LIBS = -lSndKit -lMKPerformSndMIDI \
 
 resoundnib_TOOL_LIBS = -lSndKit -lMKPerformSndMIDI \
                        -lgnustep-gui -lgnustep-base -lstdc++ -lm
+
+resoundmodule_TOOL_LIBS = -lSndKit -lMKPerformSndMIDI \
+                          -lgnustep-gui -lgnustep-base -lstdc++ -lm
 
 include $(GNUSTEP_MAKEFILES)/tool.make

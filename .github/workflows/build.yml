@@ -315,6 +315,74 @@ jobs:
           make -j"$(nproc)" -f GNUmakefile
           find Resound.app -maxdepth 3 | sort
 
+      - name: Build the modules (Phase 3)
+        # The Zero module, the first Phase 3 unit: a gnustep-make
+        # bundle (gnustep-make bundle.make rules, ADR 0020) producing
+        # Zero.rmod, installed into the domain's library directory
+        # (lib/GNUstep/Resound with the fhs filesystem layout) - the
+        # app's ModuleController searches every library domain +
+        # /Resound (plus the app bundle), so the installed module is
+        # found when the app starts: the launch check and the capture
+        # below then run with the "Modules" menu live.  Fatal, like
+        # the app build.
+        run: |
+          set -ex
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          export GNUSTEP_INSTALLATION_DOMAIN=SYSTEM
+          make -C Source/Modules/Zero -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/Zero -f GNUmakefile install
+          find Source/Modules/Zero/Zero.rmod -maxdepth 3 | sort
+          ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
+
+      - name: Module load contract (Phase 3)
+        # The Zero module, headless and fatal (test/resoundmodule):
+        # the built Zero.rmod through NSBundle - the principal class
+        # (ZeroModule, via the generated Info-gnustep.plist), the menu
+        # tree the app's "Modules" menu is built from, and zeroSound:
+        # over the five 1998 data formats (mono and stereo), the
+        # buffer checked to be exactly zeroed.
+        run: |
+          set -ex
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          make -C test -j"$(nproc)"
+          TOOL=$(find test -type f -name resoundmodule | head -n 1)
+          test -n "$TOOL"
+          export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          "$TOOL" Source/Modules/Zero/Zero.rmod
+
+      - name: Module load probe (Phase 3)
+        # The app-side half of the module load, run for real (test/
+        # resoundmenu, non-fatal like the launch check): it loads the
+        # built app's main model the way NSApplicationMain does, then
+        # posts NSApplicationDidFinishLaunching so the app's real
+        # launch path runs - ModuleController loadModules, which
+        # searches the library domains for *.rmod bundles, dlopens
+        # them, and builds their menu trees.  The assertion is the
+        # menu dump: "Zero" must appear in the after-launch menu
+        # (the 1998 model ships with an empty Modules menu, so the
+        # entry can only come from the installed Zero.rmod).
+        # Non-fatal: a display environment can not be trusted the way
+        # the build can be; the load contract above (headless) is the
+        # hard gate.
+        continue-on-error: true
+        run: |
+          set -ex
+          export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
+          . "$GNUSTEP_PREFIX/share/GNUstep/Makefiles/GNUstep.sh"
+          make -C test -j"$(nproc)"
+          TOOL=$(find test -type f -name resoundmenu | head -n 1)
+          test -n "$TOOL"
+          export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          LOG=$(mktemp)
+          rc=0
+          timeout 60 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app >"$LOG" 2>&1 || rc=$?
+          cat "$LOG"
+          test "$rc" -eq 0
+          grep -q "loadNibFile Resound: ok" "$LOG"
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Zero"
+
       - name: NIB conversion format check
         # Every 1998 .nib in the tree has a converted .gorm twin
         # (gormtool, gnustep/apps-gorm branch OPENSTEP_nib_support); the

@@ -47,8 +47,11 @@ Resound_APPLICATION_ICON=	Resound.tiff
 # because loading it instantiates the FileController; since FU2 it is
 # set (gnustep-make turns it into NSMainNibFile in the generated
 # Info-gnustep.plist), so the app comes up with its 1998 main window.
-# The ModuleController object in the nib comes up nil under the no-modules
-# build (the 1998 FileController nil-guards every use, see FU2).
+# The ModuleController object in the nib comes up as the real class
+# (in the build since the SndKit-leftovers unit; the port kept the
+# 1998 NOT_COMPILING_WITH_MODULES switch in FileController.m active
+# only to keep the app's call path out of the build until the module
+# unit - Phase 3 re-enabled it, see docs/GNUSTEP_BUILD.md).
 Resound_MAIN_MODEL_FILE = Resound
 
 # Resource files (added step by step as they are migrated).
