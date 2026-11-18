@@ -4,11 +4,12 @@ This project carries small port patches for three pinned third-party
 codebases, all kept in `patches/`:
 
 - **leighsmith/MusicKit** (the SndKit source, vendored as the pinned
-  `third_party/MusicKit` submodule): five fixes, three to build on
+  `third_party/MusicKit` submodule): six fixes, three to build on
   modern toolchains and non-x86 architectures and to run on machines
-  with half-duplex audio devices, and two for runtime correctness of
-  the recording and conversion paths that the port exercises.  Applied
-  by `third_party/build-sndkit.sh` so the submodule stays pristine.
+  with half-duplex audio devices, and three for runtime correctness of
+  the recording, conversion and pasteboard paths that the port
+  exercises.  Applied by `third_party/build-sndkit.sh` so the submodule
+  stays pristine.
 - **the hermetic GNUstep stack** (pinned source commits, built into the
   CI prefix by `.github/workflows/build.yml`; there is no submodule —
   the CI fetches the trees, and the stack build step applies the
@@ -30,6 +31,7 @@ patch -p1 < patches/MusicKit-0002-portmidi-timeproc-cast.diff
 patch -p1 < patches/MusicKit-0003-retrievedriverlist-advance.diff
 patch -p1 < patches/MusicKit-0004-streamrecorder-threshold.diff
 patch -p1 < patches/MusicKit-0005-sndconvert-resample-buffer.diff
+patch -p1 < patches/MusicKit-0006-snd-initwithdata-64bit-swap.diff
 ```
 
 The GNUstep patches apply from the root of the fetched libs-gui tree
@@ -410,6 +412,133 @@ own buffer rather than a malloc'd temp, so it is left alone here.
 
 ---
 
+## 6. `SndKit/Snd.m`: the AU header read in `initWithData:` is 64-bit-wrong (patch 0006)
+
+**Submitted upstream:** to be filed as leighsmith/MusicKit issue #7 (the five fixes above landed as issues #2–#6; #7 is the next free number).  When it lands, drop `patches/MusicKit-0006-snd-initwithdata-64bit-swap.diff` on the submodule bump.
+
+**Suggested issue title:** *`-[Snd initWithData:]` decodes to nil on 64-bit platforms: the AU header's `int` fields are swapped with `NSSwapBigLongToHost`*
+
+**Symptom.** On a 64-bit host (aarch64; the analysis is the same on
+x86_64), `-[Snd initWithData:]` — the manual AU decode behind every
+pasteboard sound read — fails its magic check and returns nil for every
+SndKit-encoded payload, so every read of a sound *through the
+pasteboard* comes back empty: `SndView readSelectionFromPasteboard:`
+("Could not paste sound"), the app's paste
+(`ResoundMiscSoundView paste:`), and the Mix module's "Mix In" (Phase 3
+unit 2).  The payload itself is fine — a raw `dataForType:` on the
+pasteboard returns exactly the bytes the writing side stored, and the
+writer (`-dataEncodedAsFormat:`) already uses the correct 32-bit swaps
+for the same six header fields — so the failure is in the decoder.  File
+loading is unaffected (it goes through libsndfile, not this manual AU
+path).  The defect surfaced on 2026-11-18 while porting the Mix module,
+on a 64-bit little-endian build of the same pinned snapshot.
+
+**Explanation.** `initWithData:` (Snd.m) reads the six AU header
+fields into `int` locals — the upstream source carries the TODO "need to
+ensure these are all 4 bytes long" for exactly these — but swaps them
+with `NSSwapBigLongToHost()`.  Two defects stack:
+
+1. **The swap is the wrong width.** On a 32-bit host `long` is 4 bytes,
+   so the macro is the correct 32-bit swap.  On a 64-bit host `long` is
+   8 bytes: the macro zero-extends the 4-byte value, byte-reverses all
+   8 bytes, and the narrowing back to `int` keeps the low 32 bits —
+   which are zero.  The probe (first 4 bytes of an encoded payload on
+   aarch64): raw `0x646e732e`; `NSSwapBigLongToHost` →
+   `0x00000000`; `NSSwapBigIntToHost` → `0x2e736e64` (= `SND_MAGIC`).
+   `magic` becomes 0, the check fails, the initializer returns nil.
+2. **The last three fields never swap into their locals.**
+   `dataFormat`/`sampleRate`/`channelCount` are swapped directly into
+   the `soundFormat` struct, leaving the locals holding the
+   byte-reversed values; the frame count is then derived from the
+   *locals*: `soundFormat.frameCount =
+   SndBytesToFrames(dataSize, channelCount, dataFormat)`.  In an
+   isolation build with only defect 1 fixed (all six at the 32-bit
+   width, struct assignments unchanged), the decode came back with
+   format/rate/channels correct but `frameCount` 0: the `dataSize`
+   local is 8, but the `channelCount` local is still the byte-reversed
+   `0x01000000`, so 8 ÷ (0x01000000 × 2 bytes) = 0 on little-endian —
+   and the `soundFormat` (frameCount 0) sizes the decoded buffer to 0
+   bytes (NULL `bytes`).  In the unpatched code defect 1's zeroed
+   `dataSize` divides to 0 the same way, and on big-endian the
+   un-swapped locals are host order, so defect 2 shows nothing.
+   Confirmed in the disassembly of the built framework: the locals are
+   passed to `SndBytesToFrames` as plain stack loads, without a byte
+   reversal for the last three (unlike the first three, which `rev`
+   into their locals).  So with only defect 1 fixed, the decode
+   produced a sound with 0 frames and NULL buffer bytes — a segfault
+   waiting for any consumer of `[snd bytes]` (the Mix module's DSP is
+   one).
+
+On the 1998 platform both defects are latent: 32-bit big-endian PowerPC,
+where the "swap" is the identity and `long` is 4 bytes — so the code
+only breaks on 64-bit hosts, which postdate the codebase (macOS gained
+64-bit userland in 2007; the port's aarch64 home is 64-bit by
+construction).  On little-endian, defect 1 fires first (nil); on
+big-endian, the un-swapped locals of defect 2 are host order, so only
+defect 1 (zeroed fields) would show.
+
+**Proposed fix** — the 32-bit swap for all six fields, and the last
+three swapped into their locals first (the pattern the first three
+already use), so the struct *and* the `SndBytesToFrames` call both see
+host order:
+
+```diff
+diff --git a/MusicKit/Frameworks/SndKit/Snd.m b/MusicKit/Frameworks/SndKit/Snd.m
+index 7cba3571..7e57e4a8 100644
+--- a/MusicKit/Frameworks/SndKit/Snd.m
++++ b/MusicKit/Frameworks/SndKit/Snd.m
+@@ -217,22 +217,41 @@
+     if([self init] == nil)
+ 	return nil;
+     
++    /* All six AU header fields are 32-bit ints (see the TODO above),
++       so the 32-bit swap is the correct one.  The 64-bit variant
++       (NSSwapBigLongToHost) is wrong on a 64-bit host: long is 8
++       bytes there, so it zero-extends the int before swapping and the
++       swap back to int is all-zero - the magic check fails and every
++       -initWithData: decodes to nil (or to an empty, UNSPECIFIED
++       sound).  The writer, -dataEncodedAsFormat:, uses the 32-bit
++       swap, so the pair only round-trips when both use the same size.
++       The first three fields swap into their locals (the pattern the
++       magic check relies on); the last three must do the same, not
++       only the struct: SndBytesToFrames() below is called with the
++       locals, and on a little-endian host an un-swapped local is the
++       byte-reversed value (a 1-channel sound reads as 0x01000000
++       channels), which makes the frame count divide to zero.  On
++       big-endian hosts the un-swapped local is host order, which is
++       why the 1998 build never noticed. */
+     [soundData getBytes: &magic range: NSMakeRange(0, AU_FORMAT_INT_LENGTH)]; /* first integer */
+-    magic = NSSwapBigLongToHost(magic);
++    magic = NSSwapBigIntToHost(magic);
+     
+     if (magic != SND_MAGIC)     // Verify we do have a .au/.snd file.
+ 	return nil;
+     	
+     [soundData getBytes: &dataLocation range: NSMakeRange(AU_FORMAT_INT_LENGTH * 1, AU_FORMAT_INT_LENGTH)]; /* second integer */
+-    dataLocation = NSSwapBigLongToHost(dataLocation);
++    dataLocation = NSSwapBigIntToHost(dataLocation);
+     [soundData getBytes: &dataSize range: NSMakeRange(AU_FORMAT_INT_LENGTH * 2, AU_FORMAT_INT_LENGTH)]; /* third integer */
+-    dataSize = NSSwapBigLongToHost(dataSize);
++    dataSize = NSSwapBigIntToHost(dataSize);
+     [soundData getBytes: &dataFormat range: NSMakeRange(AU_FORMAT_INT_LENGTH * 3, AU_FORMAT_INT_LENGTH)]; /* fourth integer */
+-    soundFormat.dataFormat = NSSwapBigLongToHost(dataFormat);
++    dataFormat = NSSwapBigIntToHost(dataFormat);
++    soundFormat.dataFormat = dataFormat;
+     [soundData getBytes: &sampleRate range: NSMakeRange(AU_FORMAT_INT_LENGTH * 4, AU_FORMAT_INT_LENGTH)]; /* fifth integer */
+-    soundFormat.sampleRate = NSSwapBigLongToHost(sampleRate);
++    sampleRate = NSSwapBigIntToHost(sampleRate);
++    soundFormat.sampleRate = sampleRate;
+     [soundData getBytes: &channelCount range: NSMakeRange(AU_FORMAT_INT_LENGTH * 5, AU_FORMAT_INT_LENGTH)]; /* sixth integer */
+-    soundFormat.channelCount = NSSwapBigLongToHost(channelCount);
++    channelCount = NSSwapBigIntToHost(channelCount);
++    soundFormat.channelCount = channelCount;
+     soundFormat.frameCount = SndBytesToFrames(dataSize, channelCount, dataFormat);
+  
+     infoStringLength = dataLocation - (AU_FORMAT_INT_LENGTH * 6); // gap between the header and data location is the info string.
+```
+
+---
+
 ## Verified
 
 The build-fix patches (0001, 0002) were developed against the pinned
@@ -454,6 +583,33 @@ the probe). This is the first in-app exercise of the 0004 threshold
 (unit 1b's verification was a standalone probe on the Pi) and of the
 whole `_finishRecording` sequence.
 
+0006 was developed against the same snapshot on 2026-11-18 during the
+Phase 3 Mix unit port, on the Pi (aarch64): the byte-dump probe in the
+section above (raw `0x646e732e` → `NSSwapBigLongToHost` `0x00000000` vs
+`NSSwapBigIntToHost` `0x2e736e64`); the layer-1-only variant (all six
+swaps at the 32-bit width, struct assignments unchanged) decodes
+non-nil but with `frameCount` 0 and NULL buffer bytes, isolating
+defect 2, whose presence in the built framework was confirmed by
+disassembly; with both layers fixed, a 4-frame 16-bit mono 8 kHz sound
+round-trips `-dataEncodedAsFormat: @"au"` → `-initWithData:` byte-exact
+(format, rate, channel count, frame count, and every sample byte), and
+the full pasteboard path of a real `SndView`
+(`writeSelectionToPasteboard:types:` → `readSelectionFromPasteboard:`)
+works headless with no display and no `NSApplication` (the general
+pasteboard auto-launches its `gpbs` server in-process).  This also
+restores the app's own pasteboard paste, which decodes through the same
+`initWithData:`.  Two verification-boundary notes: the SndKit↔SndKit
+round trip is self-consistent in *host* byte order for the sample data
+(the writer appends the in-memory buffer bytes as-is, no endian swap),
+so the fix makes the encode/decode pair agree in *width*, not
+endianness — a foreign big-endian AU producer would mis-decode, the
+same exposure the 1998 build had in reverse; and the probes exposed a
+separate, long-standing SndKit buffer-list artifact (a fresh
+`[[Snd alloc] init]` carries one zero-frame buffer, so a paste into a
+fresh sound leaves a two-buffer sound whose first buffer is empty —
+`-[Snd bytes]` reads buffer 0) which this patch does not address; the
+Mix port works around it in the app (`compactSamples`).
+
 0001 and 0002 were submitted upstream on 2026-11-03 as issue
 [#2](https://github.com/leighsmith/MusicKit/issues/2) (vDSP arch guard) and
 issue [#3](https://github.com/leighsmith/MusicKit/issues/3) (TIME_PROC cast);
@@ -463,10 +619,12 @@ retrieveDriverList hang); 0004 and 0005 followed the same day as issue
 [#5](https://github.com/leighsmith/MusicKit/issues/5) (the recorder
 threshold) and issue
 [#6](https://github.com/leighsmith/MusicKit/issues/6) (the resample
-temp-buffer overflow).  The Resound project (nu-gap/apps-resound, branch
+temp-buffer overflow); 0006 is ready for filing as issue
+[#7](https://github.com/leighsmith/MusicKit/issues/7) (the pasteboard
+decode).  The Resound project (nu-gap/apps-resound, branch
 `gnustep-port`) vendors MusicKit as a pinned submodule and carries the
 fixes in the meantime as `patches/MusicKit-0001-…` through
-`MusicKit-0005-…`; each is dropped on the submodule bump once its issue
+`MusicKit-0006-…`; each is dropped on the submodule bump once its issue
 lands.
 
 ---

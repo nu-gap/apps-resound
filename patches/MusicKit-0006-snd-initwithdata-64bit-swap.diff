@@ -1,0 +1,52 @@
+diff --git a/MusicKit/Frameworks/SndKit/Snd.m b/MusicKit/Frameworks/SndKit/Snd.m
+index 7cba3571..7e57e4a8 100644
+--- a/MusicKit/Frameworks/SndKit/Snd.m
++++ b/MusicKit/Frameworks/SndKit/Snd.m
+@@ -217,22 +217,41 @@
+     if([self init] == nil)
+ 	return nil;
+     
++    /* All six AU header fields are 32-bit ints (see the TODO above),
++       so the 32-bit swap is the correct one.  The 64-bit variant
++       (NSSwapBigLongToHost) is wrong on a 64-bit host: long is 8
++       bytes there, so it zero-extends the int before swapping and the
++       swap back to int is all-zero - the magic check fails and every
++       -initWithData: decodes to nil (or to an empty, UNSPECIFIED
++       sound).  The writer, -dataEncodedAsFormat:, uses the 32-bit
++       swap, so the pair only round-trips when both use the same size.
++       The first three fields swap into their locals (the pattern the
++       magic check relies on); the last three must do the same, not
++       only the struct: SndBytesToFrames() below is called with the
++       locals, and on a little-endian host an un-swapped local is the
++       byte-reversed value (a 1-channel sound reads as 0x01000000
++       channels), which makes the frame count divide to zero.  On
++       big-endian hosts the un-swapped local is host order, which is
++       why the 1998 build never noticed. */
+     [soundData getBytes: &magic range: NSMakeRange(0, AU_FORMAT_INT_LENGTH)]; /* first integer */
+-    magic = NSSwapBigLongToHost(magic);
++    magic = NSSwapBigIntToHost(magic);
+     
+     if (magic != SND_MAGIC)     // Verify we do have a .au/.snd file.
+ 	return nil;
+     	
+     [soundData getBytes: &dataLocation range: NSMakeRange(AU_FORMAT_INT_LENGTH * 1, AU_FORMAT_INT_LENGTH)]; /* second integer */
+-    dataLocation = NSSwapBigLongToHost(dataLocation);
++    dataLocation = NSSwapBigIntToHost(dataLocation);
+     [soundData getBytes: &dataSize range: NSMakeRange(AU_FORMAT_INT_LENGTH * 2, AU_FORMAT_INT_LENGTH)]; /* third integer */
+-    dataSize = NSSwapBigLongToHost(dataSize);
++    dataSize = NSSwapBigIntToHost(dataSize);
+     [soundData getBytes: &dataFormat range: NSMakeRange(AU_FORMAT_INT_LENGTH * 3, AU_FORMAT_INT_LENGTH)]; /* fourth integer */
+-    soundFormat.dataFormat = NSSwapBigLongToHost(dataFormat);
++    dataFormat = NSSwapBigIntToHost(dataFormat);
++    soundFormat.dataFormat = dataFormat;
+     [soundData getBytes: &sampleRate range: NSMakeRange(AU_FORMAT_INT_LENGTH * 4, AU_FORMAT_INT_LENGTH)]; /* fifth integer */
+-    soundFormat.sampleRate = NSSwapBigLongToHost(sampleRate);
++    sampleRate = NSSwapBigIntToHost(sampleRate);
++    soundFormat.sampleRate = sampleRate;
+     [soundData getBytes: &channelCount range: NSMakeRange(AU_FORMAT_INT_LENGTH * 5, AU_FORMAT_INT_LENGTH)]; /* sixth integer */
+-    soundFormat.channelCount = NSSwapBigLongToHost(channelCount);
++    channelCount = NSSwapBigIntToHost(channelCount);
++    soundFormat.channelCount = channelCount;
+     soundFormat.frameCount = SndBytesToFrames(dataSize, channelCount, dataFormat);
+ 
+     infoStringLength = dataLocation - (AU_FORMAT_INT_LENGTH * 6); // gap between the header and data location is the info string.

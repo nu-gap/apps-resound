@@ -144,6 +144,12 @@ Port patches (see `patches/`):
   `+ 1` output frame: the original expression truncates below the
   write for some input durations, overrunning the buffer and aborting
   in `free()`. Full diagnosis in `docs/UPSTREAM_PATCHES.md` §5.
+- `MusicKit-0006-snd-initwithdata-64bit-swap.diff` swaps the six AU
+  header fields of `-[Snd initWithData:]` (the pasteboard sound
+  decode) with the 32-bit swap at the correct width and into their
+  locals: on a 64-bit host the original 64-bit `long` swap
+  zero-extends, so every pasteboard sound read decodes to nil (or to
+  a 0-frame sound). Full diagnosis in `docs/UPSTREAM_PATCHES.md` §6.
 
 The test tools (`test/`, `make -C test` builds `test/obj/`):
 
