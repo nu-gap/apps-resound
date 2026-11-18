@@ -17,10 +17,10 @@ IMPLIED WARRANTIES.
 */
 
 	#import "MixModule.h"
-	#import <SoundKit/SoundKit.h>
+	#import <SndKit/SndKit.h>
 	#import <AppKit/AppKit.h>
 
-@interface SoundView(Mix)
+@interface SndView(Mix)
 - mix:(id)moduleController;
 @end
 
@@ -43,16 +43,16 @@ IMPLIED WARRANTIES.
 	- mix:sender
 		{
                 NSMutableArray* array=[NSMutableArray arrayWithCapacity:1];
-		SoundView* cview=[moduleController currentSoundView];
+		SndView* cview=[moduleController currentSoundView];
 #ifdef PASTE_BUG
                 id pb=[NSPasteboard generalPasteboard];
 #endif
 
                 /* First, determine if we can mix or not */
-                [array addObject:NXSoundPboardType];
+                [array addObject:SndPasteboardType];
 
 #ifdef PASTE_BUG
-                if (![[pb availableTypeFromArray:array] isEqualToString:NXSoundPboardType])
+                if (![[pb availableTypeFromArray:array] isEqualToString:SndPasteboardType])
 			{
 			return nil;
 			}
@@ -74,23 +74,26 @@ IMPLIED WARRANTIES.
 	@end
 
 
-@implementation SoundView(Mix)
+@implementation SndView(Mix)
 
 
 - mix:(id)moduleController
 	{
-	int size, selection;
+	unsigned int size, selection;
 	int x;
-	Sound* s;
+	Snd* s;
 	unsigned char* data1;
 	unsigned char* data2;
-	int ch,sa,df;
+	int ch;
 	int num_bytes=1;
 
 	id tmpsoundview;
 	id tmpscrollview;
 	NSWindow* tmpwindow;
-	NSRect tmprect;
+	/* 1998 also declared an NSRect tmprect here, for the
+	   commented-out window-creation block below; with that block
+	   commented out the variable is unused, so the declaration is
+	   gone (it would trip -Wall -Wunused-variable). */
 	
         /* Compact the sound--ouch! */
 
@@ -107,7 +110,7 @@ IMPLIED WARRANTIES.
 	   and MiscSoundView here.  There's probably got to be a better way
 	   to do this (maybe a ModuleProtocol option that returns a fresh
 	   one for ya). */
-        s=[[[Sound alloc] init] autorelease];
+        s=[[[Snd alloc] init] autorelease];
 /*	tmprect.size.width=10; tmprect.size.height=10;
 	tmprect.origin.x=0; tmprect.origin.y=0; // make something up
 	tmpwindow=[[[NSWindow alloc] initWithContentRect:tmprect
@@ -121,42 +124,59 @@ IMPLIED WARRANTIES.
         [tmpsoundview setIgnoreShowAndHideCursor:NO];*/
         [moduleController newWindow:&tmpwindow:&tmpscrollview:&tmpsoundview];
 
-        [(SoundView*)tmpsoundview setSound:s];	// TypeCast for OS X server
+        [(SndView*)tmpsoundview setSound:s];	// TypeCast for OS X server
         [tmpsoundview readSelectionFromPasteboard: [NSPasteboard generalPasteboard]];
 
-	[s 	convertToFormat:[[self sound] dataFormat] 
+	[s 	convertToSampleFormat:[[self sound] dataFormat] 
 		samplingRate:[[self sound] samplingRate]
 		channelCount:[[self sound] channelCount]];
+	
+	/* SndKit buffer-list artifact (not in the 1998 SoundKit): a
+	   fresh [[Snd alloc] init] carries one zero-frame buffer, and
+	   the readSelectionFromPasteboard: above inserts the pasted
+	   samples into that buffer rather than replacing the sound,
+	   leaving a two-buffer sound whose first buffer is empty;
+	   -[Snd bytes] reads buffer 0, so the DSP below would
+	   dereference NULL.  The 1998 code never needed this; see
+	   docs/UPSTREAM_PATCHES.md, the MusicKit-0006 verification
+	   note, for the artifact itself (left unpatched in SndKit). */
+	if ([s needsCompacting]) [s compactSamples];
 	
 	/* determine size and selection */
 	
 	[self getSelection:&selection size:&size];
-	if (size==0) size=[[self sound] sampleCount]-selection;  // to end of sound
-	if (size>[s sampleCount]) size=[s sampleCount];		// whittle to min sound
+	if (size==0) size=[[self sound] lengthInSampleFrames]-selection;  // to end of sound
+	if (size>[s lengthInSampleFrames]) size=[s lengthInSampleFrames];		// whittle to min sound
 	if (size==0) return self;			// huh?  nothing to mix into
-	if (selection<0||selection>=[[self sound] sampleCount]) return self; // huh?
+	/* 1998: if (selection<0||selection>=[[self sound] sampleCount]) return self;
+	   -[SndView getSelection:] hands out unsigned ints (SndView.h), so
+	   the selection<0 half is a dead comparison for an unsigned and
+	   is kept only for the 1998 shape; -Wall does not flag it. */
+	if (selection<0||selection>=[[self sound] lengthInSampleFrames]) return self; // huh?
 	
 
 	/* load the data */
 	
-	data1=(unsigned char*)[s data];
-	data2=(unsigned char*)[[self sound] data];
+	data1=(unsigned char*)[s bytes];
+	data2=(unsigned char*)[[self sound] bytes];
 	
-	ch=[s channelCount]; sa=[s sampleCount];  df=[s dataFormat];
-	SNDSwapSoundToHost
-			((void*)data1, (void*)data1, sa, ch, df);
-
+	/* The 1998 code swapped both buffers to host order here (the
+	   1998 SoundKit kept sample data big-endian) and back at the
+	   end, fetching ch/sa/df from each sound around its own swap.
+	   SndKit keeps sample data in host byte order, so both swaps
+	   are gone (the Zero port made the same change); after the
+	   conversion above the two sounds share the document's channel
+	   count, so a single fetch feeds num_bytes. */
 	ch=[[self sound] channelCount];
-	sa=[[self sound] sampleCount]; 
-	df=[[self sound] dataFormat];
-	SNDSwapSoundToHost
-			((void*)data2, (void*)data2, sa, ch, df);
-
+	
 	num_bytes=ch;  // channels makes all the difference!
 	
-	// df is data format.  If the data format is SND_FORMAT_MULAW_8,
-	// then we need to convert the format first.  If it's something
-	// weird, then we have to refuse mixing.
+	// The document's data format selects the DSP below.  If it is
+	// SND_FORMAT_MULAW_8, the linear values are mixed and re-encoded
+	// (1998's SNDMulaw/SNDiMulaw pair is SndKit's
+	// SndLinearToMuLaw/SndMuLawToLinear, plus SndKit's LINCLIP - the
+	// 1998 SNDMulaw clipped inside).  If it's something weird, we
+	// have to refuse mixing.
 	
 
 	switch([[self sound] dataFormat])
@@ -165,12 +185,22 @@ IMPLIED WARRANTIES.
 			{
 			char* d1=(char*)data1;
 			char* d2=(char*)data2;
+			int lin;
 			for (x=selection*num_bytes;
 				 x<selection*num_bytes+size*num_bytes;
 				 x++)
-				d2[x]=SNDMulaw(
-					SNDiMulaw(d2[x])+
-					SNDiMulaw(d1[x-selection*num_bytes]));
+				{
+				/* 1998: d2[x]=SNDMulaw(SNDiMulaw(d2[x])+
+				   SNDiMulaw(d1[x-selection*num_bytes]));
+				   The 1998 SNDMulaw took the int sum and clipped
+				   inside; SndKit's SndLinearToMuLaw takes a short,
+				   so the port clips with SndKit's own LINCLIP
+				   (MINLIN/MAXLIN from SndMuLaw.h) first. */
+				lin=SndMuLawToLinear((unsigned char)d2[x])+
+					SndMuLawToLinear((unsigned char)d1[x-selection*num_bytes]);
+				LINCLIP(lin);
+				d2[x]=SndLinearToMuLaw((short)lin);
+				}
 			} break;
 		case SND_FORMAT_LINEAR_8:
 			{
@@ -214,15 +244,9 @@ IMPLIED WARRANTIES.
  			break;
 		}
 
-	ch=[s channelCount]; sa=[s sampleCount]; 
-		df=[s dataFormat];
-	SNDSwapHostToSound
-			((void*)data1, (void*)data1, sa, ch, df);
-
-	ch=[[self sound] channelCount]; sa=[[self sound] sampleCount]; 
-		df=[[self sound] dataFormat];
-	SNDSwapHostToSound
-			((void*)data2, (void*)data2, sa, ch, df);
+	/* (The 1998 code swapped both buffers back to big-endian
+	   storage here; SndKit keeps host order, so the pair is gone -
+	   see above.) */
 
 	return self;
 	}

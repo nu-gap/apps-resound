@@ -1,5 +1,5 @@
 # Tests for the SndKit integration, the Resound file-I/O port and the
-# converted NIB assets, and the first Phase 3 module.
+# converted NIB assets, and the Phase 3 modules.
 #
 # Builds:
 #   - sndsmoke: exercises SndKit's libsndfile-backed file I/O
@@ -13,10 +13,16 @@
 #     NIB migration section).  --check is headless and runs in CI;
 #     --load needs a display and runs locally (one child process per
 #     gorm).
-#   - resoundmodule: the Phase 3 load contract of the Zero module
-#     (docs/GNUSTEP_BUILD.md, modules): the built Zero.rmod through
-#     NSBundle - principal class, menu tree, and zeroSound: over the
-#     five 1998 data formats (mono and stereo) - headless.
+#   - resoundmodule: the Phase 3 load contracts of the ported modules
+#     (docs/GNUSTEP_BUILD.md, modules): dispatches on the bundle's
+#     principal class, like the app's loadAModule: - ZeroModule runs
+#     the Zero contract (the built Zero.rmod through NSBundle, menu
+#     tree, zeroSound: over the five 1998 data formats, mono and
+#     stereo), MixModule the Mix contract (the "Mix In" menu tree,
+#     mix: with an empty pasteboard no-op, then the per-format mix
+#     with a pasteboard source selection).  Headless; the mix cases
+#     use the general pasteboard, which GNUstep's client
+#     auto-serves with a fresh gpbs when no server runs.
 #
 # sndsmoke, resoundio and resoundmodule run headless (no audio
 # device, no display) and are fatal in CI; resoundnib --check is
@@ -92,10 +98,14 @@ resoundnib_OBJC_FILES = resoundnib.m \
 
 resoundnib_C_FILES = ../Source/fft.c
 
-# The module test compiles the module's two app-side classes (the
-# bundle provides ZeroModule itself, the app provides its superclass
-# and the menu node) and its header; the shared ../Source include
-# path serves the quoted imports, as for resoundio.
+# The module test compiles the module base classes the app provides
+# (../Source/Module.m, ../Source/ModuleMenuNode.m - the bundles under
+# test supply the module classes themselves); it imports the
+# app's ../Source/Module.h and carries minimal local mirrors of the
+# module headers instead (the module directories' header copies would
+# reach the base classes through a second path, which #import would
+# reject as duplicate interface definitions).  The shared ../Source
+# include path serves the quoted imports, as for resoundio.
 resoundmodule_OBJC_FILES = resoundmodule.m \
 	../Source/Module.m \
 	../Source/ModuleMenuNode.m

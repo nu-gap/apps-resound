@@ -18,7 +18,7 @@ IMPLIED WARRANTIES.
 
 
 	#import "Module.h"
-	#import <SoundKit/SoundKit.h>
+	#import <SndKit/SndKit.h>
 
 
 

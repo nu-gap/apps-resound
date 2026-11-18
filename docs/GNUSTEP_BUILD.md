@@ -358,6 +358,115 @@ bundle linking the SndKit chain itself — is **ADR 0020**.
   big-endian binaries the GNUstep runtime cannot load (the way it
   cannot load the 1998 `.nib`) — reference-only.
 
+**The Mix module unit (2026-11-18, second of the ten).**
+
+- `Source/Modules/Mix/GNUmakefile` (new): the Zero template — the
+  gnustep-make bundle building `Mix.rmod` in-tree (`MixModule` as the
+  principal class, `ModuleInfo.rtfd` as the bundle resource, the
+  SndKit chain linked per ADR 0020).
+- `Source/Modules/Mix/MixModule.{h,m}`: the 1998 module class (no
+  nib — the window half of the 1998 flow is the commented-out block
+  anyway; the module uses only the `SndView` the app's `newWindow:`
+  hands back).  The Zero mapping set (`Sound*`→`Snd*`,
+  `sampleCount`→`lengthInSampleFrames` ×4, `data`→`bytes` ×2,
+  `convertToFormat:`→`convertToSampleFormat:`, both
+  `SNDSwap*ToHost` pairs deleted — SndKit is host-order) plus the
+  Mix specifics: `NXSoundPboardType`→`SndPasteboardType` (both
+  occurrences, incl. the dead `#ifdef PASTE_BUG` half),
+  `int size, selection`→`unsigned int` (SndKit's `getSelection:`
+  hands out unsigned; the 1998 `selection<0` guard half is dead for
+  an unsigned, and clang's `-Wall` does not flag it, so it stays
+  verbatim with a comment), `int ch,sa,df`→`int ch` (both `sa`/`df`
+  fetches fed the deleted swaps; the one kept `ch = [[self sound]
+  channelCount]` feeds the 1998 `num_bytes = ch`), and the 1998
+  `tmprect` declaration gone (its only use is in the commented-out
+  block; `-Wall -Wunused-variable`).  One addition beyond the
+  mapping set, after the paste-vehicle conversion: `if ([s
+  needsCompacting]) [s compactSamples];` — SndKit's zero-frame
+  `[[Snd alloc] init]` buffer-list artifact: the paste is inserted
+  *into* that buffer rather than replacing the sound, leaving a
+  two-buffer sound whose buffer 0 is empty, and `-[Snd bytes]`
+  reads buffer 0 (`docs/UPSTREAM_PATCHES.md`, the MusicKit-0006
+  verification note; the artifact itself stays unpatched in SndKit).
+  The µ-law case quotes the 1998 line: the 1998 `SNDMulaw` took the
+  `int` sum and clipped inside, while SndKit's `SndLinearToMuLaw`
+  takes a `short` — the port clips with SndKit's own `LINCLIP`
+  first.  The 1998 `newWindow` call stays byte-identical (the
+  finding below).
+- The three stale per-module header copies synced to the ported
+  top-level files (as Zero; the `ModuleController.h` copy keeps the
+  1998 license-variant difference, as Zero's does).
+- The bundle's build is the 1998 fingerprint and nothing else: 14
+  warnings, all `-Wmissing-selector-name` re-emitted from the 1998
+  headers, zero from `MixModule.m` itself.
+
+**The 1998 no-space `newWindow:` declaration (a code fingerprint,
+not a bug).**  `ModuleProtocol.h` (and the app-side
+`FileController`/`ModuleController` declarations) carry
+`- newWindow:(NSWindow**) theWindowPointer:(NSScrollView**)
+theScrollViewPointer:(SndView**)theSoundViewPointer` — a type
+immediately after each colon, the name before the next colon.
+clang demotes those names to parameter names (the
+`-Wmissing-selector-name` warning on every one of them — 442 of
+the app build's 455 warnings are that idiom across the 1998
+headers), so the method's runtime selector really is
+`newWindow:::` — the exact selector the 1998 *unlabeled* calls
+generate: `FileController.m`'s `[self newWindow:&win:&scrv:&sndv]`
+and `MixModule.m:125`'s `[moduleController newWindow:
+&tmpwindow:&tmpscrollview:&tmpsoundview]`.  The 1998 pair therefore
+matches at compile and runtime with no adaptation anywhere (the
+`resoundmodule` gate's fake controller re-declares the same no-space
+shape, so its double carries the 1998 selector; the four
+`-Wmissing-selector-name` warnings that costs in the gate build —
+two declarations × two demoted names — are intentional and
+documented in the file header).  Explicit empty
+selector parts (`newWindow:::` in a declaration) are a parse
+error, and labelling the calls would generate a *different*
+selector than the 1998 declaration declares — both "fixes" would
+break the 1998 match.
+
+**The `resoundmodule` Mix contract.**  The tool dispatches on the
+bundle's principal class (exactly what the app's `loadAModule:`
+does): ZeroModule runs the Zero contract, MixModule the Mix
+contract — principal class, the one-leaf "Mix In"→`mix:` menu tree,
+then `mix:` through the duck-typed controller (injected by
+`object_setIvar`, as Zero).  The mix cases cover what the 1998
+`mix:` does: an **empty pasteboard** is a no-op (the flow finds no
+sound type on the general pasteboard and must leave the document
+untouched, while still reporting `soundChanged`) — this case runs
+first, because the emptiness is a property of a fresh pasteboard
+server, and GNUstep's `NSPasteboard` offers no `clearContents` to
+reset it; then, for the five 1998 data formats in mono and stereo,
+a source selection written to the general pasteboard the way a user
+copy does (the real `SndView writeSelectionToPasteboard:`) and mixed
+into a document selection (plus a truncated-paste variant: 30
+frames into a 50-frame selection).  The expected document is the
+pre-mix document with the pasted selection added — the paste hopped
+through the same two `convertToSampleFormat:` calls the flow
+performs (SndKit's own math, so the expectation mirrors the port
+whatever its rounding does), and the add is the 1998 per-format DSP
+(sample-indexed for the wide formats, byte-indexed for the 8-bit
+ones — the buffer offsets the tool checks are converted to bytes).
+The pasteboard needs no workflow plumbing: with no server running,
+the client auto-launches a fresh `gpbs` (name transport is
+filesystem-based — `$TMPDIR/NSMessagePort` — no other daemon), and
+the server stops when the last client leaves.  One local caveat: a
+desktop session's session manager keeps its own `gpbs` alive with
+the session's clipboard contents, so local no-op verification
+`pkill`s it first (CI runners have no such session).
+
+**Verification.**  In CI the `Mix.rmod` build + install is fatal,
+`resoundmodule` pins the bundle-side contract headlessly (the
+principal class, the menu tree, the mix: no-op and the per-format
+DSP over mono/stereo), and `resoundmenu` (non-fatal, under `xvfb`)
+asserts the "Mix In" entry in the after-launch menu dump alongside
+the "Zero" one.  Locally the same three plus the real-app run
+(both modules installed: the launch panel, the Modules row, the bar
+pixel-identical to the pre-module app as with Zero).  The app TU
+total stays at the 455-warning baseline (the Mix unit touches no
+app file — `FileController.m`'s `newWindow` pair is the 1998
+fingerprint above, not a change).
+
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with
 `NOT_COMPILING_WITH_MODULES` *commented out* (modules compiled in) and

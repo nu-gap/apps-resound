@@ -316,12 +316,13 @@ jobs:
           find Resound.app -maxdepth 3 | sort
 
       - name: Build the modules (Phase 3)
-        # The Zero module, the first Phase 3 unit: a gnustep-make
-        # bundle (gnustep-make bundle.make rules, ADR 0020) producing
-        # Zero.rmod, installed into the domain's library directory
+        # The ported modules so far - Zero, the first Phase 3 unit,
+        # and Mix, the second: gnustep-make bundles (gnustep-make
+        # bundle.make rules, ADR 0020) producing Zero.rmod and
+        # Mix.rmod, installed into the domain's library directory
         # (lib/GNUstep/Resound with the fhs filesystem layout) - the
         # app's ModuleController searches every library domain +
-        # /Resound (plus the app bundle), so the installed module is
+        # /Resound (plus the app bundle), so the installed modules are
         # found when the app starts: the launch check and the capture
         # below then run with the "Modules" menu live.  Fatal, like
         # the app build.
@@ -333,15 +334,32 @@ jobs:
           make -C Source/Modules/Zero -j"$(nproc)" -f GNUmakefile
           make -C Source/Modules/Zero -f GNUmakefile install
           find Source/Modules/Zero/Zero.rmod -maxdepth 3 | sort
+          make -C Source/Modules/Mix -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/Mix -f GNUmakefile install
+          find Source/Modules/Mix/Mix.rmod -maxdepth 3 | sort
           ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
 
       - name: Module load contract (Phase 3)
-        # The Zero module, headless and fatal (test/resoundmodule):
-        # the built Zero.rmod through NSBundle - the principal class
-        # (ZeroModule, via the generated Info-gnustep.plist), the menu
-        # tree the app's "Modules" menu is built from, and zeroSound:
-        # over the five 1998 data formats (mono and stereo), the
-        # buffer checked to be exactly zeroed.
+        # The ported modules, headless and fatal (test/resoundmodule;
+        # the tool dispatches on the bundle's principal class, exactly
+        # like the app's loadAModule:).  For Zero: the built
+        # Zero.rmod through NSBundle - the principal class (ZeroModule,
+        # via the generated Info-gnustep.plist), the menu tree the
+        # app's "Modules" menu is built from, and zeroSound: over the
+        # five 1998 data formats (mono and stereo), the buffer
+        # checked to be exactly zeroed.  For Mix: the same
+        # principal-class and menu checks (one "Mix In" leaf
+        # targeting mix:), then mix: itself - first with an empty
+        # pasteboard (a no-op: the document must stay untouched) and
+        # then with a source selection on the pasteboard mixed into
+        # the document selection over the five 1998 data formats,
+        # mono and stereo, the expected values computed through
+        # SndKit's own conversions plus the 1998 per-format DSP.
+        # The mix cases use the general pasteboard for real: GNUstep's
+        # client auto-launches a fresh gpbs when no pasteboard server
+        # runs (filesystem name transport, no other daemon needed),
+        # which is empty - the state the no-op case asserts - and
+        # stops again when the tool exits, leaving CI clean.
         run: |
           set -ex
           export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
@@ -351,6 +369,7 @@ jobs:
           test -n "$TOOL"
           export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           "$TOOL" Source/Modules/Zero/Zero.rmod
+          "$TOOL" Source/Modules/Mix/Mix.rmod
 
       - name: Module load probe (Phase 3)
         # The app-side half of the module load, run for real (test/
@@ -360,9 +379,10 @@ jobs:
         # launch path runs - ModuleController loadModules, which
         # searches the library domains for *.rmod bundles, dlopens
         # them, and builds their menu trees.  The assertion is the
-        # menu dump: "Zero" must appear in the after-launch menu
-        # (the 1998 model ships with an empty Modules menu, so the
-        # entry can only come from the installed Zero.rmod).
+        # menu dump: "Zero" and "Mix In" must appear in the
+        # after-launch menu (the 1998 model ships with an empty
+        # Modules menu, so the entries can only come from the
+        # installed Zero.rmod / Mix.rmod).
         # Non-fatal: a display environment can not be trusted the way
         # the build can be; the load contract above (headless) is the
         # hard gate.
@@ -382,6 +402,7 @@ jobs:
           test "$rc" -eq 0
           grep -q "loadNibFile Resound: ok" "$LOG"
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Zero"
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Mix In"
 
       - name: NIB conversion format check
         # Every 1998 .nib in the tree has a converted .gorm twin
