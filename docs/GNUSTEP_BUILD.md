@@ -168,14 +168,17 @@ The test tools (`test/`, `make -C test` builds `test/obj/`):
   generated `Info-gnustep.plist`, the menu tree the app's "Modules"
   menu is built from, `zeroSound:` over the five 1998 data formats);
   headless, Phase 3 onward.
-- `resoundmenu [Resound.app] [--direct]` — the Phase 3 app-side
-  probe: loads the built app's main model the way `NSApplicationMain`
-  does, then posts `NSApplicationDidFinishLaunching` (or calls the
-  delegate directly with `--direct`) so the real launch path runs —
-  including `ModuleController loadModules` — and dumps the main menu
-  and the delegate's outlets.  Needs a display; CI runs it under
-  `xvfb` against the in-tree `Resound.app` (non-fatal, like the
-  launch check).
+- `resoundmenu [Resound.app] [--direct | --perform <title>]` — the
+  Phase 3 app-side probe: loads the built app's main model the way
+  `NSApplicationMain` does, then posts `NSApplicationDidFinishLaunching`
+  (or calls the delegate directly with `--direct`) so the real launch
+  path runs — including `ModuleController loadModules` — and dumps
+  the main menu and the delegate's outlets; `--perform <title>`
+  additionally performs the named module leaf's action (the
+  user-click equivalent, for the lazy panel loads a menu dump
+  cannot see) and dumps the window list.  Needs a display; CI runs
+  it under `xvfb` against the in-tree `Resound.app` (non-fatal, like
+  the launch check).
 
 ```sh
 make -C test                                   # builds the five tools
@@ -466,6 +469,154 @@ pixel-identical to the pre-module app as with Zero).  The app TU
 total stays at the 455-warning baseline (the Mix unit touches no
 app file — `FileController.m`'s `newWindow` pair is the 1998
 fingerprint above, not a change).
+
+**The Envelope module unit (2026-11-19, third of the ten) - and the
+first with a control panel.**  The inventory's old "no nib" label
+was wrong: `English.lproj/EnvelopePanel.nib` has been in the 1998
+tree since day one (the NIB conversion unit produced the
+`.gorm` twin, `480d227`/`79315f9`), and the NIB-era commits had
+already switched the 1998 load call to the platform-aware helper:
+`[ResoundNibs loadNibNamed:@"EnvelopePanel" owner:self]`
+(`#import "ResoundNibs.h"`, kept).
+
+- `Source/Modules/Envelope/GNUmakefile` (new): the Zero/Mix
+  template — the gnustep-make bundle building `Envelope.rmod` in-tree
+  (`EnvelopeModule` as the principal class, the SndKit chain linked
+  per ADR 0020, `ModuleInfo.rtfd` as with Zero/Mix) plus the panel:
+  `Envelope_RESOURCE_FILES` lists `English.lproj/EnvelopePanel.gorm`
+  by its tree path; gnustep-make copies a `xxx/yyy` resource to the
+  bundle's top-level `Resources` (the directory recursively), which
+  is the placement the resolution below wants.  The 1998
+  `English.lproj/EnvelopePanel.nib` folder stays in the tree as the
+  migration source, uninstalled (the app's `Resources/` the same).
+- `Source/Modules/Envelope/EnvelopeModule.{h,m}`: the 1998 module
+  class (253 lines).  The header is unchanged (all outlets are
+  `id`).  The `.m` is the Zero mapping set
+  (`Sound`→`Snd`, `SoundView`→`SndView`, `data`→`bytes`, both
+  `SNDSwap*` pairs deleted - SndKit is host-order; the 1998
+  `sampleCount` fetch fed only those swaps, so the variable goes
+  with them) plus the Envelope specifics: the 1998
+  `SNDiMulaw`/`SNDMulaw` pair becomes SndKit's
+  `SndMuLawToLinear`/`SndLinearToMuLaw` (the same sox libst
+  routine) with explicit casts - and **no `LINCLIP`** (unlike Mix):
+  the mu-law decode maxes out at 32124, which fits a `short`, and
+  the fade multiplier is between 0.0 and 1.0, so the product can
+  only shrink.  The 1998 `int firstSample, sampleLength` become
+  `unsigned int` (SndKit's `getSelection:` hands out unsigned - the
+  Mix adaptation; the `-Wpointer-sign` class otherwise).  One
+  file-scope pragma, the app's `AttributesInspector` precedent for
+  port-side byproducts: `-Wobjc-multiple-method-names` -
+  `soundDidChange`'s untyped 1998 send `[[moduleController
+  currentSound] channelCount]` (the protocol's implicit-id return)
+  resolves against both SndKit's `Snd channelCount` and GNUstep
+  AppKit's `GSSoundSource channelCount`; `applyEnvelope:` sends the
+  same message at its typed `Snd*` current and is unambiguous, and
+  the 1998 line itself stays byte-identical.
+- The three stale per-module header copies synced to the ported
+  top-level files (as Zero/Mix).
+- The bundle build is the 1998 fingerprint and nothing else: 15
+  warnings, all `-Wmissing-selector-name` re-emitted from the 1998
+  headers, zero from `EnvelopeModule.m` itself (the Mix bundle's
+  14, the same class).
+
+**The panel-nib resolution (where the gorm must live).**  The 1998
+load was the *class* method `+[NSBundle loadNibNamed:owner:]`
+(Sean Luke's 1998 `Math` comment - "this only works because self is
+the main class of the bundle!" - is the hint).  GNUstep implements
+that class method in libs-gui's `NSBundleAdditions.m`: it resolves
+the name against **the owning class's bundle first**
+(`bundleForClass:[owner class]` - for the module, its own
+`Envelope.rmod`), and only then against the main app bundle; the
+path itself is `-pathForNibResource:` →
+`-[NSBundle pathForResource:ofType:]`.  So the gorm must live in
+the *module* bundle, where the 1998 nib did.  Inside the bundle,
+however, it goes to the **resource root**, not the 1998
+`English.lproj`: GNUstep's `pathForResource:ofType:` searches the
+(non-localized) resource root first and then the lproj directories
+of the `NSLanguages` preference - which carries short locale codes
+(`"en"`), so the 1998 `"English.lproj"` directory name is never
+matched and the lproj layout would be dead weight; the root
+placement is locale-independent and is the way the app's own bundle
+carries its gorm folders (`Resources/`, non-localized).  Verified
+in the real app below: the installed bundle's root-level gorm is
+found and the panel comes up.
+
+**The `ResoundNibs` link boundary.**  Envelope is the first module
+whose bundle references an *app* class (the nib-era load call):
+the bundle carries an undefined `._OBJC_REF_CLASS_ResoundNibs`
+class-reference symbol that its host process must provide.  The
+app provides it (its six `ResoundNibs` call-site objects define
+the reference), so the bundle loads there; the gate therefore
+compiles the app's `../Source/ResoundNibs.m` into `resoundmodule`
+(test/GNUmakefile) so the reference resolves in the gate process
+exactly as it does in the app.  (Zero/Mix reference only the
+`Module` base classes plus the SndKit/AppKit chain - all in linked
+libraries - and needed no such addition.)
+
+**The `resoundmodule` Envelope contract.**  As Zero/Mix, the tool
+dispatches on the principal class (`EnvelopeModule` → the Envelope
+contract): the one-leaf "Envelope"→`showEnvelopePanel:` menu tree,
+then the contract through fakes injected by `object_setIvar`
+(controller double + the panel's six outlets: duck-typed buttons
+recording `state`/`enabled`, a matrix whose `selectedCell` is a
+tag-settable cell (tag 0 = fade in, 1 = fade out), a panel
+recording `orderFront:`).  Pre-setting the panel outlet skips the
+nib load the module performs for a missing panel - a real load
+needs a display, and the app-side half is the `--perform` probe
+below.  `showEnvelopePanel:` must come up with the three channel
+buttons selected, the enabled states following the sound's channel
+count and the current window, and the panel ordered front (stereo
+and mono documents).  `applyEnvelope:` then runs the fade DSP on
+real in-memory Snds over the five 1998 data formats, mono and
+stereo: a whole-sound selection fading in on both channels,
+partial 50-frame selections on one channel each, in and out - the
+expected buffer computed with the module's own per-format multiply
+arithmetic (mu-law through the same SndKit pair, no clip - see
+above), the faded range and the untouched rest checked
+byte-for-byte.  The all button carries the state the app's panel
+would have: 0 - the 1998 nib never connected `applyToAllButton`
+(it is declared in the gorm's class description but the 1998
+`objects.nib` wires only the other five outlets), so in the app it
+stays `nil` and silently drops its `setState:`.  One last branch:
+a 400001-frame mono sound (just past the 1998 `LOTS_OF_SAMPLES`
+of 400000 × 1) must consult `runLongTimePanel` before the DSP.
+277 checks in total, all passing; no pasteboard involved (the
+1998 flow's `checkForCurrentDataOnPasteboard:` is a no-op in the
+fake view).
+
+**The `resoundmenu --perform` probe (new with the unit).**  A menu
+dump cannot see the panel: the nib load is lazy - it runs on the
+first click of the "Envelope" leaf, and a broken gorm placement
+would surface only as the 1998 alert and a missing panel.  The
+probe's `--perform <title>` flag performs the action of the item
+titled `<title>` in the Modules submenu (the user-click
+equivalent; the app menu's `Module Info` help entries carry the
+same module titles, so the Modules submenu is searched first) and
+then dumps the window list.  In the real app the Envelope case
+resolves the full chain for real - installed `Envelope.rmod` →
+`bundleForClass:` → root `Resources/EnvelopePanel.gorm` → gorm
+load → the five outlet connections on the module → the panel
+comes up **visible with the gorm's own title** "Envelope 1.0".
+(One observation from the run: four additional hidden "Window"
+scaffolding windows come up with the panel - the gorm carries
+several window templates and the loader instantiates them all;
+harmless.)
+
+**Verification.**  In CI the `Envelope.rmod` build + install is
+fatal; `resoundmodule` pins the bundle-side contract headlessly;
+the `resoundmenu` probe (non-fatal, under `xvfb`) asserts the
+"Envelope" entry in the after-launch menu **and** runs
+`--perform Envelope`, asserting the "Envelope 1.0" window in the
+after-perform dump.  Locally the same three plus `resoundnib
+--check`/`--load` at 58 gorm folders, 0 failures (57 + the
+bundle-side gorm copy, which the format gate now covers too) and
+the real-app launch (all three modules installed: it stays up,
+zero `objc-load` errors - the bundle's `ResoundNibs` reference
+resolves against the app).  The app TU total stays at the
+455-warning baseline (the unit touches no app file), and the
+gate TU stays at its 18 (14 1998-header re-emissions + the four
+intentional `newWindow` ones - the Envelope additions cost the
+TU nothing new).
 
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with

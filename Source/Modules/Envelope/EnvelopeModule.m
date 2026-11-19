@@ -7,9 +7,21 @@
 
 #import "EnvelopeModule.h"
 #import "ResoundNibs.h"
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <AppKit/AppKit.h>
 #import "ModuleSoundView.h" 
+
+/* Port-side byproduct (the app's AttributesInspector precedent,
+   file-scope suppression): soundDidChange's untyped 1998 send
+   [[moduleController currentSound] channelCount] (the protocol's
+   implicit-id return) now resolves against both SndKit's Snd
+   channelCount and GNUstep AppKit's GSSoundSource channelCount -
+   the compiler cannot tell which one the id answers.  applyEnvelope
+   sends the same message at its typed Snd* current and is
+   unambiguous; only the one id send trips the class, so it is
+   suppressed for the file (the 1998 line itself stays
+   byte-identical). */
+#pragma clang diagnostic ignored "-Wobjc-multiple-method-names"
 
 
 #define MAX_CHANNELS	2		// max number of channels we support
@@ -125,21 +137,25 @@ Finally, we use SNDSwapHostToSound to convert the sound data back to an architec
 
 - applyEnvelope:sender
 {
-	Sound *		current  = [moduleController currentSound];
-	SoundView *	cview  = [moduleController currentSoundView];
+	Snd *		current  = [moduleController currentSound];
+	SndView *	cview  = [moduleController currentSoundView];
 	int		dataFormat;
 	int		channelCount;
 	int		channel;
-	int		sampleCount;
 	short *		data16;
 	char *		data8;
 	float *		dataFloat;
 	double *	dataDouble;
 	short		temp16;
 	int		index;
-	int		firstSample;
+	/* 1998: int firstSample; int sampleLength;  SndKit's getSelection:
+	   hands out unsigned ints (SndView.h), so the Mix port made the
+	   same change; the int arithmetic around the loop below is
+	   unchanged (Mix's identical shape carries no new warning class
+	   in C). */
+	unsigned int	firstSample;
 	int		sample;
-	int		sampleLength;
+	unsigned int	sampleLength;
 	double		changeFactor;
 	double		sampleMultiplier;
 	BOOL		fadeIn;
@@ -149,8 +165,11 @@ Finally, we use SNDSwapHostToSound to convert the sound data back to an architec
 	
 	dataFormat = [current dataFormat];
 	channelCount = [current channelCount];
-	sampleCount = [current sampleCount];
-	data16 = (short *)[current data];
+	/* 1998 also fetched sampleCount here, for the two buffer swaps
+	   that bracketed the DSP; SndKit keeps sample data in host byte
+	   order, so both swaps are gone (the Zero port made the same
+	   change) - and with them the fetch, and the variable. */
+	data16 = (short *)[current bytes];
 	data8 = (char *)data16;
 	dataFloat = (float *)data16;
 	dataDouble = (double *)data16;
@@ -194,7 +213,8 @@ Finally, we use SNDSwapHostToSound to convert the sound data back to an architec
 	
 	[moduleController stop];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
-	SNDSwapSoundToHost ((void *)data16, (void *)data16, sampleCount, channelCount, dataFormat);
+	/* (The 1998 code swapped the buffer to host order here; SndKit
+	   keeps host order, so the pair is gone - see above.) */
 	
 	changeFactor = 1.0 / (double) sampleLength;
 	
@@ -225,9 +245,17 @@ Finally, we use SNDSwapHostToSound to convert the sound data back to an architec
 					data8[index + channel] = data8[index + channel] * sampleMultiplier;
 					break;
 				case SND_FORMAT_MULAW_8:
-					temp16  = SNDiMulaw (data8[index + channel]);
-					temp16 = temp16 * sampleMultiplier;
-					data8[index + channel] = SNDMulaw (temp16);
+					/* 1998: temp16=SNDiMulaw(...); temp16*=sampleMultiplier;
+					   data8=SNDMulaw(temp16);  The 1998 SNDiMulaw/SNDMulaw
+					   pair is SndKit's SndMuLawToLinear/SndLinearToMuLaw
+					   (the same sox libst routine).  The mu-law decode
+					   maxes out at 32124, which fits a short, and the
+					   multiplier is between 0.0 and 1.0, so the product can
+					   only shrink - no LINCLIP (unlike Mix, where the
+					   *sum* of two decodes needed it). */
+					temp16  = SndMuLawToLinear ((unsigned char)data8[index + channel]);
+					temp16 = (short)(temp16 * sampleMultiplier);
+					data8[index + channel] = SndLinearToMuLaw (temp16);
 					break;
 				case SND_FORMAT_LINEAR_16:
 					data16[index + channel] = data16[index + channel] * sampleMultiplier;
@@ -243,7 +271,8 @@ Finally, we use SNDSwapHostToSound to convert the sound data back to an architec
 		}
 	}
 	
-	SNDSwapHostToSound ((void *)data16, (void *)data16, sampleCount, channelCount, dataFormat);
+	/* (The 1998 code swapped the buffer back to storage order here;
+	   gone - see above.) */
 	[moduleController soundChanged];
 	
 	return self;

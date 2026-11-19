@@ -20,9 +20,13 @@
 #     tree, zeroSound: over the five 1998 data formats, mono and
 #     stereo), MixModule the Mix contract (the "Mix In" menu tree,
 #     mix: with an empty pasteboard no-op, then the per-format mix
-#     with a pasteboard source selection).  Headless; the mix cases
-#     use the general pasteboard, which GNUstep's client
-#     auto-serves with a fresh gpbs when no server runs.
+#     with a pasteboard source selection), EnvelopeModule the Envelope
+#     contract (the "Envelope" menu tree, showEnvelopePanel: with the
+#     panel outlets as fakes, then applyEnvelope: - the fade in/out
+#     DSP - over the five 1998 data formats, mono and stereo).
+#     Headless; the mix cases use the general pasteboard, which
+#     GNUstep's client auto-serves with a fresh gpbs when no server
+#     runs (the Envelope cases touch no pasteboard at all).
 #
 # sndsmoke, resoundio and resoundmodule run headless (no audio
 # device, no display) and are fatal in CI; resoundnib --check is
@@ -104,11 +108,17 @@ resoundnib_C_FILES = ../Source/fft.c
 # app's ../Source/Module.h and carries minimal local mirrors of the
 # module headers instead (the module directories' header copies would
 # reach the base classes through a second path, which #import would
-# reject as duplicate interface definitions).  The shared ../Source
-# include path serves the quoted imports, as for resoundio.
+# reject as duplicate interface definitions).  It also compiles in
+# the app's nib loader (../Source/ResoundNibs.m): the Envelope
+# bundle references the ResoundNibs class for its lazy panel load,
+# and the app binary links it - the gate does the same so the
+# reference resolves in the gate process exactly as it does in the
+# app.  The shared ../Source include path serves the quoted imports,
+# as for resoundio.
 resoundmodule_OBJC_FILES = resoundmodule.m \
 	../Source/Module.m \
-	../Source/ModuleMenuNode.m
+	../Source/ModuleMenuNode.m \
+	../Source/ResoundNibs.m
 
 # The menu diagnostic compiles the full app the way the app does
 # (minus Resound_main.m), loads the main model, and posts

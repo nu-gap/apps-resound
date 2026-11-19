@@ -317,9 +317,12 @@ jobs:
 
       - name: Build the modules (Phase 3)
         # The ported modules so far - Zero, the first Phase 3 unit,
-        # and Mix, the second: gnustep-make bundles (gnustep-make
-        # bundle.make rules, ADR 0020) producing Zero.rmod and
-        # Mix.rmod, installed into the domain's library directory
+        # Mix, the second, and Envelope, the third (the first with a
+        # control-panel nib: the bundle carries the gorm at its
+        # resource root, the way the app's own bundle carries its
+        # gorms): gnustep-make bundles (gnustep-make bundle.make
+        # rules, ADR 0020) producing Zero.rmod, Mix.rmod and
+        # Envelope.rmod, installed into the domain's library directory
         # (lib/GNUstep/Resound with the fhs filesystem layout) - the
         # app's ModuleController searches every library domain +
         # /Resound (plus the app bundle), so the installed modules are
@@ -337,6 +340,9 @@ jobs:
           make -C Source/Modules/Mix -j"$(nproc)" -f GNUmakefile
           make -C Source/Modules/Mix -f GNUmakefile install
           find Source/Modules/Mix/Mix.rmod -maxdepth 3 | sort
+          make -C Source/Modules/Envelope -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/Envelope -f GNUmakefile install
+          find Source/Modules/Envelope/Envelope.rmod -maxdepth 3 | sort
           ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
 
       - name: Module load contract (Phase 3)
@@ -355,6 +361,14 @@ jobs:
         # the document selection over the five 1998 data formats,
         # mono and stereo, the expected values computed through
         # SndKit's own conversions plus the 1998 per-format DSP.
+        # For Envelope: the same principal-class and menu checks
+        # (one "Envelope" leaf targeting showEnvelopePanel:), then
+        # showEnvelopePanel: and applyEnvelope: - the fade in/out
+        # DSP - over the five 1998 data formats, mono and stereo,
+        # with the panel's six outlets as fakes (pre-setting the
+        # panel outlet skips the nib load, which needs a display and
+        # runs in the app; the probe below drives it there for
+        # real).  No pasteboard involved in the Envelope cases.
         # The mix cases use the general pasteboard for real: GNUstep's
         # client auto-launches a fresh gpbs when no pasteboard server
         # runs (filesystem name transport, no other daemon needed),
@@ -370,6 +384,7 @@ jobs:
           export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           "$TOOL" Source/Modules/Zero/Zero.rmod
           "$TOOL" Source/Modules/Mix/Mix.rmod
+          "$TOOL" Source/Modules/Envelope/Envelope.rmod
 
       - name: Module load probe (Phase 3)
         # The app-side half of the module load, run for real (test/
@@ -379,10 +394,15 @@ jobs:
         # launch path runs - ModuleController loadModules, which
         # searches the library domains for *.rmod bundles, dlopens
         # them, and builds their menu trees.  The assertion is the
-        # menu dump: "Zero" and "Mix In" must appear in the
-        # after-launch menu (the 1998 model ships with an empty
+        # menu dump: "Zero", "Mix In" and "Envelope" must appear in
+        # the after-launch menu (the 1998 model ships with an empty
         # Modules menu, so the entries can only come from the
-        # installed Zero.rmod / Mix.rmod).
+        # installed Zero.rmod / Mix.rmod / Envelope.rmod).
+        # --perform Envelope then performs that leaf's action (the
+        # user-click equivalent) and asserts the panel window: the
+        # lazy nib load (ResoundNibs -> the bundle's gorm) is the one
+        # step a menu dump cannot see - a broken gorm placement
+        # would surface only as the 1998 alert and a missing panel.
         # Non-fatal: a display environment can not be trusted the way
         # the build can be; the load contract above (headless) is the
         # hard gate.
@@ -397,12 +417,14 @@ jobs:
           export LD_LIBRARY_PATH="$GNUSTEP_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           LOG=$(mktemp)
           rc=0
-          timeout 60 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app >"$LOG" 2>&1 || rc=$?
+          timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform Envelope >"$LOG" 2>&1 || rc=$?
           cat "$LOG"
           test "$rc" -eq 0
           grep -q "loadNibFile Resound: ok" "$LOG"
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Zero"
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Mix In"
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Envelope"
+          awk '/performing Envelope/{f=1} f' "$LOG" | grep -q "window: 'Envelope 1.0' visible=1"
 
       - name: NIB conversion format check
         # Every 1998 .nib in the tree has a converted .gorm twin

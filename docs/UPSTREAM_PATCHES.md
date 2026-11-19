@@ -414,7 +414,7 @@ own buffer rather than a malloc'd temp, so it is left alone here.
 
 ## 6. `SndKit/Snd.m`: the AU header read in `initWithData:` is 64-bit-wrong (patch 0006)
 
-**Submitted upstream:** to be filed as leighsmith/MusicKit issue #7 (the five fixes above landed as issues #2–#6; #7 is the next free number).  When it lands, drop `patches/MusicKit-0006-snd-initwithdata-64bit-swap.diff` on the submodule bump.
+**Submitted upstream:** leighsmith/MusicKit issue [#7](https://github.com/leighsmith/MusicKit/issues/7) (2026-11-19).  When it lands, drop `patches/MusicKit-0006-snd-initwithdata-64bit-swap.diff` on the submodule bump.
 
 **Suggested issue title:** *`-[Snd initWithData:]` decodes to nil on 64-bit platforms: the AU header's `int` fields are swapped with `NSSwapBigLongToHost`*
 

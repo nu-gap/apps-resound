@@ -3,8 +3,9 @@ resoundmodule
 For the GNUstep port of Resound (gnustep-port branch)
 
 The Phase 3 load contracts for the ported modules - so far the Zero
-module (zeroSound:) and the Mix module (mix:) - the first two units
-from the module tree (see docs/GNUSTEP_BUILD.md).
+module (zeroSound:), the Mix module (mix:) and the Envelope module
+(applyEnvelope:) - the first three units from the module tree (see
+docs/GNUSTEP_BUILD.md).
 
 What it does (headless: no display, no audio device):
 
@@ -14,11 +15,12 @@ What it does (headless: no display, no audio device):
      NSPrincipalClass, and the principal class is the class the app
      instantiates - so the test dispatches on the class name, exactly
      like the app: ZeroModule runs the zero contract, MixModule the
-     mix contract.
+     mix contract, EnvelopeModule the envelope contract.
 
   2. Instantiates the module (the same alloc/init the app runs) and
      checks the menu tree the 1998 init builds: exactly one leaf -
      named "Zero" targeting zeroSound:, or "Mix In" targeting mix:,
+     or "Envelope" targeting showEnvelopePanel:,
      on the module itself - what the app's "Modules" menu shows
      after the load.
 
@@ -33,13 +35,27 @@ What it does (headless: no display, no audio device):
          source selection on the pasteboard is added into the
          document selection in the document's own format, the
          expected values computed through SndKit's own conversion
-         calls so the expectation mirrors the port exactly.
+         calls so the expectation mirrors the port exactly;
+       - applyEnvelope: (the fade in/out DSP): over a selection of
+         the in-memory sound, per channel, over the five 1998 data
+         formats, the expected buffer computed with the module's own
+         per-format multiply arithmetic (mu-law through SndKit's
+         conversion pair).  The panel's six outlets stand in as
+         fakes: pre-setting the panel outlet skips the nib load the
+         module performs for a real panel (the real load needs a
+         display and runs in the app; the resoundmenu --perform
+         probe drives it there).
 
 The controller is injected by setting the module's private
 moduleController ivar directly (object_setIvar): the app's own wiring
 goes through setModuleControllerTo:, whose protocol-conformance check
 a duck-typed double does not pass; the contract under test is the
-same either way (the module only reads the ivar).
+same either way (the module only reads the ivar).  The Envelope
+panel's six outlets are injected the same way: the app wires them
+from the module's gorm panel when it loads, and the gate stands in
+fakes for whatever that wiring would have provided (the 1998 nib
+leaves the applyToAllButton outlet unconnected, so in the app it
+stays nil - the gate's fakes drive the states explicitly instead).
 
 The mix: controller double answers the 1998 newWindow call with the
 selector the app's ModuleController actually carries: the 1998
@@ -65,7 +81,7 @@ Exit status: 0 when every check passes, 1 otherwise.
    headers, so #import dedupes them. */
 #import "../Source/Module.h"
 
-/* Minimal local mirrors of the two module headers, instead of the
+/* Minimal local mirrors of the three module headers, instead of the
    module directories' copies: those import the module-directory
    copies of the base headers (a second path for the same classes),
    which #import would reject as duplicate interface definitions once
@@ -81,6 +97,13 @@ Exit status: 0 when every check passes, 1 otherwise.
 @interface MixModule : Module
 - init;
 - mix:sender;
+@end
+
+@interface EnvelopeModule : Module
+- init;
+- soundDidChange;
+- showEnvelopePanel:sender;
+- applyEnvelope:sender;
 @end
 
 static int failures = 0;
@@ -278,6 +301,245 @@ fingerprint, on purpose.
 @end
 
 /*
+Stand-ins for the Envelope panel's controls: duck-typed doubles for
+the gorm's NSButton/NSMatrix cells, answering the selectors the
+module's showEnvelopePanel:/applyEnvelope: send (state, enabled,
+selectedCell, tag, orderFront:).  The fakes double as the
+assertion targets - each records what the module did to the panel.
+*/
+@interface FakeEnvelopeButton : NSObject
+{
+    int _state;
+    int _enabled;
+}
+- (int) state;
+- (void) setState: (int)state;
+- (int) enabled;
+- (void) setEnabled: (BOOL)enabled;
+@end
+
+@implementation FakeEnvelopeButton
+- (int) state
+    {
+    return _state;
+    }
+- (void) setState: (int)state
+    {
+    _state = state;
+    }
+- (int) enabled
+    {
+    return _enabled;
+    }
+- (void) setEnabled: (BOOL)enabled
+    {
+    _enabled = enabled;
+    }
+@end
+
+@interface FakeEnvelopeCell : NSObject
+{
+    int _tag;
+}
+- (int) tag;
+- (void) setTag: (int)tag;
+@end
+
+@implementation FakeEnvelopeCell
+- (int) tag
+    {
+    return _tag;
+    }
+- (void) setTag: (int)tag
+    {
+    _tag = tag;
+    }
+@end
+
+@interface FakeEnvelopeMatrix : NSObject
+{
+    FakeEnvelopeCell *_cell;
+}
+- (FakeEnvelopeCell *) selectedCell;
+@end
+
+@implementation FakeEnvelopeMatrix
+- init
+    {
+    if (self = [super init])
+        _cell = [[FakeEnvelopeCell alloc] init];
+    return self;
+    }
+- (void) dealloc
+    {
+    [_cell release];
+    [super dealloc];
+    }
+- (FakeEnvelopeCell *) selectedCell
+    {
+    return _cell;
+    }
+@end
+
+@interface FakeEnvelopePanel : NSObject
+{
+    int _orderFrontCount;
+}
+- (void) orderFront: (id)sender;
+- (int) orderFrontCount;
+@end
+
+@implementation FakeEnvelopePanel
+- (void) orderFront: (id)sender
+    {
+    _orderFrontCount++;
+    }
+- (int) orderFrontCount
+    {
+    return _orderFrontCount;
+    }
+@end
+
+/*
+A stand-in for the sound view with a settable selection: the module's
+applyEnvelope: takes its (firstSample, sampleLength) from
+-[SndView getSelection:].  The real SndView's
+checkForCurrentDataOnPasteboard: (which the 1998 flow calls before
+the DSP) would touch the general pasteboard; the fake is a no-op, so
+the Envelope contract needs no pasteboard server at all.
+*/
+@interface FakeEnvelopeView : NSObject
+{
+    Snd *_sound;
+    unsigned int _first;
+    unsigned int _len;
+}
+- (id) initWithSound: (Snd *)sound;
+- (void) setSelection: (unsigned int)first size: (unsigned int)len;
+- (void) getSelection: (unsigned int *)firstSample size: (unsigned int *)sampleLength;
+- (void) checkForCurrentDataOnPasteboard;
+@end
+
+@implementation FakeEnvelopeView
+- (id) initWithSound: (Snd *)sound
+    {
+    if (self = [super init])
+    {
+        _sound = [sound retain];
+        _first = 0;
+        _len = (unsigned int)[_sound lengthInSampleFrames];
+    }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [super dealloc];
+    }
+- (void) setSelection: (unsigned int)first size: (unsigned int)len
+    {
+    _first = first;
+    _len = len;
+    }
+- (void) getSelection: (unsigned int *)firstSample size: (unsigned int *)sampleLength
+    {
+    *firstSample = _first;
+    *sampleLength = _len;
+    }
+- (void) checkForCurrentDataOnPasteboard
+    {
+    /* The app's ModuleSoundView category clears a stale pasteboard; a no-op here. */
+    }
+@end
+
+/*
+A stand-in for the app's ModuleController for the Envelope contract:
+it answers currentSound / currentSoundView / currentWindow and
+records the three side effects applyEnvelope: and soundDidChange
+produce (stop, soundChanged, runLongTimePanel).
+*/
+@interface FakeEnvelopeController : NSObject
+{
+    Snd *_sound;
+    id _soundView;
+    id _window;
+    int _stopped;
+    int _soundChanged;
+    int _longTime;
+}
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView window: (id)window;
+- (id) currentSound;
+- (id) currentSoundView;
+- (id) currentWindow;
+- (void) stop;
+- (void) soundChanged;
+- (BOOL) runLongTimePanel;
+- (int) stoppedCount;
+- (int) soundChangedCount;
+- (int) longTimeCount;
+@end
+
+@implementation FakeEnvelopeController
+- initWithSound: (Snd *)sound soundView: (id)soundView window: (id)window
+    {
+    if (self = [super init])
+    {
+        _sound = [sound retain];
+        _soundView = [soundView retain];
+        _window = [window retain];
+        _stopped = 0;
+        _soundChanged = 0;
+        _longTime = 0;
+    }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [_soundView release];
+    [_window release];
+    [super dealloc];
+    }
+- (id) currentSound
+    {
+    return _sound;
+    }
+- (id) currentSoundView
+    {
+    return _soundView;
+    }
+- (id) currentWindow
+    {
+    return _window;
+    }
+- (void) stop
+    {
+    _stopped++;
+    }
+- (void) soundChanged
+    {
+    _soundChanged++;
+    }
+- (BOOL) runLongTimePanel
+    {
+    _longTime++;
+    return YES;
+    }
+- (int) stoppedCount
+    {
+    return _stopped;
+    }
+- (int) soundChangedCount
+    {
+    return _soundChanged;
+    }
+- (int) longTimeCount
+    {
+    return _longTime;
+    }
+@end
+
+/*
 Fill the sound's buffer with a non-silence pattern: a 16-bit linear
 value per sample, narrowed per format.  The source and document
 patterns are deliberately different, so the mix is not an identity.
@@ -374,6 +636,63 @@ static void dspAdd (unsigned char *dst, const unsigned char *src,
         break;
     default:
         break;
+    }
+}
+
+/*
+The 1998 Envelope fade, sample by sample: each sample of the
+selection is multiplied by a multiplier between 0.0 and 1.0 (rising
+for a fade in, falling for a fade out, the 1998 changeFactor math),
+per channel, in the sound's own format.  The per-format expressions
+are the module's own (mu-law through the same SndKit conversion
+pair - the decode maxes out at 32124 and the multiplier is <= 1.0,
+so no clip, as in the port), so the expected buffer equals the
+module's arithmetic exactly.
+*/
+static void dspFade (unsigned char *buf, const unsigned char *orig,
+                     unsigned long first, unsigned long len, int ch,
+                     BOOL fadeIn, int applyToChannel[2], SndSampleFormat fmt)
+{
+    double changeFactor = 1.0 / (double)len;
+    unsigned long sample;
+    for (sample = first; sample < first + len; sample++)
+    {
+        long index = (long)sample * ch;
+        double sampleMultiplier = fadeIn
+            ? ((sample - first) * changeFactor)
+            : (1.0 - ((sample - first) * changeFactor));
+        int channel;
+        for (channel = 0; channel < ch; channel++)
+        {
+            if (!applyToChannel[channel])
+                continue;
+            switch (fmt)
+            {
+            case SND_FORMAT_LINEAR_8:
+                ((char *)buf)[index + channel] =
+                    ((char *)orig)[index + channel] * sampleMultiplier;
+                break;
+            case SND_FORMAT_MULAW_8:
+                buf[index + channel] = SndLinearToMuLaw
+                    ((short)(SndMuLawToLinear ((unsigned char)orig[index + channel])
+                                * sampleMultiplier));
+                break;
+            case SND_FORMAT_LINEAR_16:
+                ((short *)buf)[index + channel] =
+                    ((short *)orig)[index + channel] * sampleMultiplier;
+                break;
+            case SND_FORMAT_FLOAT:
+                ((float *)buf)[index + channel] =
+                    ((float *)orig)[index + channel] * sampleMultiplier;
+                break;
+            case SND_FORMAT_DOUBLE:
+                ((double *)buf)[index + channel] =
+                    ((double *)orig)[index + channel] * sampleMultiplier;
+                break;
+            default:
+                break;
+            }
+        }
     }
 }
 
@@ -588,6 +907,183 @@ static void testMix (id module, Ivar ivar, SndSampleFormat fmt, int ch,
     free (expected);
 }
 
+/*
+Inject the Envelope contract's stand-ins into the module's private
+ivars: the controller (inherited from Module, the app's own wiring
+runs setModuleControllerTo: and its conformance check a duck-typed
+double fails) and the six panel outlets (the app wires them from the
+gorm panel when it loads; the fakes stand in for whatever that
+wiring would have provided - pre-setting the panel is what makes the
+module skip the nib load the contract drives around).
+*/
+static void injectEnvelopeFakes (id module, Ivar controllerIvar,
+                                 id panel, id apply, id matrix,
+                                 id left, id right, id all,
+                                 FakeEnvelopeController *controller)
+{
+    object_setIvar (module, controllerIvar, controller);
+    object_setIvar (module, class_getInstanceVariable ([module class], "envelopePanel"), panel);
+    object_setIvar (module, class_getInstanceVariable ([module class], "applyButton"), apply);
+    object_setIvar (module, class_getInstanceVariable ([module class], "inOutMatrix"), matrix);
+    object_setIvar (module, class_getInstanceVariable ([module class], "applyToLeftButton"), left);
+    object_setIvar (module, class_getInstanceVariable ([module class], "applyToRightButton"), right);
+    object_setIvar (module, class_getInstanceVariable ([module class], "applyToAllButton"), all);
+}
+
+/*
+The showEnvelopePanel: contract: with the panel outlets pre-set to
+the fakes, the nib load the module performs for a missing panel is
+skipped (a real load needs a display - the app-side half is the
+resoundmenu --perform probe, where the panel comes up for real).
+What the 1998 method then does must show up on the fakes: the three
+channel buttons come up selected, the enabled states follow the
+sound's channel count and the current window, and the panel is
+ordered front.  (The 1998 nib leaves applyToAllButton unconnected,
+so the app's button stays nil and silently drops the setState:; the
+gate's fake receives it.  The apply button's state is the gorm's
+initial value - the module must not touch it.)
+*/
+static void testShowEnvelopePanel (id module, Ivar ivar, int channels)
+{
+    printf ("== showEnvelopePanel: with a %d channel document\n", channels);
+    BOOL stereo = channels > 1;
+
+    Snd *snd = [[[Snd alloc] initWithFormat: SND_FORMAT_LINEAR_16
+                                channelCount: channels
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    if (snd == nil)
+    {
+        check (NO, "Snd construction");
+        return;
+    }
+    FakeEnvelopeView *view =
+        [[[FakeEnvelopeView alloc] initWithSound: snd] autorelease];
+    id window = [[[NSObject alloc] init] autorelease];    /* a current window */
+    FakeEnvelopeController *controller =
+        [[[FakeEnvelopeController alloc] initWithSound: snd soundView: view window: window] autorelease];
+
+    FakeEnvelopePanel *panel =
+        [[[FakeEnvelopePanel alloc] init] autorelease];
+    FakeEnvelopeButton *apply =
+        [[[FakeEnvelopeButton alloc] init] autorelease];
+    FakeEnvelopeMatrix *matrix =
+        [[[FakeEnvelopeMatrix alloc] init] autorelease];
+    FakeEnvelopeButton *left =
+        [[[FakeEnvelopeButton alloc] init] autorelease];
+    FakeEnvelopeButton *right =
+        [[[FakeEnvelopeButton alloc] init] autorelease];
+    FakeEnvelopeButton *all =
+        [[[FakeEnvelopeButton alloc] init] autorelease];
+    injectEnvelopeFakes (module, ivar, panel, apply, matrix, left, right, all, controller);
+
+    id ret = [(EnvelopeModule *)module showEnvelopePanel: nil];
+
+    check (ret == module, "showEnvelopePanel: returns self");
+    check ([panel orderFrontCount] == 1, "the panel was ordered front");
+    check ([left state] == 1, "left-channel button comes up selected");
+    check ([right state] == 1, "right-channel button comes up selected");
+    check ([all state] == 1, "all-channels button comes up selected");
+    check ([apply state] == 0, "the apply button's state is left alone");
+    check ([apply enabled] == YES, "the apply button is enabled (a current window)");
+    check ([left enabled] == stereo, "channel buttons follow the channel count");
+    check ([right enabled] == stereo, "channel buttons follow the channel count (2)");
+    check ([all enabled] == stereo, "channel buttons follow the channel count (3)");
+}
+
+/*
+The applyEnvelope: DSP contract: a (first, len) selection on a
+frames-frame sound, faded in (tag 0) or out (tag 1), on the channels
+the button states select.  The expected sound is the pre-fade sound
+with the 1998 fade applied - the module's own per-format multiply
+arithmetic (see dspFade) - and everything outside the selection must
+stay byte-identical.  The all button carries the state the app's
+panel would have: 0 (the 1998 nib never connected it).
+*/
+static void testEnvelope (id module, Ivar ivar, SndSampleFormat fmt, int ch,
+                          BOOL fadeIn, unsigned long first, unsigned long len,
+                          int leftState, int rightState, unsigned long frames)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== applyEnvelope: %s, %d channel(s), fade %s, selection (%lu,%lu) on a %lu-frame sound\n",
+            name, ch, fadeIn ? "in" : "out",
+            (unsigned long)first, (unsigned long)len, (unsigned long)frames);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: ch
+                                    frames: frames
+                              samplingRate: 44100.0f] autorelease];
+    if (snd == nil || [snd lengthInSampleFrames] != frames)
+    {
+        check (NO, "Snd construction");
+        return;
+    }
+    fillPattern (snd, 1);
+
+    FakeEnvelopeView *view =
+        [[[FakeEnvelopeView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    id window = [[[NSObject alloc] init] autorelease];
+    FakeEnvelopeController *controller =
+        [[[FakeEnvelopeController alloc] initWithSound: snd soundView: view window: window] autorelease];
+
+    FakeEnvelopePanel *panel =
+        [[[FakeEnvelopePanel alloc] init] autorelease];
+    FakeEnvelopeButton *apply =
+        [[[FakeEnvelopeButton alloc] init] autorelease];
+    FakeEnvelopeMatrix *matrix =
+        [[[FakeEnvelopeMatrix alloc] init] autorelease];
+    [[matrix selectedCell] setTag: fadeIn ? 0 : 1];
+    FakeEnvelopeButton *left =
+        [[[FakeEnvelopeButton alloc] init] autorelease];
+    [left setState: leftState];
+    FakeEnvelopeButton *right =
+        [[[FakeEnvelopeButton alloc] init] autorelease];
+    [right setState: rightState];
+    FakeEnvelopeButton *all =
+        [[[FakeEnvelopeButton alloc] init] autorelease];    /* 0, as in the app */
+    injectEnvelopeFakes (module, ivar, panel, apply, matrix, left, right, all, controller);
+
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    id ret = [(EnvelopeModule *)module applyEnvelope: nil];
+
+    check (ret == module, "applyEnvelope: returns self");
+    check ([controller stoppedCount] == 1, "applyEnvelope: stopped playback first");
+    check ([controller soundChangedCount] == 1, "applyEnvelope: reported the sound changed");
+    int expectLongTime = len > 400000UL * (unsigned long)ch ? 1 : 0;
+    check ([controller longTimeCount] == expectLongTime,
+           expectLongTime ? "runLongTimePanel consulted for the long sound"
+                          : "runLongTimePanel skipped for the short sound");
+
+    /* The per-channel selection the button states imply, the way the
+       1998 code derives it (the all button is 0 in every case). */
+    int applyToChannel[2];
+    applyToChannel[0] = leftState != 0;
+    applyToChannel[1] = rightState != 0;
+
+    /* As in the mix contract, the sample counts become byte offsets
+       with the format's bytes-per-sample. */
+    int bps = (fmt == SND_FORMAT_LINEAR_16 ? 2
+             : fmt == SND_FORMAT_FLOAT ? 4
+             : fmt == SND_FORMAT_DOUBLE ? 8 : 1);
+    long off = (long)first * ch * bps;
+    long rangeBytes = (long)len * ch * bps;
+
+    unsigned char *expected = malloc ((size_t)size);
+    memcpy (expected, before, (size_t)size);
+    dspFade (expected, before, first, len, ch, fadeIn, applyToChannel, fmt);
+
+    check (memcmp ([snd bytes] + off, expected + off, (size_t)rangeBytes) == 0,
+           "faded range matches the 1998 DSP arithmetic");
+    check (memcmp ([snd bytes], expected, (size_t)size) == 0,
+           "the rest of the sound is untouched");
+    free (before);
+    free (expected);
+}
+
 static void runZero (Class principal)
 {
     /* The menu tree the app's Modules menu is built from. */
@@ -652,6 +1148,75 @@ static void runMix (Class principal)
             testMix (module, ivar, (SndSampleFormat)dspFormats[c], ch, 10, 30, 150, 50);
 }
 
+static void runEnvelope (Class principal)
+{
+    /* The menu tree the app's Modules menu is built from. */
+    id module = [[principal alloc] init];
+    check (module != nil, "module instantiation");
+    id root = [module getModuleMenuNode];
+    check (root != nil, "root menu node");
+    check (root != nil && [root numSubmenus] == 1, "root has exactly one submenu");
+    id leaf = root != nil ? [root getSubmenu: 0] : nil;
+    check (leaf != nil && [leaf isLeafNode], "leaf node");
+    check (leaf != nil && [[leaf getNameAsString] isEqualToString: @"Envelope"],
+           "leaf is named Envelope");
+    check (leaf != nil && [NSStringFromSelector ([leaf getMessage]) isEqualToString: @"showEnvelopePanel:"],
+           "leaf targets showEnvelopePanel:");
+    check (leaf != nil && [leaf getReceiver] == module, "leaf targets the module");
+
+    /* The controller ivar (inherited from Module) and the six panel
+       outlet ivars declared by the 1998 header.  (The gorm connects
+       five of the six - the 1998 nib leaves applyToAllButton
+       unconnected - but the header declares the ivar either way.) */
+    Ivar ivar = class_getInstanceVariable ([module class], "moduleController");
+    check (ivar != NULL, "moduleController ivar (for the DSP cases)");
+    static const char *outletNames[] = {
+        "envelopePanel", "applyButton", "inOutMatrix",
+        "applyToLeftButton", "applyToRightButton", "applyToAllButton"
+    };
+    int o;
+    for (o = 0; o < 6; o++)
+    {
+        char what[80];
+        snprintf (what, sizeof what, "%s ivar", outletNames[o]);
+        check (class_getInstanceVariable ([module class], outletNames[o]) != NULL, what);
+    }
+
+    /* showEnvelopePanel: with the outlets pre-set to the fakes (a
+       real panel load needs a display - the app-side half is the
+       resoundmenu --perform probe). */
+    testShowEnvelopePanel (module, ivar, 2);
+    testShowEnvelopePanel (module, ivar, 1);
+
+    /* The fade DSP: the five 1998 formats, mono and stereo, a
+       whole-sound selection fading in on both channels, then partial
+       50-frame selections, one channel each, in and out. */
+    int c;
+    int ch;
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testEnvelope (module, ivar, (SndSampleFormat)dspFormats[c], ch,
+                          YES, 0, 200, 1, 1, 200);
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testEnvelope (module, ivar, (SndSampleFormat)dspFormats[c], ch,
+                          YES, 10, 50, 1, 0, 200);
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testEnvelope (module, ivar, (SndSampleFormat)dspFormats[c], ch,
+                          NO, 10, 50, 0, 1, 200);
+
+    /* And the 1998 LOTS_OF_SAMPLES branch: a 400001-frame mono sound
+       (just past 400000 * 1) consults runLongTimePanel before the
+       DSP runs. */
+    for (c = 0; c < 5; c++)
+        testEnvelope (module, ivar, (SndSampleFormat)dspFormats[c], 1,
+                      YES, 0, 400001, 1, 1, 400001);
+    for (c = 0; c < 5; c++)
+        testEnvelope (module, ivar, (SndSampleFormat)dspFormats[c], 1,
+                      NO, 0, 400001, 1, 1, 400001);
+}
+
 int main (int argc, char **argv)
 {
     NSString *rmod = argc > 1
@@ -678,8 +1243,10 @@ int main (int argc, char **argv)
         runZero (principal);
     else if ([NSStringFromClass (principal) isEqualToString: @"MixModule"])
         runMix (principal);
+    else if ([NSStringFromClass (principal) isEqualToString: @"EnvelopeModule"])
+        runEnvelope (principal);
     else
-        check (NO, "principal class is neither ZeroModule nor MixModule");
+        check (NO, "principal class is none of the ported module classes");
 
     if (failures == 0)
         printf ("resoundmodule: all checks passed\n");

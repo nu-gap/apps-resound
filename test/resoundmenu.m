@@ -14,7 +14,7 @@ itself must be installed (make install in its module directory) for
 the load to find it.  The --direct flag calls the delegate's method
 instead of posting the notification (delivery vs. load-path split).
 
-Usage: resoundmenu <path-to-Resound.app> [--direct]
+Usage: resoundmenu <path-to-Resound.app> [--direct | --perform <title>]
 Runs under a display (the main model creates windows).
 */
 
@@ -89,6 +89,24 @@ static NSMenuItem *itemTitled (NSMenu *menu, NSString *title)
         if ([[menu itemAtIndex: i] title] != nil &&
             [[[menu itemAtIndex: i] title] isEqualToString: title])
             return [menu itemAtIndex: i];
+    return nil;
+}
+
+static NSMenuItem *findItemTitled (NSMenu *menu, NSString *title)
+{
+    if (menu == nil)
+        return nil;
+    int i;
+    int n = [menu numberOfItems];
+    for (i = 0; i < n; i++)
+    {
+        NSMenuItem *item = [menu itemAtIndex: i];
+        if ([[item title] isEqualToString: title])
+            return item;
+        NSMenuItem *sub = findItemTitled ([item submenu], title);
+        if (sub != nil)
+            return sub;
+    }
     return nil;
 }
 
@@ -229,6 +247,58 @@ int main (int argc, char **argv)
             else
                 printf ("app menu has no 'Module Info' item\n");
         }
+
+        /* --perform <title>: invoke the action of a menu item titled
+           <title> (the user-click equivalent).  For a module leaf
+           like "Envelope" this drives the module's panel load path
+           for real (ResoundNibs -> +[NSBundle loadNibNamed:] -> the
+           module bundle's gorm) - the one step a menu dump cannot
+           see.  The window list afterwards shows whether the panel
+           actually came up.  The Modules submenu is searched first:
+           the app menu's "Module Info" help entries carry the same
+           module titles (a 1998 layout), and the click intent is the
+           module's own leaf. */
+        if (argc > 3 && strcmp (argv[2], "--perform") == 0)
+        {
+            NSString *title = [NSString stringWithUTF8String: argv[3]];
+            printf ("\n== performing %s ==\n", argv[3]);
+            NSMenuItem *item = nil;
+            NSMenuItem *modulesItem = itemTitled (mainMenu, @"Modules");
+            if (modulesItem != nil)
+                item = findItemTitled ([modulesItem submenu], title);
+            if (item == nil)
+                item = findItemTitled (mainMenu, title);
+            if (item == nil)
+                printf ("no menu item titled '%s'\n", argv[3]);
+            else
+            {
+                id target = [item target];
+                printf ("item '%s': target %s, action %s, enabled %d\n",
+                        argv[3],
+                        target ? [[[target class] description] UTF8String] : "(nil)",
+                        [NSStringFromSelector ([item action]) UTF8String],
+                        [item isEnabled]);
+                int windowsBefore = (int)[[app windows] count];
+                if (target != nil && [item action] != NULL
+                    && [target respondsToSelector: [item action]])
+                    [target performSelector: [item action] withObject: item];
+                else
+                    printf ("no action to perform\n");
+                printf ("windows: %d before, %lu after\n",
+                        windowsBefore, (unsigned long)[[app windows] count]);
+                NSEnumerator *wEnum2 = [[app windows] objectEnumerator];
+                NSWindow *w2 = nil;
+                while ((w2 = [wEnum2 nextObject]) != nil)
+                {
+                    NSString *t = [w2 title];
+                    printf ("  window: '%s' visible=%d\n",
+                            t ? [t UTF8String] : "(no title)",
+                            [w2 isVisible] ? 1 : 0);
+                }
+            }
+            fflush (stdout);
+        }
+
         fflush (stdout);
         }
     @catch (NSException *e)
