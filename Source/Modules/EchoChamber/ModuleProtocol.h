@@ -29,7 +29,7 @@ IMPLIED WARRANTIES.
 
 
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 
 @protocol ModuleProtocol
 
@@ -190,7 +190,7 @@ IMPLIED WARRANTIES.
 
 /* GETTING NEW WINDOWS */
 
-- (void)newWindow:(NSWindow**) theWindowPointer:(NSScrollView**) theScrollViewPointer:(SoundView**)theSoundViewPointer;
+- (void)newWindow:(NSWindow**) theWindowPointer:(NSScrollView**) theScrollViewPointer:(SndView**)theSoundViewPointer;
 
 
 

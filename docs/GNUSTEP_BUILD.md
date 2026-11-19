@@ -618,6 +618,135 @@ gate TU stays at its 18 (14 1998-header re-emissions + the four
 intentional `newWindow` ones - the Envelope additions cost the
 TU nothing new).
 
+**The EchoChamber module unit (2026-11-19, fourth of the ten) —
+and the second with a control panel.**
+
+- `Source/Modules/EchoChamber/GNUmakefile` (new): the Zero/Mix
+  template — the gnustep-make bundle building `EchoChamber.rmod`
+  in-tree.  The principal class is **`EchoChamber`**, not the
+  `XxxModule` pattern of the other nine (the 1998 Info carried no
+  `NSPrincipalClass`; named explicitly, as in the other bundles,
+  it lands in the generated `Info-gnustep.plist`).  `EchoChamber`
+  is also the second nib'd module: `EchoChamber_RESOURCE_FILES`
+  lists `ModuleInfo.rtfd` **and the `EchoChamber.gorm` directory**
+  — the gorm is at the *module root* in the tree (no
+  `English.lproj` wrapper, even less localized than Envelope's),
+  and the 1998 bundle carried the nib at the bundle root too, so
+  the root placement is the most faithful of the nib'd modules
+  (the loader resolution is the Envelope finding: the owning
+  class's bundle first, non-localized resource root first).  The
+  1998 `EchoChamber.nib` folder stays in the tree as the
+  migration source, uninstalled; the SndKit chain links per ADR
+  0020.
+- `Source/Modules/EchoChamber/EchoChamber.{h,m}` (163 lines):
+  byte-identical to 1998 except — the import swap;
+  `SND_RATE_HIGH` ×2 written out as `44100.0` with a comment
+  (SndKit's `SND_RATE_*` defines live in MKPerformSndMIDI's
+  `SndStruct.h`, **not** in the `SndKit.h` umbrella — a gap
+  every remaining module will hit);
+  `convertToFormat:`→`convertToSampleFormat:`; the
+  `(Snd*)`/`(SndView*)` casts; `data`→`bytes` ×2; both
+  `SNDSwap*` pairs deleted (host order, as in the earlier units);
+  the 1998 `[[Sound alloc] init]` +
+  `setDataSize:dataFormat:samplingRate:channelCount:infoSize:`
+  (SndKit has no such setter) → the documented
+  `initWithFormat:channelCount:frames:samplingRate:` initializer
+  in the same size (the pre-check above the build leaves the sound
+  mono/16/44.1k) plus `setInfo:` carrying the 1998 `infoSize`
+  space over; and `[currentSound free]` → `[currentSound
+  release]` — GNUstep's `NSObject -free` exists only to *raise*
+  (`Use 'dealloc' instead of 'free'`), so the 1998 zone free
+  becomes the MRC release; left as-is it would crash.  **And one
+  non-negotiable:** the 1998 loop bound.  `datalength` is in
+  *bytes*, so `for(x=1; x<=datalength/2; x++)` runs one sample
+  past the end of *both* buffers — a latent 2-byte heap
+  overflow the 1998 platform's malloc padding absorbed (the extra
+  iteration only ever writes outside the sound's data; the
+  audible samples are 1..N-1 either way).  SndKit buffers are
+  exactly sized (`NSMutableData initWithLength:`) and modern glibc
+  does not forgive it — the bound is tightened to
+  `x<datalength/2`; the DSP processes identically.  (The
+  remaining six modules' `dataSize`-indexed loops get the same
+  scan with their units.)
+- The three stale per-module header copies synced to the ported
+  top-level files (as Envelope; the `ModuleController.h` copy
+  keeps the 1998 license-variant difference).
+- The bundle's build is the 1998 fingerprint and nothing else:
+  18 warnings — the 1998-header re-emissions plus the
+  `-Wobjc-multiple-method-names` on the `Snd`/`SndAudioBuffer`/
+  `GSSoundSource` overlap the 1998 `ModuleSound.h` category
+  brings (the app TU carries the same class in its 455 baseline).
+
+**The gorm wiring (probed on the real installed bundle).**  A
+throwaway probe loaded the bundle, instantiated the principal
+class the way the app does, ran `ResoundNibs loadNibNamed:
+@"EchoChamber" owner:` for real, and dumped the module's ivars:
+the gorm connects all six declared outlets — `delay`/
+`dropoff`/`initial` to *text field cells* (`NSTextFieldCell`),
+`firstDelay`/`ratio` to *slider cells* (`NSSliderCell`), and
+`EchoChamberPanel` to the panel (`NSPanel`, title **"Echo
+Chamber"**); the five value controls' `takeFloatValueFrom:`
+action connectors target the owner, which implements no such
+selector anywhere in the module chain (the 1998 sliders' no-op
+action — the values are read through the outlets at
+`performEcho:` time, which is why the gate's fakes only answer
+`floatValue`).  The gorm's "Echo Chamber" button targets the
+module (the owner) with `performEcho:` — an explicit target,
+not the responder chain.
+
+**The `resoundmodule` EchoChamber contract.**  As Zero/Mix/
+Envelope, the tool dispatches on the principal class
+(`EchoChamber` → the echo contract): the one-leaf "Echo
+Chamber..." (the 1998 three dots) → `begin:` menu tree; the
+`moduleController` ivar plus the six outlet ivars checked to
+exist and to start un-wired (all nil, `windowLoaded` 0);
+`begin:` with the panel outlet pre-set to a fake and
+`windowLoaded` pre-set via `object_setIvar` (skipping the nib
+load, which needs a display — the app-side half is the probe
+below), asserting the 1998 `makeKeyAndOrderFront:` on the fake
+twice (the flag stays set, so the second call just re-orders
+front); then `performEcho:` on real conforming Snds (mono,
+16-bit linear, 44.1k — the one shape the 1998 method accepts
+without its modal `NSRunAlertPanel` conversion prompt, which the
+headless gate does not exercise, same policy as Envelope), the
+five `floatValue` fakes, a view double recording the
+`setSound:` hand-off and a controller double recording
+`newSound:for:` (declared in the 1998 space-separated shape,
+which clang parses as the clean `newSound:for:` — the exact
+selector the 1998 labeled call generates, verified
+empirically).  The expected buffer mirrors the ported DSP line
+for line — including the tightened bound — and sample 0 of
+the fresh sound stays zero (the 1998 loop starts at `x=1`;
+SndKit's fresh buffer is zero-initialized), the original buffer
+must carry the in-place echo, and the new sound must keep the
+format/size/info string.  55 checks, 0 failures — three
+shapes of the constants: both echo branches engaged, a zero
+first delay (the addvalue branch from sample 1), and a sound
+shorter than both delays (a pure copy).
+
+**The `resoundmenu --perform` probe (extended with the unit).**
+The after-launch Modules menu must show "Echo Chamber..." (along
+side Mix In / Zero / Envelope), and `--perform "Echo
+Chamber..."` drives the real `begin:` — the lazy gorm load
+included — asserting the panel comes up **visible with the
+gorm's own title** "Echo Chamber" (the probe run additionally
+shows hidden scaffolding windows coming up with the panel, as
+with Envelope — the gorm carries several window templates).
+
+**Verification.**  In CI the `EchoChamber.rmod` build + install
+is fatal; `resoundmodule` pins the bundle-side contract
+headlessly; the `resoundmenu` probe (non-fatal, under `xvfb`)
+asserts the after-launch menu entry **and** runs the second
+`--perform`, asserting the "Echo Chamber" window.  Locally the
+same three plus `resoundnib --check`/`--load` at **59** gorm
+folders, 0 failures (58 + the bundle-side copy) and the
+real-app launch with all four modules installed (it stays up,
+zero `objc-load` errors).  The app TU total stays at the
+455-warning baseline (the unit touches no app file), and the
+gate TU stays at its 18 — the EchoChamber additions cost the
+TU nothing new (one transient `-Wobjc-multiple-method-names`
+the untyped `id` receiver caused is cast away).
+
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with
 `NOT_COMPILING_WITH_MODULES` *commented out* (modules compiled in) and

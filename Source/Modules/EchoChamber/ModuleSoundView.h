@@ -27,16 +27,16 @@ IMPLIED WARRANTIES.
  Resound's Help system for more information.
 ************************************************************************/
 
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 
-@interface SoundView(ModuleSoundView)
+@interface SndView(ModuleSoundView)
 
-- (int)	convertToFormat:(int)newFormat
+- (int)	convertToSampleFormat:(int)newFormat
 		samplingRate:(double)newRate
 		channelCount:(int)newChannelCount;
 		
-- (char*)info;
-- setInfo:(const char*)this;
+- (NSString*)info;
+- setInfo:(NSString*)this;
 - (void) setIgnoreShowAndHideCursor:(BOOL)this;
 - (void)checkForCurrentDataOnPasteboard;
 

@@ -75,16 +75,19 @@ IMPLIED WARRANTIES.
 	
 	if ([currentSound channelCount]>1||
 		[currentSound dataFormat]!=SND_FORMAT_LINEAR_16||
-		[currentSound samplingRate]!=SND_RATE_HIGH)
+		/* 1998: samplingRate]!=SND_RATE_HIGH)  The 1998 SoundKit Snd.h
+		   defined SND_RATE_HIGH (44100.0); SndKit has no SND_RATE_*
+		   constants, so the value is written out. */
+		[currentSound samplingRate]!=44100.0)
 		{
 		if (NSRunAlertPanel(@"Echo Chamber",
 			@"Convert this sound to mono, 16-bit, 44.1 KHz to perform this operation?",
                       @"Okay",@"Cancel",nil)==NSAlertDefaultReturn)
 			{
-			if ([currentSoundView convertToFormat: SND_FORMAT_LINEAR_16 
+			if ([currentSoundView convertToSampleFormat: SND_FORMAT_LINEAR_16 
 	// we might get a warning here because the sound view doesn't have this
 	// function yet
-							samplingRate:   SND_RATE_HIGH 
+							samplingRate:   44100.0 
 							channelCount:   1]!= SND_ERR_NONE)
 				{
 				NSRunAlertPanel(@"Echo Chamber", 
@@ -104,12 +107,12 @@ IMPLIED WARRANTIES.
 	[currentSound compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
 	
-	soundData16 = (signed short*) [(Sound*)[moduleController currentSound] data];
+	soundData16 = (signed short*) [(Snd*)[moduleController currentSound] bytes];
 
-	SNDSwapSoundToHost
-		((void*)soundData16, (void*)soundData16, [currentSound sampleCount], 
-			[currentSound channelCount], [currentSound dataFormat]);
-		
+	/* 1998 also swapped the source buffer to host order here; SndKit
+	   keeps sample data in host byte order, so the swap is gone (the
+	   Zero port made the same change). */
+
 	datalength =[[moduleController currentSound] dataSize];
 	
 	delaycount=(int) ([delay floatValue]*44100);
@@ -118,19 +121,32 @@ IMPLIED WARRANTIES.
 	bigdelay=(int) ([firstDelay floatValue]*44100);
 	theratio=[ratio floatValue];
 	
-	newSound=[[Sound alloc]init];
-	[newSound setDataSize:  [currentSound dataSize]		
-			dataFormat:   [currentSound dataFormat]
-			samplingRate: [currentSound samplingRate]
-			channelCount: [currentSound channelCount]
-			infoSize:     [currentSound infoSize]];		
-			//sets proper data size only for 16-bit mono samples
+	/* 1998: newSound=[[Sound alloc] init]; [newSound setDataSize:..
+   dataFormat:.. samplingRate:.. channelCount:.. infoSize:..]; (the
+   //sets proper data size only for 16-bit mono samples note - the
+   pre-check above has left the sound mono/16-bit/44.1k).  SndKit has
+   no setDataSize:, so the sound is built directly with the documented
+   initializer in the same size, and the info string is carried over
+   (the 1998 call reserved the space for it). */
+	newSound=[[Snd alloc]
+		initWithFormat:   [currentSound dataFormat]
+		channelCount: [currentSound channelCount]
+		frames:       [currentSound lengthInSampleFrames]
+		samplingRate: [currentSound samplingRate]];
+	[newSound setInfo: [(Snd*)currentSound info]];
 
-        soundData2=(signed short int*) [(Sound*)newSound data];
+        soundData2=(signed short int*) [(Snd*)newSound bytes];
 
 	a=0; b=0;
 	addvalue=0;
-	for(x=1;x<=datalength/2;x++)
+	/* 1998: for(x=1; x<=datalength/2; x++)  With dataSize in bytes
+	   that runs one sample past the end of both buffers (a latent
+	   2-byte heap overflow the 1998 platform's malloc padding
+	   absorbed - the extra iteration only ever writes outside the
+	   sound's data).  SndKit buffers are exactly sized and modern
+	   glibc does not forgive it, so the bound is tightened; the
+	   audible samples (1..N-1) are processed identically. */
+	for(x=1;x<datalength/2;x++)
 		{
 		soundData2[x]=soundData16[x];
 		if (++a>delaycount)
@@ -145,12 +161,15 @@ IMPLIED WARRANTIES.
 			soundData2[x]+=(short)((float)soundData16[x]*theratio);
 			}
 		}
-	SNDSwapHostToSound
-		((void*)soundData2, (void*)soundData2, [newSound sampleCount], 
-			[newSound channelCount], [newSound dataFormat]);
+	/* (The 1998 code swapped the fresh buffer back to storage order
+   here; gone - see above.) */
 	
-        [(SoundView*)currentSoundView setSound: newSound];		// TypeCast for OS X server
-	[currentSound free];
+        [(SndView*)currentSoundView setSound: newSound];		// TypeCast for OS X server
+	/* 1998: [currentSound free];  GNUstep's NSObject implements -free
+	   only to raise an exception (NeXT anachronism), so the 1998 zone
+	   free becomes the MRC release: the document's reference is gone
+	   after the hand-off below. */
+	[currentSound release];
 	[moduleController newSound: newSound for: currentSoundView];
 
 

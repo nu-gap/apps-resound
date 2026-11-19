@@ -23,10 +23,16 @@
 #     with a pasteboard source selection), EnvelopeModule the Envelope
 #     contract (the "Envelope" menu tree, showEnvelopePanel: with the
 #     panel outlets as fakes, then applyEnvelope: - the fade in/out
-#     DSP - over the five 1998 data formats, mono and stereo).
+#     DSP - over the five 1998 data formats, mono and stereo),
+#     EchoChamber the EchoChamber contract (the "Echo Chamber..."
+#     menu tree, begin: with the panel outlet as a fake and the
+#     windowLoaded flag pre-set, then performEcho: - the echo DSP -
+#     on conforming mono/16-bit/44.1k sounds, the one shape the 1998
+#     method accepts without its modal conversion prompt).
 #     Headless; the mix cases use the general pasteboard, which
 #     GNUstep's client auto-serves with a fresh gpbs when no server
-#     runs (the Envelope cases touch no pasteboard at all).
+#     runs (the Envelope and EchoChamber cases touch no pasteboard
+#     at all).
 #
 # sndsmoke, resoundio and resoundmodule run headless (no audio
 # device, no display) and are fatal in CI; resoundnib --check is

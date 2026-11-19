@@ -3,9 +3,9 @@ resoundmodule
 For the GNUstep port of Resound (gnustep-port branch)
 
 The Phase 3 load contracts for the ported modules - so far the Zero
-module (zeroSound:), the Mix module (mix:) and the Envelope module
-(applyEnvelope:) - the first three units from the module tree (see
-docs/GNUSTEP_BUILD.md).
+module (zeroSound:), the Mix module (mix:), the Envelope module
+(applyEnvelope:) and the EchoChamber module (begin:/performEcho:) -
+the first four units from the module tree (see docs/GNUSTEP_BUILD.md).
 
 What it does (headless: no display, no audio device):
 
@@ -15,14 +15,19 @@ What it does (headless: no display, no audio device):
      NSPrincipalClass, and the principal class is the class the app
      instantiates - so the test dispatches on the class name, exactly
      like the app: ZeroModule runs the zero contract, MixModule the
-     mix contract, EnvelopeModule the envelope contract.
+     mix contract, EnvelopeModule the envelope contract,
+     EchoChamber the echo contract.
 
   2. Instantiates the module (the same alloc/init the app runs) and
      checks the menu tree the 1998 init builds: exactly one leaf -
      named "Zero" targeting zeroSound:, or "Mix In" targeting mix:,
-     or "Envelope" targeting showEnvelopePanel:,
+     or "Envelope" targeting showEnvelopePanel:, or "Echo
+     Chamber..." targeting begin:,
      on the module itself - what the app's "Modules" menu shows
-     after the load.
+     after the load.  The gorm-wired modules additionally expose
+     their private ivars here (the Envelope panel outlets, the
+     EchoChamber value outlets and windowLoaded flag), all checked
+     to exist and to start in the un-wired state.
 
   3. Drives the module's DSP on real in-memory Snds, mono and stereo,
      over the five 1998 data formats, through a duck-typed
@@ -44,7 +49,15 @@ What it does (headless: no display, no audio device):
          fakes: pre-setting the panel outlet skips the nib load the
          module performs for a real panel (the real load needs a
          display and runs in the app; the resoundmenu --perform
-         probe drives it there).
+         probe drives it there);
+        - performEcho: (the echo DSP) on the one sound shape the
+          1998 method accepts without its modal conversion prompt -
+          mono, 16-bit linear, 44.1k - the expected buffer computed
+          with the module's own echo arithmetic, the five panel
+          value outlets as fakes (their gorm types - text field and
+          slider cells - only ever answer floatValue), the view and
+          controller doubles recording the setSound:/newSound:for:
+          hand-off of the freshly built sound.
 
 The controller is injected by setting the module's private
 moduleController ivar directly (object_setIvar): the app's own wiring
@@ -106,6 +119,12 @@ Exit status: 0 when every check passes, 1 otherwise.
 - applyEnvelope:sender;
 @end
 
+@interface EchoChamber : Module
+- init;
+- begin:sender;
+- performEcho:sender;
+@end
+
 static int failures = 0;
 
 /* The five data formats the 1998 modules' DSP switches handle. */
@@ -126,6 +145,21 @@ static void check (BOOL ok, const char *what)
         printf ("FAIL %s\n", what);
         failures++;
     }
+}
+
+/* Raw reads of the module's private ivars (the gate inspects the same
+   state the gorm wiring writes): object ivars by pointer, the int
+   windowLoaded flag through its raw bits. */
+static id readObjIvar (id obj, const char *name)
+{
+    Ivar iv = class_getInstanceVariable ([obj class], name);
+    return iv ? object_getIvar (obj, iv) : nil;
+}
+
+static long readIntIvar (id obj, const char *name)
+{
+    Ivar iv = class_getInstanceVariable ([obj class], name);
+    return iv ? (long)(intptr_t)object_getIvar (obj, iv) : -999999;
 }
 
 /*
@@ -536,6 +570,186 @@ produce (stop, soundChanged, runLongTimePanel).
 - (int) longTimeCount
     {
     return _longTime;
+    }
+@end
+
+/*
+A duck-typed double for one of the EchoChamber panel's five value
+outlets: the gorm wires three of them (delay, dropoff, initial) to
+text field cells and two (firstDelay, ratio) to slider cells, and the
+module reads all five only through floatValue - which the probe of the
+real gorm wiring confirmed.
+*/
+@interface FakeEchoValue : NSObject
+{
+    float _value;
+}
+- (id) initWithValue: (float)value;
+- (float) floatValue;
+@end
+
+@implementation FakeEchoValue
+- initWithValue: (float)value
+    {
+    if (self = [super init])
+        _value = value;
+    return self;
+    }
+- (float) floatValue
+    {
+    return _value;
+    }
+@end
+
+/*
+A stand-in for the EchoChamber panel window: records the
+makeKeyAndOrderFront: the 1998 begin: sends it.  Pre-setting this
+outlet - together with the windowLoaded flag - is what makes begin:
+skip the nib load, which needs a display (the app-side half is the
+resoundmenu --perform probe).
+*/
+@interface FakeEchoPanel : NSObject
+{
+    int _keyFront;
+}
+- (void) makeKeyAndOrderFront: (id)sender;
+- (int) keyFrontCount;
+@end
+
+@implementation FakeEchoPanel
+- (void) makeKeyAndOrderFront: (id)sender
+    {
+    _keyFront++;
+    }
+- (int) keyFrontCount
+    {
+    return _keyFront;
+    }
+@end
+
+/*
+A stand-in for the document sound view for the performEcho: contract:
+it records the setSound: hand-off and no-ops the
+checkForCurrentDataOnPasteboard: the 1998 flow calls (the app's
+ModuleSoundView category clears a stale pasteboard; a no-op keeps the
+contract away from the pasteboard server, as the Envelope cases do).
+*/
+@interface FakeEchoView : NSObject
+{
+    id _sound;
+    int _setSoundCount;
+}
+- (void) setSound: (id)sound;
+- (id) sound;
+- (int) setSoundCount;
+- (void) checkForCurrentDataOnPasteboard;
+@end
+
+@implementation FakeEchoView
+- (void) dealloc
+    {
+    [_sound release];
+    [super dealloc];
+    }
+- (void) setSound: (id)sound
+    {
+    if (sound != _sound)
+        {
+        [_sound release];
+        _sound = [sound retain];
+        }
+    _setSoundCount++;
+    }
+- (id) sound
+    {
+    return _sound;
+    }
+- (int) setSoundCount
+    {
+    return _setSoundCount;
+    }
+- (void) checkForCurrentDataOnPasteboard
+    {
+    /* no-op, as in the other view doubles */
+    }
+@end
+
+/*
+A stand-in for the app's ModuleController for the performEcho:
+contract: it answers currentSound / currentSoundView and records the
+newSound:for: hand-off the 1998 flow finishes with.
+
+The newSound:for: declaration keeps the 1998 space-separated shape the
+app's ModuleController.h carries (a space after the colon keeps the
+parameter name out of the selector, so clang builds the clean
+newSound:for: with no warning - the same 13-byte selector the 1998
+labeled module call generates).
+*/
+@interface FakeEchoController : NSObject
+{
+    Snd *_sound;
+    id _soundView;
+    id _newSound;
+    id _newSoundView;
+    int _newSoundCount;
+}
+- initWithSound: (Snd *)sound soundView: (id)soundView;
+- (id) currentSound;
+- (id) currentSoundView;
+- (void) newSound: (id)thisSound for: (id)thisSoundView;
+- (int) newSoundCount;
+- (id) newSoundArg;
+- (id) newSoundViewArg;
+@end
+
+@implementation FakeEchoController
+- initWithSound: (Snd *)sound soundView: (id)soundView
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _soundView = [soundView retain];
+        _newSound = nil;
+        _newSoundView = nil;
+        _newSoundCount = 0;
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [_soundView release];
+    [_newSound release];
+    [_newSoundView release];
+    [super dealloc];
+    }
+- (id) currentSound
+    {
+    return _sound;
+    }
+- (id) currentSoundView
+    {
+    return _soundView;
+    }
+- (void) newSound: (id)thisSound for: (id)thisSoundView
+    {
+    [_newSound release];
+    [_newSoundView release];
+    _newSound = [thisSound retain];
+    _newSoundView = [thisSoundView retain];
+    _newSoundCount++;
+    }
+- (int) newSoundCount
+    {
+    return _newSoundCount;
+    }
+- (id) newSoundArg
+    {
+    return _newSound;
+    }
+- (id) newSoundViewArg
+    {
+    return _newSoundView;
     }
 @end
 
@@ -1084,6 +1298,185 @@ static void testEnvelope (id module, Ivar ivar, SndSampleFormat fmt, int ch,
     free (expected);
 }
 
+/*
+The 1998 EchoChamber DSP, sample by sample, on a scratch pair of
+buffers: live[] tracks the module's in-place edit of the original
+buffer (its addvalue read at x-delaycount sees the already-echoed
+value, exactly as the module's does), expected[] is what the fresh
+sound must end up (sample 0 zero - the 1998 loop starts at x=1, and
+SndKit's fresh buffer is zero-initialized).  The casts mirror the
+module's arithmetic line for line.
+*/
+static void echoExpected (short *live, short *expected, long frames,
+                          int delaycount, int bigdelay,
+                          float dropoff, float initial, float ratio)
+{
+    int a = 0;
+    int b = 0;
+    short addvalue = 0;
+    long x;
+    /* x < frames, as in the port: the 1998 loop's <= ran one
+       sample past the end of the buffers (see the module's note). */
+    for (x = 1; x < frames; x++)
+    {
+        expected[x] = live[x];
+        if (++a > delaycount)
+            addvalue = (short)((float)addvalue*dropoff
+                              + (float)live[x-delaycount]*initial);
+        live[x] += addvalue;
+        if (++b > bigdelay)
+            expected[x] += (short)((float)live[x]*ratio);
+    }
+}
+
+/*
+The performEcho: DSP contract on a conforming sound (mono, 16-bit
+linear, 44.1k - the only shape the 1998 method accepts without its
+modal NSRunAlertPanel conversion prompt, which the headless gate does
+not exercise): the buffer must come out byte-identical to the 1998
+arithmetic on the same input, the original buffer must carry the
+in-place echo, and the hand-off (the view's setSound:, the
+controller's newSound:for:) must deliver the freshly built sound.
+*/
+static void testEcho (id module, Ivar ivar,
+                      float delay, float dropoff, float initial,
+                      float firstDelay, float ratio, unsigned long frames)
+{
+    /* The 1998 constants, the way the module derives them. */
+    int delaycount = (int)(delay*44100);
+    int bigdelay = (int)(firstDelay*44100);
+
+    printf ("== performEcho: 16-bit mono %lu frames (delaycount=%d, bigdelay=%d samples)\n",
+            (unsigned long)frames, delaycount, bigdelay);
+
+    /* The gate keeps its own reference: performEcho: releases the
+       module-side one (the 1998 zone free, ported to release). */
+    Snd *snd = [[Snd alloc] initWithFormat: SND_FORMAT_LINEAR_16
+                             channelCount: 1
+                                 frames: frames
+                           samplingRate: 44100.0f];
+    check (snd != nil && [snd lengthInSampleFrames] == frames, "Snd construction");
+    if (snd == nil)
+        return;
+    fillPattern (snd, 1);
+    [snd setInfo: @"echo-test"];
+
+    FakeEchoView *view = [[[FakeEchoView alloc] init] autorelease];
+    FakeEchoController *controller =
+        [[[FakeEchoController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, ivar, controller);
+    object_setIvar (module, class_getInstanceVariable ([module class], "delay"),
+                    [[FakeEchoValue alloc] initWithValue: delay]);
+    object_setIvar (module, class_getInstanceVariable ([module class], "dropoff"),
+                    [[FakeEchoValue alloc] initWithValue: dropoff]);
+    object_setIvar (module, class_getInstanceVariable ([module class], "initial"),
+                    [[FakeEchoValue alloc] initWithValue: initial]);
+    object_setIvar (module, class_getInstanceVariable ([module class], "firstDelay"),
+                    [[FakeEchoValue alloc] initWithValue: firstDelay]);
+    object_setIvar (module, class_getInstanceVariable ([module class], "ratio"),
+                    [[FakeEchoValue alloc] initWithValue: ratio]);
+
+    long size = [snd dataSize];
+    short *before = malloc ((size_t)size);
+    short *live = malloc ((size_t)size);
+    short *expected = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+    memcpy (live, before, (size_t)size);
+    memset (expected, 0, (size_t)size);   /* a fresh Snd buffer is zero */
+    echoExpected (live, expected, (long)frames, delaycount, bigdelay,
+                  dropoff, initial, ratio);
+
+    id ret = [(EchoChamber *)module performEcho: nil];
+
+    check (ret == module, "performEcho: returns self");
+    check ([controller newSoundCount] == 1, "the new sound was handed to the document");
+    id newSound = [controller newSoundArg];
+    Snd *newSnd = (Snd *)newSound;   /* typed: an untyped id would flag channelCount */
+    check ([controller newSoundViewArg] == view, "the hand-off names the current view");
+    check ([view setSoundCount] == 1, "the view was given the new sound");
+    check ([view sound] == newSound, "view and document got the same new sound");
+    check (newSnd != nil
+       && [newSnd dataFormat] == SND_FORMAT_LINEAR_16
+       && [newSnd channelCount] == 1
+       && [newSnd lengthInSampleFrames] == frames
+       && [newSnd samplingRate] == 44100.0
+       && [[newSnd info] isEqualToString: @"echo-test"],
+            "the new sound keeps the format, size and info string");
+    check (memcmp ([newSnd bytes], expected, (size_t)size) == 0,
+            "buffer matches the 1998 echo DSP byte-for-byte");
+    check (memcmp ([snd bytes], live, (size_t)size) == 0,
+            "the original buffer took the in-place echo");
+    free (before);
+    free (live);
+    free (expected);
+    [snd release];
+}
+
+static void runEcho (Class principal)
+{
+    /* The menu tree the app's Modules menu is built from: one leaf,
+       named with the 1998 three dots, targeting begin:. */
+    id module = [[principal alloc] init];
+    check (module != nil, "module instantiation");
+    id root = [module getModuleMenuNode];
+    check (root != nil, "root menu node");
+    check (root != nil && [root numSubmenus] == 1, "root has exactly one submenu");
+    id leaf = root != nil ? [root getSubmenu: 0] : nil;
+    check (leaf != nil && [leaf isLeafNode], "leaf node");
+    check (leaf != nil && [[leaf getNameAsString] isEqualToString: @"Echo Chamber..."],
+            "leaf is named Echo Chamber...");
+    check (leaf != nil && [NSStringFromSelector ([leaf getMessage]) isEqualToString: @"begin:"],
+            "leaf targets begin:");
+    check (leaf != nil && [leaf getReceiver] == module, "leaf targets the module");
+
+    /* The controller ivar (inherited from Module) and the six outlet
+       ivars the 1998 header declares; the gorm connects all six (the
+       probe of the real wiring: three text field cells, two slider
+       cells, the panel window), so all must exist and start nil, and
+       the windowLoaded flag must start unset. */
+    Ivar ivar = class_getInstanceVariable ([module class], "moduleController");
+    check (ivar != NULL, "moduleController ivar (for the DSP cases)");
+    static const char *outletNames[] = {
+        "delay", "dropoff", "initial", "firstDelay", "ratio", "EchoChamberPanel"
+    };
+    int o;
+    for (o = 0; o < 6; o++)
+    {
+        char what[80];
+        snprintf (what, sizeof what, "%s ivar exists", outletNames[o]);
+        check (class_getInstanceVariable ([module class], outletNames[o]) != NULL, what);
+        snprintf (what, sizeof what, "%s ivar starts nil", outletNames[o]);
+        check (readObjIvar (module, outletNames[o]) == nil, what);
+    }
+    check (readIntIvar (module, "windowLoaded") == 0, "windowLoaded starts unset");
+
+    /* begin: with the panel outlet pre-set to a fake and
+       windowLoaded pre-set (a real panel load needs a display - the
+       app-side half is the resoundmenu --perform probe, where the
+       gorm panel comes up for real): the 1998 method then just
+       orders the panel key and front, and stays quiet about it. */
+    Ivar winIvar = class_getInstanceVariable ([module class], "windowLoaded");
+    Ivar panelIvar = class_getInstanceVariable ([module class], "EchoChamberPanel");
+    check (winIvar != NULL && panelIvar != NULL, "windowLoaded/panel ivars");
+    FakeEchoPanel *panel = [[[FakeEchoPanel alloc] init] autorelease];
+    object_setIvar (module, winIvar, (id)(intptr_t)1);
+    object_setIvar (module, panelIvar, panel);
+
+    id ret = [(EchoChamber *)module begin: nil];
+    check (ret == module, "begin: returns self");
+    check ([panel keyFrontCount] == 1, "begin: ordered the panel key and front");
+    [(EchoChamber *)module begin: nil];
+    check ([panel keyFrontCount] == 2, "begin: is repeatable (the loaded flag stays set)");
+
+    /* The echo DSP, three shapes of the constants:
+       - the gorm's defaults in range (both echo branches engage);
+       - zero first delay (the addvalue branch engages from sample 1);
+       - a sound shorter than both delays (pure copy, sample 0 zero). */
+    testEcho (module, ivar, 0.02f, 0.9f, 0.5f, 0.005f, 0.3f, 1000);
+    testEcho (module, ivar, 0.0f, 0.9f, 0.5f, 0.005f, 0.3f, 1000);
+    testEcho (module, ivar, 0.02f, 0.9f, 0.5f, 0.005f, 0.3f, 100);
+}
+
 static void runZero (Class principal)
 {
     /* The menu tree the app's Modules menu is built from. */
@@ -1245,6 +1638,8 @@ int main (int argc, char **argv)
         runMix (principal);
     else if ([NSStringFromClass (principal) isEqualToString: @"EnvelopeModule"])
         runEnvelope (principal);
+    else if ([NSStringFromClass (principal) isEqualToString: @"EchoChamber"])
+        runEcho (principal);
     else
         check (NO, "principal class is none of the ported module classes");
 
