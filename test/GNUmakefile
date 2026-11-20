@@ -28,11 +28,16 @@
 #     menu tree, begin: with the panel outlet as a fake and the
 #     windowLoaded flag pre-set, then performEcho: - the echo DSP -
 #     on conforming mono/16-bit/44.1k sounds, the one shape the 1998
-#     method accepts without its modal conversion prompt).
+#     method accepts without its modal conversion prompt),
+#     GateModule the Gate contract (the "Noise Gate..." menu tree,
+#     showNoiseGatePanel: with the panel outlets as fakes and the
+#     nib_loaded flag pre-set, then gateIt: - the noise gate DSP -
+#     over the five 1998 data formats, mono and stereo, whole-sound
+#     and partial selections).
 #     Headless; the mix cases use the general pasteboard, which
 #     GNUstep's client auto-serves with a fresh gpbs when no server
-#     runs (the Envelope and EchoChamber cases touch no pasteboard
-#     at all).
+#     runs (the Envelope, EchoChamber and Gate cases touch no
+#     pasteboard at all).
 #
 # sndsmoke, resoundio and resoundmodule run headless (no audio
 # device, no display) and are fatal in CI; resoundnib --check is

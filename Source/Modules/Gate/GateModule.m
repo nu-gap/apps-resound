@@ -18,7 +18,7 @@ IMPLIED WARRANTIES.
 #import "GateModule.h"
 #import "ResoundNibs.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <Foundation/Foundation.h>
 #import <limits.h>
 #import <math.h>
@@ -57,7 +57,7 @@ IMPLIED WARRANTIES.
 	
 - gateIt:sender
 	{
-	Sound* current=[moduleController currentSound];
+	Snd* current=[moduleController currentSound];
 	
 	int gateState=GATE_STATE_RELEASED;
 	int gateCount=0;
@@ -70,13 +70,19 @@ IMPLIED WARRANTIES.
 
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	/* 1998: [current sampleCount];  renamed to SndKit's
+	   lengthInSampleFrames (the Mix port made the same
+	   change).  The variable stays - the whole-sound branch
+	   below still uses it. */
+	int sampleCount=[current lengthInSampleFrames];
 	
 	void* data;
-	unsigned char* data8;
-	signed short* data16;
 	
-	int firstSample, sampleLength;
+	/* 1998: int firstSample, sampleLength;  SndKit's getSelection:
+	   hands out unsigned ints (SndView.h), so the Mix/Envelope
+	   ports made the same change; the arithmetic around the loops
+	   below is unchanged. */
+	unsigned int firstSample, sampleLength;
 	
 	if (threshold>1) threshold=1;  if (threshold<0) threshold=0;
 	if (secondswait<0) secondswait=0;
@@ -96,18 +102,34 @@ IMPLIED WARRANTIES.
 	[moduleController stop];
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
-	data=(void*)[current data];
-	data8=(char*)data;
-	data16=(signed short*)data;
+	data=(void*)[current bytes];
+	/* 1998 also derived data8/data16 from the buffer; they fed only
+		   the two buffer swaps that bracketed the DSP, so the two
+		   declarations and assignments go with them (the Envelope
+		   port retired the same swap-only variable). */
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* 1998 also swapped the buffer to host order here; SndKit
+		   keeps sample data in host byte order, so the swap is
+		   gone (the Zero port made the same change). */
 
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
 	if (!sampleLength) {firstSample=0;sampleLength=sampleCount;}	
 
 		
+		/* 1998 note: in the FLOAT/DOUBLE cases, abs(tempsnd) truncates
+		   the sample to an integer before the below/above-threshold
+		   comparison - for those formats the state machine effectively
+		   runs on the integer part of the amplitude.  In the
+		   LINEAR_8 case, tempsnd is char and hi_clip is CHAR_MAX -
+		   on a platform where char is unsigned (this one), the bytes
+		   read as 0..255 and the threshold is 127.5 instead of the
+		   1998 signed-char 63.5, so only the 1998 negative half of
+		   the 8-bit range can release the gate.  Both are 1998
+		   fingerprints, preserved byte-identical (no behavioural
+		   change); the gate contract mirrors them, and its pattern
+		   and checks are chosen to classify the same on any
+		   platform. */
 		switch(format)
 		{
 		case SND_FORMAT_MULAW_8: 
@@ -125,7 +147,13 @@ IMPLIED WARRANTIES.
 						x<(firstSample+sampleLength)*channelCount;
 						x+=channelCount)
 					{
-					tempsnd=SNDiMulaw(d[x]);
+					/* 1998: tempsnd=SNDiMulaw(d[x]);  The 1998 SNDiMulaw/SNDMulaw
+					   pair is SndKit's SndMuLawToLinear/SndLinearToMuLaw (the
+					   same sox libst routine).  The mu-law decode maxes out at
+					   32124, which fits a short, and the gate's multiplier is
+					   between 0.0 and 1.0, so the product can only shrink - no
+					   LINCLIP (as in the Envelope port). */
+					tempsnd=SndMuLawToLinear((unsigned char)d[x]);
 					if (gateState==GATE_STATE_RELEASED)
 						{
 						if (abs(tempsnd)<hi_clip*threshold) gateCount++;
@@ -148,7 +176,7 @@ IMPLIED WARRANTIES.
 							gateCount++;
 							}
 						}
-					d[x]=SNDMulaw(tempsnd);
+					d[x]=SndLinearToMuLaw(tempsnd);
 					}
 				}
 			} break;
@@ -329,8 +357,8 @@ IMPLIED WARRANTIES.
 
 	
 		
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (The 1998 code swapped the buffer back to storage order
+		   here; gone - see above.) */
 	[moduleController soundChanged];
 	return self;
 	}

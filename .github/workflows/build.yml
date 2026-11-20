@@ -317,13 +317,14 @@ jobs:
 
       - name: Build the modules (Phase 3)
         # The ported modules so far - Zero, the first Phase 3 unit,
-        # Mix, the second, Envelope, the third, and EchoChamber, the
-        # fourth (Envelope and EchoChamber are the two with a
-        # control-panel nib: the bundles carry the gorms at their
-        # resource root, the way the app's own bundle carries its
-        # gorms): gnustep-make bundles (gnustep-make bundle.make
-        # rules, ADR 0020) producing Zero.rmod, Mix.rmod,
-        # Envelope.rmod and EchoChamber.rmod, installed into the
+        # Mix, the second, Envelope, the third, EchoChamber, the
+        # fourth, and Gate, the fifth (Envelope, EchoChamber and
+        # Gate are the three with a control-panel nib: the bundles
+        # carry the gorms at their resource root, the way the
+        # app's own bundle carries its gorms): gnustep-make bundles
+        # (gnustep-make bundle.make rules, ADR 0020) producing
+        # Zero.rmod, Mix.rmod, Envelope.rmod, EchoChamber.rmod and
+        # Gate.rmod, installed into the
         # domain's library directory (lib/GNUstep/Resound with the
         # fhs filesystem layout) - the app's ModuleController searches
         # every library domain + /Resound (plus the app bundle), so
@@ -347,6 +348,9 @@ jobs:
           make -C Source/Modules/EchoChamber -j"$(nproc)" -f GNUmakefile
           make -C Source/Modules/EchoChamber -f GNUmakefile install
           find Source/Modules/EchoChamber/EchoChamber.rmod -maxdepth 3 | sort
+          make -C Source/Modules/Gate -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/Gate -f GNUmakefile install
+          find Source/Modules/Gate/Gate.rmod -maxdepth 3 | sort
           ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
 
       - name: Module load contract (Phase 3)
@@ -384,8 +388,19 @@ jobs:
         # outlets as fakes, the expected buffer computed with the
         # module's own echo arithmetic, and the setSound:/
         # newSound:for: hand-off of the freshly built sound checked.
-        # No pasteboard involved in the Envelope or EchoChamber
-        # cases.  The mix cases use the general pasteboard for real:
+        # For Gate: the same principal-class and menu checks (one
+        # "Noise Gate..." leaf targeting showNoiseGatePanel:), then
+        # showNoiseGatePanel: with the panel outlets as fakes and
+        # the nib_loaded flag pre-set (skipping the nib load, which
+        # needs a display and runs in the app; the probe below
+        # drives it there for real), then gateIt: - the noise gate
+        # DSP - over the five 1998 data formats, mono and stereo,
+        # whole-sound and partial selections, the expected buffer
+        # computed with the module's own per-channel gate state
+        # machine and the panel floats checked to derive the 1998
+        # state counts.  No pasteboard involved in the Envelope,
+        # EchoChamber or Gate cases.  The mix cases use the general
+        # pasteboard for real:
         # GNUstep's client auto-launches a fresh gpbs when no
         # pasteboard server runs (filesystem name transport, no other
         # daemon needed), which is empty - the state the no-op case
@@ -403,6 +418,7 @@ jobs:
           "$TOOL" Source/Modules/Mix/Mix.rmod
           "$TOOL" Source/Modules/Envelope/Envelope.rmod
           "$TOOL" Source/Modules/EchoChamber/EchoChamber.rmod
+          "$TOOL" Source/Modules/Gate/Gate.rmod
 
       - name: Module load probe (Phase 3)
         # The app-side half of the module load, run for real (test/
@@ -425,6 +441,9 @@ jobs:
         # --perform "Echo Chamber..." runs the same for the second
         # gorm module: the EchoChamber panel (title "Echo Chamber")
         # must come up visible from the bundle's gorm.
+        # --perform "Noise Gate..." runs the same for the third gorm
+        # module: the Gate panel (title "Noise Gate") must come up
+        # visible from the bundle's gorm.
         # Non-fatal: a display environment can not be trusted the way
         # the build can be; the load contract above (headless) is the
         # hard gate.
@@ -455,6 +474,13 @@ jobs:
           test "$rc" -eq 0
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Echo Chamber..."
           awk '/performing Echo Chamber/{f=1} f' "$LOG" | grep -q "window: 'Echo Chamber' visible=1"
+          LOG=$(mktemp)
+          rc=0
+          timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform "Noise Gate..." >"$LOG" 2>&1 || rc=$?
+          cat "$LOG"
+          test "$rc" -eq 0
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Noise Gate..."
+          awk '/performing Noise Gate/{f=1} f' "$LOG" | grep -q "window: 'Noise Gate' visible=1"
 
       - name: NIB conversion format check
         # Every 1998 .nib in the tree has a converted .gorm twin

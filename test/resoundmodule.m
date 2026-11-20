@@ -4,8 +4,9 @@ For the GNUstep port of Resound (gnustep-port branch)
 
 The Phase 3 load contracts for the ported modules - so far the Zero
 module (zeroSound:), the Mix module (mix:), the Envelope module
-(applyEnvelope:) and the EchoChamber module (begin:/performEcho:) -
-the first four units from the module tree (see docs/GNUSTEP_BUILD.md).
+(applyEnvelope:), the EchoChamber module (begin:/performEcho:) and
+the Gate module (showNoiseGatePanel:/gateIt:) - the first five units
+from the module tree (see docs/GNUSTEP_BUILD.md).
 
 What it does (headless: no display, no audio device):
 
@@ -16,18 +17,20 @@ What it does (headless: no display, no audio device):
      instantiates - so the test dispatches on the class name, exactly
      like the app: ZeroModule runs the zero contract, MixModule the
      mix contract, EnvelopeModule the envelope contract,
-     EchoChamber the echo contract.
+     EchoChamber the echo contract, GateModule the gate contract.
 
   2. Instantiates the module (the same alloc/init the app runs) and
      checks the menu tree the 1998 init builds: exactly one leaf -
      named "Zero" targeting zeroSound:, or "Mix In" targeting mix:,
      or "Envelope" targeting showEnvelopePanel:, or "Echo
-     Chamber..." targeting begin:,
+     Chamber..." targeting begin:, or "Noise Gate..." targeting
+     showNoiseGatePanel:,
      on the module itself - what the app's "Modules" menu shows
      after the load.  The gorm-wired modules additionally expose
      their private ivars here (the Envelope panel outlets, the
-     EchoChamber value outlets and windowLoaded flag), all checked
-     to exist and to start in the un-wired state.
+     EchoChamber value outlets and windowLoaded flag, the Gate
+     panel outlets and nib_loaded flag), all checked to exist and
+     to start in the un-wired state.
 
   3. Drives the module's DSP on real in-memory Snds, mono and stereo,
      over the five 1998 data formats, through a duck-typed
@@ -57,7 +60,17 @@ What it does (headless: no display, no audio device):
           value outlets as fakes (their gorm types - text field and
           slider cells - only ever answer floatValue), the view and
           controller doubles recording the setSound:/newSound:for:
-          hand-off of the freshly built sound.
+          hand-off of the freshly built sound;
+         - gateIt: (the noise gate DSP) over the in-memory sound's
+           selection, per channel, over the five 1998 data formats,
+           whole-sound and partial - the expected buffer computed
+           with the module's own per-format gate state machine
+           (mu-law through SndKit's conversion pair, the 1998 abs()
+           arithmetic mirrored), the three panel value outlets as
+           fakes, and the panel window with the nib_loaded flag
+           pre-set to skip the nib load the module performs for a
+           real panel (the app-side half is the resoundmenu
+           --perform probe).
 
 The controller is injected by setting the module's private
 moduleController ivar directly (object_setIvar): the app's own wiring
@@ -69,6 +82,12 @@ from the module's gorm panel when it loads, and the gate stands in
 fakes for whatever that wiring would have provided (the 1998 nib
 leaves the applyToAllButton outlet unconnected, so in the app it
 stays nil - the gate's fakes drive the states explicitly instead).
+So are the EchoChamber's five value outlets and the Gate panel's
+three value outlets and panel window.  The Gate's nib_loaded flag
+is a one-byte BOOL - the 1998 header declares it ahead of the four
+outlet pointers - so a pointer-sized object_setIvar on it would
+write into the outlets' bytes; the gate contract reads and writes
+it through the type-encoding-aware sized ivar helpers instead.
 
 The mix: controller double answers the 1998 newWindow call with the
 selector the app's ModuleController actually carries: the 1998
@@ -88,6 +107,8 @@ Exit status: 0 when every check passes, 1 otherwise.
 #import <AppKit/AppKit.h>
 #import <SndKit/SndKit.h>
 #import <objc/runtime.h>
+#import <limits.h>
+#import <stdlib.h>
 
 /* The app's copy of the module base classes, the same files the tool
    compiles in below (../Source/Module.m) - one path for the shared
@@ -125,6 +146,18 @@ Exit status: 0 when every check passes, 1 otherwise.
 - performEcho:sender;
 @end
 
+/* The 1998 header declares gateIt: (the gorm-wired Apply control)
+   but not showNoiseGatePanel: (the menu leaf's target - the 1998
+   header simply left it out of the interface); the mirror carries
+   both, in the no-space shapes the 1998 code uses, which clang
+   builds into the clean one-argument selectors the 1998 menu node
+   and the gorm matrix fire. */
+@interface GateModule : Module
+- init;
+- showNoiseGatePanel:sender;
+- gateIt:sender;
+@end
+
 static int failures = 0;
 
 /* The five data formats the 1998 modules' DSP switches handle. */
@@ -160,6 +193,70 @@ static long readIntIvar (id obj, const char *name)
 {
     Ivar iv = class_getInstanceVariable ([obj class], name);
     return iv ? (long)(intptr_t)object_getIvar (obj, iv) : -999999;
+}
+
+/* Sized reads and writes of non-object ivars, the width taken from
+   the ivar's type encoding: the gate's nib_loaded flag is a
+   one-byte BOOL, and the 1998 header declares it ahead of the four
+   outlet pointers - a pointer-sized object_setIvar on it would
+   write into the outlets' bytes (and object_getIvar reads the same
+   over-wide span).  Pointer ivars (the outlets) keep going through
+   object_getIvar/object_setIvar, where the width is exactly right. */
+static long readSizedIvar (id obj, const char *name)
+{
+    Ivar iv = class_getInstanceVariable ([obj class], name);
+    if (iv == NULL)
+        return -999999;
+    const char *enc = ivar_getTypeEncoding (iv);
+    if (enc == NULL)
+        return -999999;
+    char *p = (char *)(void *)obj + ivar_getOffset (iv);
+    switch (enc[0])
+    {
+    case 'c':
+    case 'C':
+    case 's':
+    case 'S':
+        return *p;
+    case 'i':
+    case 'l':
+        return *(int32_t *)p;
+    case 'q':
+    case 'L':
+        return *(int64_t *)p;
+    default:
+        return -999999;
+    }
+}
+
+static void writeSizedIvar (id obj, const char *name, long value)
+{
+    Ivar iv = class_getInstanceVariable ([obj class], name);
+    if (iv == NULL)
+        return;
+    const char *enc = ivar_getTypeEncoding (iv);
+    if (enc == NULL)
+        return;
+    char *p = (char *)(void *)obj + ivar_getOffset (iv);
+    switch (enc[0])
+    {
+    case 'c':
+    case 'C':
+    case 's':
+    case 'S':
+        *p = (char)value;
+        break;
+    case 'i':
+    case 'l':
+        *(int32_t *)p = (int32_t)value;
+        break;
+    case 'q':
+    case 'L':
+        *(int64_t *)p = (int64_t)value;
+        break;
+    default:
+        break;
+    }
 }
 
 /*
@@ -754,6 +851,182 @@ labeled module call generates).
 @end
 
 /*
+A duck-typed double for one of the Gate panel's three value
+outlets: the gorm wires all three (threshold, secondsWait,
+secondsCut) to text field views (the probe of the real
+wiring), and the module's gateIt: reads all three only
+through floatValue - the same gorm cell behaviour the
+EchoChamber values rely on.
+*/
+@interface FakeGateValue : NSObject
+{
+    float _value;
+}
+- initWithValue: (float)value;
+- (float) floatValue;
+@end
+
+@implementation FakeGateValue
+- initWithValue: (float)value
+    {
+    if (self = [super init])
+        _value = value;
+    return self;
+    }
+- (float) floatValue
+    {
+    return _value;
+    }
+@end
+
+/*
+A stand-in for the Gate panel window: records the
+makeKeyAndOrderFront: the 1998 showNoiseGatePanel: sends it.
+With the panel pre-set - and the nib_loaded flag pre-set
+through the sized ivar helpers - the method skips the nib
+load the module performs for a real panel (that needs a
+display; the app-side half is the resoundmenu --perform
+probe, where the gorm panel comes up for real).
+*/
+@interface FakeGatePanel : NSObject
+{
+    int _keyFront;
+}
+- (void) makeKeyAndOrderFront: (id)sender;
+- (int) keyFrontCount;
+@end
+
+@implementation FakeGatePanel
+- (void) makeKeyAndOrderFront: (id)sender
+    {
+    _keyFront++;
+    }
+- (int) keyFrontCount
+    {
+    return _keyFront;
+    }
+@end
+
+/*
+A stand-in for the document sound view with a settable
+selection: the module's gateIt: takes its (firstSample,
+sampleLength) from -[SndView getSelection:] (a zero length
+meaning the whole sound) and calls
+checkForCurrentDataOnPasteboard on the view first.  The
+no-op pasteboard (as in the other view doubles) keeps the
+contract away from the pasteboard server.
+*/
+@interface FakeGateView : NSObject
+{
+    Snd *_sound;
+    unsigned int _first;
+    unsigned int _len;
+}
+- (id) initWithSound: (Snd *)sound;
+- (void) setSelection: (unsigned int)first size: (unsigned int)len;
+- (void) getSelection: (unsigned int *)firstSample size: (unsigned int *)sampleLength;
+- (void) checkForCurrentDataOnPasteboard;
+@end
+
+@implementation FakeGateView
+- (id) initWithSound: (Snd *)sound
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _first = 0;
+        _len = (unsigned int)[_sound lengthInSampleFrames];
+    }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [super dealloc];
+    }
+- (void) setSelection: (unsigned int)first size: (unsigned int)len
+    {
+    _first = first;
+    _len = len;
+    }
+- (void) getSelection: (unsigned int *)firstSample size: (unsigned int *)sampleLength
+    {
+    *firstSample = _first;
+    *sampleLength = _len;
+    }
+- (void) checkForCurrentDataOnPasteboard
+    {
+    /* no-op, as in the other view doubles */
+    }
+@end
+
+/*
+A stand-in for the app's ModuleController for the gateIt:
+contract: it answers currentSound / currentSoundView and
+records the two side effects the 1998 flow produces (stop
+before the DSP, soundChanged after it).
+*/
+@interface FakeGateController : NSObject
+{
+    Snd *_sound;
+    id _soundView;
+    int _stopped;
+    int _soundChanged;
+}
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView;
+- (id) currentSound;
+- (id) currentSoundView;
+- (void) stop;
+- (void) soundChanged;
+- (int) stoppedCount;
+- (int) soundChangedCount;
+@end
+
+@implementation FakeGateController
+- initWithSound: (Snd *)sound soundView: (id)soundView
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _soundView = [soundView retain];
+        _stopped = 0;
+        _soundChanged = 0;
+    }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [_soundView release];
+    [super dealloc];
+    }
+- (id) currentSound
+    {
+    return _sound;
+    }
+- (id) currentSoundView
+    {
+    return _soundView;
+    }
+- (void) stop
+    {
+    _stopped++;
+    }
+- (void) soundChanged
+    {
+    _soundChanged++;
+    }
+- (int) stoppedCount
+    {
+    return _stopped;
+    }
+- (int) soundChangedCount
+    {
+    return _soundChanged;
+    }
+@end
+
+/*
 Fill the sound's buffer with a non-silence pattern: a 16-bit linear
 value per sample, narrowed per format.  The source and document
 patterns are deliberately different, so the mix is not an identity.
@@ -810,6 +1083,143 @@ static BOOL allSilent (Snd *snd, char expected)
         if (((char *)bytes)[x] != expected)
             return NO;
     return YES;
+}
+
+/*
+The gate test pattern: a silent lead-in (frames 0..99), a loud
+run (100..599) and a quiet tail (600 up) - per interleaved
+sample, in the sound's own stored format.  The three levels sit
+against the module's threshold compare (half of the format's
+full scale, for the 50/100 panel float) the way the gate is
+meant to see them, on any platform: the 8-bit loud level is
+byte 0x80, which the module's char read takes as +128 on a
+char-unsigned platform (abs 128, at or above its 127.5
+threshold) and as -128 on a signed-char platform (abs 128,
+at or above its 63.5 threshold) - the one 8-bit value loud
+under either char signedness; the quiet and silent levels are
+small non-negative values, below the threshold under either
+(the 8-bit full scale is CHAR_MAX - 255 on a char-unsigned
+platform, 127 on a signed one; see the module's note on its
+abs()/CHAR_MAX fingerprint).  For mu-law the levels are the
+G.711 codes for the same roles: the standard silence code
+(0xFF - the 1998 Zero comment's guess of 127 is the loudest
+mu-law byte, not silence) for the lead-in, a near-full-scale
+code for the loud run, and a small code for the quiet tail.
+*/
+static void gateFill (Snd *snd)
+{
+    long frames = (long)[snd lengthInSampleFrames];
+    int ch = [snd channelCount];
+    void *bytes = [snd bytes];
+    long n;
+    for (n = 0; n < frames * ch; n++)
+    {
+        long frame = n / ch;
+        int region = frame < 100 ? 0 : frame < 600 ? 1 : 2;
+        switch ([snd dataFormat])
+        {
+        case SND_FORMAT_MULAW_8:
+            ((unsigned char *)bytes)[n] = region == 0 ? (unsigned char)SndLinearToMuLaw (0)
+                                        : region == 1 ? (unsigned char)SndLinearToMuLaw (32000)
+                                        : (unsigned char)SndLinearToMuLaw (500);
+            break;
+        case SND_FORMAT_LINEAR_8:
+            ((char *)bytes)[n] = (char)(region == 0 ? 0 : region == 1 ? 128 : 4);
+            break;
+        case SND_FORMAT_LINEAR_16:
+            ((short *)bytes)[n] = (short)(region == 0 ? 0 : region == 1 ? 32000 : 1000);
+            break;
+        case SND_FORMAT_FLOAT:
+            ((float *)bytes)[n] = region == 0 ? 0.0f : region == 1 ? 1.5f : 0.4f;
+            break;
+        case SND_FORMAT_DOUBLE:
+            ((double *)bytes)[n] = region == 0 ? 0.0 : region == 1 ? 1.5 : 0.4;
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+/*
+Read one interleaved sample (frame, channel) of the sound's
+own format into dst.
+*/
+static void gateReadSample (const unsigned char *bytes, long frame,
+                            int channel, int ch, int bps,
+                            unsigned char *dst)
+{
+    memcpy (dst, bytes + (frame * ch + channel) * bps, (size_t)bps);
+}
+
+/*
+The linear value the gate's threshold compare sees for a
+stored sample: the format's own number, mu-law decoded through
+SndKit's table (in the mu-law case the module compares the
+decoded linear value).  The semantic spot checks read the
+gated buffer through this, so they test behaviour (loud /
+quiet / silent) rather than the exact stored code - which for
+mu-law the module rewrites through a decode/encode round trip
+on every write-back.
+*/
+static double gateSampleValue (SndSampleFormat fmt,
+                               const unsigned char *sample, int bps)
+{
+    switch (fmt)
+    {
+    case SND_FORMAT_MULAW_8:
+        return SndMuLawToLinear (sample[0]);
+    case SND_FORMAT_LINEAR_8:
+        return (int)(char)sample[0];
+    case SND_FORMAT_LINEAR_16:
+        {
+        short v;
+        memcpy (&v, sample, (size_t)bps);
+        return v;
+        }
+    case SND_FORMAT_FLOAT:
+        {
+        float v;
+        memcpy (&v, sample, (size_t)bps);
+        return v;
+        }
+    case SND_FORMAT_DOUBLE:
+        {
+        double v;
+        memcpy (&v, sample, (size_t)bps);
+        return v;
+        }
+    default:
+        return 0;
+    }
+}
+
+/* The module's abs(tempsnd), as the module computes it: for the
+   float formats the 1998 int truncation, for the integer formats
+   an exact magnitude - so the zone checks below compare the same
+   value the module's threshold compare sees, on any platform. */
+static double gateAbsValue (double v)
+{
+    int i = (int)v;
+    return i < 0 ? -(double)i : (double)i;
+}
+
+/* The format's full scale, the module's per-case hi_clip. */
+static double gateHiClip (SndSampleFormat fmt)
+{
+    switch (fmt)
+    {
+    case SND_FORMAT_MULAW_8:
+    case SND_FORMAT_LINEAR_16:
+        return SHRT_MAX;
+    case SND_FORMAT_LINEAR_8:
+        return CHAR_MAX;
+    case SND_FORMAT_FLOAT:
+    case SND_FORMAT_DOUBLE:
+        return 1.0;
+    default:
+        return 1.0;
+    }
 }
 
 /*
@@ -907,6 +1317,271 @@ static void dspFade (unsigned char *buf, const unsigned char *orig,
                 break;
             }
         }
+    }
+}
+
+/*
+The 1998 Gate DSP, sample by sample: the per-channel noise gate
+state machine of the module's switch, run on the caller's copy of
+the pre-gate buffer.  The module edits in place, but it reads and
+writes each interleaved sample exactly once, so the copy sees the
+same values; the per-format expressions mirror the module's line
+for line (mu-law decodes and re-encodes through SndKit's same
+conversion pair, the multiplier is between 0.0 and 1.0 so the
+product only shrinks - no clip, as in the port).  The one
+deviation: the module's abs(tempsnd) threshold compares go through
+gateAbs - the same standard integer abs, the same argument
+conversion at the call (for the float formats that is the 1998
+truncation quirk the module preserves, for the 8-bit format it
+takes the platform's char sign - the pattern keeps the two sides
+in agreement on any platform) - so that the six 1998 warnings
+the raw calls carry stay in the module's own build and out of
+this shared translation unit.
+*/
+#define GATE_STATE_APPLIED 1
+#define GATE_STATE_RELEASED 0
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wabsolute-value"
+static int gateAbs (int v)
+{
+    return abs (v);
+}
+#pragma clang diagnostic pop
+
+static void gateExpected (unsigned char *buf, unsigned int first,
+                          unsigned int len, int ch, float threshold,
+                          int swait, int scut, SndSampleFormat fmt)
+{
+    switch (fmt)
+    {
+    case SND_FORMAT_MULAW_8:
+        {
+        signed short tempsnd;
+        char *d = (char *)buf;
+        signed short hi_clip = SHRT_MAX;
+        int x;
+        int y;
+
+        for (y = 0; y < ch; y++)
+            {
+            int gateState = GATE_STATE_RELEASED;
+            int gateCount = 0;
+
+            for (x = first * ch + y;
+                 x < (first + len) * ch;
+                 x += ch)
+                {
+                tempsnd = SndMuLawToLinear ((unsigned char)d[x]);
+                if (gateState == GATE_STATE_RELEASED)
+                    {
+                    if (gateAbs (tempsnd) < hi_clip * threshold) gateCount++;
+                    if (gateCount > swait)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_APPLIED;
+                        }
+                    }
+                else
+                    {
+                    if (gateAbs (tempsnd) >= hi_clip * threshold)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_RELEASED;
+                        }
+                    else
+                        {
+                        tempsnd *= (gateCount >= scut ? 0 : (1.0 - ((float)gateCount / (float)scut)));
+                        gateCount++;
+                        }
+                    }
+                d[x] = SndLinearToMuLaw (tempsnd);
+                }
+            }
+        }
+        break;
+    case SND_FORMAT_LINEAR_8:
+        {
+        char tempsnd;
+        char *d = (char *)buf;
+        char hi_clip = CHAR_MAX;
+        int x;
+        int y;
+
+        for (y = 0; y < ch; y++)
+            {
+            int gateState = GATE_STATE_RELEASED;
+            int gateCount = 0;
+
+            for (x = first * ch + y;
+                 x < (first + len) * ch;
+                 x += ch)
+                {
+                tempsnd = (d[x]);
+                if (gateState == GATE_STATE_RELEASED)
+                    {
+                    if (gateAbs (tempsnd) < hi_clip * threshold) gateCount++;
+                    if (gateCount > swait)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_APPLIED;
+                        }
+                    }
+                else
+                    {
+                    if (gateAbs (tempsnd) >= hi_clip * threshold)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_RELEASED;
+                        }
+                    else
+                        {
+                        tempsnd *= (gateCount >= scut ? 0 : (1.0 - ((float)gateCount / (float)scut)));
+                        gateCount++;
+                        }
+                    }
+                d[x] = (tempsnd);
+                }
+            }
+        }
+        break;
+    case SND_FORMAT_LINEAR_16:
+        {
+        signed short tempsnd;
+        signed short *d = (signed short *)buf;
+        signed short hi_clip = SHRT_MAX;
+        int x;
+        int y;
+
+        for (y = 0; y < ch; y++)
+            {
+            int gateState = GATE_STATE_RELEASED;
+            int gateCount = 0;
+
+            for (x = first * ch + y;
+                 x < (first + len) * ch;
+                 x += ch)
+                {
+                tempsnd = (d[x]);
+                if (gateState == GATE_STATE_RELEASED)
+                    {
+                    if (gateAbs (tempsnd) < hi_clip * threshold) gateCount++;
+                    if (gateCount > swait)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_APPLIED;
+                        }
+                    }
+                else
+                    {
+                    if (gateAbs (tempsnd) >= hi_clip * threshold)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_RELEASED;
+                        }
+                    else
+                        {
+                        tempsnd *= (gateCount >= scut ? 0 : (1.0 - ((float)gateCount / (float)scut)));
+                        gateCount++;
+                        }
+                    }
+                d[x] = (tempsnd);
+                }
+            }
+        }
+        break;
+    case SND_FORMAT_FLOAT:
+        {
+        float tempsnd;
+        float *d = (float *)buf;
+        float hi_clip = 1.0;
+        int x;
+        int y;
+
+        for (y = 0; y < ch; y++)
+            {
+            int gateState = GATE_STATE_RELEASED;
+            int gateCount = 0;
+
+            for (x = first * ch + y;
+                 x < (first + len) * ch;
+                 x += ch)
+                {
+                tempsnd = (d[x]);
+                if (gateState == GATE_STATE_RELEASED)
+                    {
+                    if (gateAbs (tempsnd) < hi_clip * threshold) gateCount++;
+                    if (gateCount > swait)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_APPLIED;
+                        }
+                    }
+                else
+                    {
+                    if (gateAbs (tempsnd) >= hi_clip * threshold)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_RELEASED;
+                        }
+                    else
+                        {
+                        tempsnd *= (gateCount >= scut ? 0 : (1.0 - ((float)gateCount / (float)scut)));
+                        gateCount++;
+                        }
+                    }
+                d[x] = (tempsnd);
+                }
+            }
+        }
+        break;
+    case SND_FORMAT_DOUBLE:
+        {
+        double tempsnd;
+        double *d = (double *)buf;
+        double hi_clip = 1.0;
+        int x;
+        int y;
+
+        for (y = 0; y < ch; y++)
+            {
+            int gateState = GATE_STATE_RELEASED;
+            int gateCount = 0;
+
+            for (x = first * ch + y;
+                 x < (first + len) * ch;
+                 x += ch)
+                {
+                tempsnd = (d[x]);
+                if (gateState == GATE_STATE_RELEASED)
+                    {
+                    if (gateAbs (tempsnd) < hi_clip * threshold) gateCount++;
+                    if (gateCount > swait)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_APPLIED;
+                        }
+                    }
+                else
+                    {
+                    if (gateAbs (tempsnd) >= hi_clip * threshold)
+                        {
+                        gateCount = 0;
+                        gateState = GATE_STATE_RELEASED;
+                        }
+                    else
+                        {
+                        tempsnd *= (gateCount >= scut ? 0 : (1.0 - ((float)gateCount / (float)scut)));
+                        gateCount++;
+                        }
+                    }
+                d[x] = (tempsnd);
+                }
+            }
+        }
+        break;
+    default:
+        break;
     }
 }
 
@@ -1412,6 +2087,152 @@ static void testEcho (id module, Ivar ivar,
     [snd release];
 }
 
+/*
+The gateIt: DSP contract: a (first, len) selection on a
+1200-frame sound (len 0: the whole sound, the module's own
+convention), over the five 1998 data formats.  The pattern is a
+silent lead-in, a loud run and a quiet tail (gateFill): the
+lead-in counts up the released state and ramps, the loud run
+releases the gate and passes through untouched, and the quiet
+tail ramps down - past the cut time it is gated to silence,
+short of it it is attenuated but open.  The expected buffer is
+the pre-gate sound with the module's own state machine applied
+(gateExpected); everything outside the selection must stay
+byte-identical, the controller's two side effects (stop before
+the DSP, soundChanged after it) must land, and the samples must
+sit in the zones the state machine implies - so a common
+mistake in the module and its mirror could not hide behind the
+byte-for-byte equality alone.  The three panel floats are the
+50/0.002/0.01 the module's own math turns into the
+88/440-sample state counts.
+*/
+static void testGate (id module, Ivar ivar, SndSampleFormat fmt, int ch,
+                      unsigned int first, unsigned int len,
+                      unsigned long frames)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== gateIt: %s, %d channel(s), selection (%u,%u)%s on a %lu-frame sound\n",
+            name, ch, first, len,
+            len ? "" : " (a zero length is the whole sound)",
+            (unsigned long)frames);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: ch
+                                    frames: frames
+                              samplingRate: 44100.0f] autorelease];
+    if (snd == nil || [snd lengthInSampleFrames] != frames
+       || [snd channelCount] != ch || [snd dataFormat] != fmt)
+    {
+        check (NO, "Snd construction");
+        return;
+    }
+    gateFill (snd);
+
+    FakeGateView *view =
+        [[[FakeGateView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeGateController *controller =
+        [[[FakeGateController alloc] initWithSound: snd soundView: view] autorelease];
+
+    object_setIvar (module, ivar, controller);
+    object_setIvar (module, class_getInstanceVariable ([module class], "thresholdField"),
+                    [[FakeGateValue alloc] initWithValue: 50.0f]);
+    object_setIvar (module, class_getInstanceVariable ([module class], "secondsWaitField"),
+                    [[FakeGateValue alloc] initWithValue: 0.002f]);
+    object_setIvar (module, class_getInstanceVariable ([module class], "secondsCutField"),
+                    [[FakeGateValue alloc] initWithValue: 0.01f]);
+
+    /* The module's own derivation of the state counts, from the
+       same three panel floats and the sound's rate: the module
+       clamps the floats first (no-ops for these values) before
+       the int conversion - 0.002f * 44100 is 88.2, 0.01f
+       falls just short of 441, as in the module. */
+    float threshold = 50.0f / 100;
+    float secondswait = 0.002f;
+    float secondscut = 0.01f;
+    if (threshold > 1) threshold = 1;
+    if (threshold < 0) threshold = 0;
+    if (secondswait < 0) secondswait = 0;
+    if (secondscut < 0) secondscut = 0;
+    int swait = secondswait * [snd samplingRate];
+    int scut = secondscut * [snd samplingRate];
+    check (swait == 88 && scut == 440,
+            "the panel floats derive the 1998 state counts (88 wait, 440 cut)");
+
+    /* The module's effective selection: a zero length is the
+       whole sound, the module's own convention. */
+    unsigned int firstEff = first;
+    unsigned int lenEff = len;
+    if (!lenEff)
+    {
+        firstEff = 0;
+        lenEff = (unsigned int)[snd lengthInSampleFrames];
+    }
+
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    id ret = [(GateModule *)module gateIt: nil];
+
+    check (ret == module, "gateIt: returns self");
+    check ([controller stoppedCount] == 1, "gateIt: stopped playback first");
+    check ([controller soundChangedCount] == 1, "gateIt: reported the sound changed");
+
+    /* As in the mix/envelope contracts, the sample counts
+       become byte offsets with the format's bytes-per-sample. */
+    int bps = (fmt == SND_FORMAT_LINEAR_16 ? 2
+             : fmt == SND_FORMAT_FLOAT ? 4
+             : fmt == SND_FORMAT_DOUBLE ? 8 : 1);
+    long off = (long)firstEff * ch * bps;
+    long rangeBytes = (long)lenEff * ch * bps;
+
+    unsigned char *expected = malloc ((size_t)size);
+    memcpy (expected, before, (size_t)size);
+    gateExpected (expected, firstEff, lenEff, ch, threshold, swait, scut, fmt);
+
+    check (memcmp ([snd bytes] + off, expected + off, (size_t)rangeBytes) == 0,
+            "gated range matches the 1998 gate arithmetic");
+    check (memcmp ([snd bytes], expected, (size_t)size) == 0,
+            "the rest of the sound is untouched");
+
+    /* And the gate must actually gate: the samples must sit in
+       the zones the state machine implies (loud at or above the
+       threshold, quiet below it, closed-gate samples zero).  The
+       byte-for-byte equality above matches the module against
+       its mirror; these pin the behaviour itself. */
+    unsigned char sample[8];
+    double hi = gateHiClip (fmt) * (double)threshold;
+
+    int region = (long)firstEff < 100 ? 0 : (firstEff < 600 ? 1 : 2);
+    gateReadSample ((const unsigned char *)[snd bytes], (long)firstEff, 0, ch, bps, sample);
+    if (region == 1)
+        check (gateAbsValue (gateSampleValue (fmt, sample, bps)) >= hi,
+               "the selection's first sample is still loud (the released state never scales)");
+    else
+        check (gateSampleValue (fmt, sample, bps) == 0,
+               "the selection's first sample is still silent (the released state never scales)");
+
+    gateReadSample ((const unsigned char *)[snd bytes], 500, 0, ch, bps, sample);
+    check (gateAbsValue (gateSampleValue (fmt, sample, bps)) >= hi,
+            "the loud run passes the gate untouched");
+
+    long lastFrame = (long)firstEff + (long)lenEff - 1;
+    gateReadSample ((const unsigned char *)[snd bytes], lastFrame, 0, ch, bps, sample);
+    /* The quiet region starts at frame 600 with the gate released
+       and the count at zero: it flips to applied after swait+1
+       below-threshold samples and closes scut samples later. */
+    if (lastFrame >= 600 + (long)swait + 1 + (long)scut)
+        check (gateSampleValue (fmt, sample, bps) == 0,
+               "the long quiet tail is gated to silence");
+    else
+        check (gateSampleValue (fmt, sample, bps) != 0,
+               "the short quiet tail ramps but stays open");
+
+    free (before);
+    free (expected);
+}
+
 static void runEcho (Class principal)
 {
     /* The menu tree the app's Modules menu is built from: one leaf,
@@ -1475,6 +2296,79 @@ static void runEcho (Class principal)
     testEcho (module, ivar, 0.02f, 0.9f, 0.5f, 0.005f, 0.3f, 1000);
     testEcho (module, ivar, 0.0f, 0.9f, 0.5f, 0.005f, 0.3f, 1000);
     testEcho (module, ivar, 0.02f, 0.9f, 0.5f, 0.005f, 0.3f, 100);
+}
+
+static void runGate (Class principal)
+{
+    /* The menu tree the app's Modules menu is built from: one
+       leaf, named with the 1998 three dots, targeting
+       showNoiseGatePanel:. */
+    id module = [[principal alloc] init];
+    check (module != nil, "module instantiation");
+    id root = [module getModuleMenuNode];
+    check (root != nil, "root menu node");
+    check (root != nil && [root numSubmenus] == 1, "root has exactly one submenu");
+    id leaf = root != nil ? [root getSubmenu: 0] : nil;
+    check (leaf != nil && [leaf isLeafNode], "leaf node");
+    check (leaf != nil && [[leaf getNameAsString] isEqualToString: @"Noise Gate..."],
+            "leaf is named Noise Gate...");
+    check (leaf != nil && [NSStringFromSelector ([leaf getMessage]) isEqualToString: @"showNoiseGatePanel:"],
+            "leaf targets showNoiseGatePanel:");
+    check (leaf != nil && [leaf getReceiver] == module, "leaf targets the module");
+
+    /* The controller ivar (inherited from Module) and the four
+       outlet ivars the 1998 header declares; the gorm connects
+       all four (the probe of the real wiring: the panel
+       window, three text field views), so all must exist and
+       start in the un-wired state, and the nib_loaded flag
+       must start unset. */
+    Ivar ivar = class_getInstanceVariable ([module class], "moduleController");
+    check (ivar != NULL, "moduleController ivar (for the DSP cases)");
+    static const char *outletNames[] = {
+        "gatePanel", "thresholdField", "secondsWaitField", "secondsCutField"
+    };
+    int o;
+    for (o = 0; o < 4; o++)
+    {
+        char what[80];
+        snprintf (what, sizeof what, "%s ivar exists", outletNames[o]);
+        check (class_getInstanceVariable ([module class], outletNames[o]) != NULL, what);
+        snprintf (what, sizeof what, "%s ivar starts nil", outletNames[o]);
+        check (readObjIvar (module, outletNames[o]) == nil, what);
+    }
+    check (readSizedIvar (module, "nib_loaded") == 0, "nib_loaded starts unset");
+
+    /* showNoiseGatePanel: with the panel pre-set to a fake and
+       the nib_loaded flag pre-set through the sized ivar
+       helpers (a real panel load needs a display - the
+       app-side half is the resoundmenu --perform probe, where
+       the gorm panel comes up for real): the 1998 method then
+       just orders the panel key and front, and stays quiet
+       about it. */
+    Ivar flagIvar = class_getInstanceVariable ([module class], "nib_loaded");
+    Ivar panelIvar = class_getInstanceVariable ([module class], "gatePanel");
+    check (flagIvar != NULL && panelIvar != NULL, "nib_loaded/panel ivars");
+    FakeGatePanel *panel = [[[FakeGatePanel alloc] init] autorelease];
+    writeSizedIvar (module, "nib_loaded", 1);
+    check (readSizedIvar (module, "nib_loaded") == 1, "the sized flag write round-trips");
+    object_setIvar (module, panelIvar, panel);
+
+    id ret = [(GateModule *)module showNoiseGatePanel: nil];
+    check (ret == module, "showNoiseGatePanel: returns self");
+    check ([panel keyFrontCount] == 1, "showNoiseGatePanel: ordered the panel key and front");
+    [(GateModule *)module showNoiseGatePanel: nil];
+    check ([panel keyFrontCount] == 2, "showNoiseGatePanel: is repeatable (the loaded flag stays set)");
+
+    /* The gate DSP: the five 1998 formats, mono and stereo, a
+       whole-sound selection, then a partial one. */
+    int c;
+    int ch;
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testGate (module, ivar, (SndSampleFormat)dspFormats[c], ch, 0, 0, 1200);
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testGate (module, ivar, (SndSampleFormat)dspFormats[c], ch, 400, 500, 1200);
 }
 
 static void runZero (Class principal)
@@ -1640,6 +2534,8 @@ int main (int argc, char **argv)
         runEnvelope (principal);
     else if ([NSStringFromClass (principal) isEqualToString: @"EchoChamber"])
         runEcho (principal);
+    else if ([NSStringFromClass (principal) isEqualToString: @"GateModule"])
+        runGate (principal);
     else
         check (NO, "principal class is none of the ported module classes");
 

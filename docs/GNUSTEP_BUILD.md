@@ -747,6 +747,124 @@ gate TU stays at its 18 — the EchoChamber additions cost the
 TU nothing new (one transient `-Wobjc-multiple-method-names`
 the untyped `id` receiver caused is cast away).
 
+**The Gate module unit (2026-11-20, fifth of the ten) — and the
+third with a control panel.**
+
+- `Source/Modules/Gate/GNUmakefile` (new): the Zero/Mix template
+  — the gnustep-make bundle building `Gate.rmod` in-tree
+  (`GateModule` as the principal class, `ModuleInfo.rtfd` as the
+  bundle resource, the SndKit chain linked per ADR 0020) plus
+  the panel: `Gate_RESOURCE_FILES` lists `ModuleInfo.rtfd` **and
+  the `Gate.gorm` directory** — as with EchoChamber the gorm is at
+  the *module root* in the tree (no `English.lproj` wrapper; the
+  1998 `Gate.nib` folder sat at the bundle root too), and the
+  1998 bundle carried the nib at the bundle root, so the root
+  placement is the most faithful of the nib'd modules (the
+  loader resolution: the Envelope finding).
+- `Source/Modules/Gate/GateModule.{h,m}` (369 lines): the 1998
+  module class.  The header is unchanged (all outlets are
+  `id`).  The `.m` is the standard mapping set (import swap;
+  `Sound*`→`Snd*`; `sampleCount`→`lengthInSampleFrames` — the
+  variable stays, the whole-sound branch still uses it;
+  `firstSample`/`sampleLength`→`unsigned int`; `data`→`bytes`;
+  both `SNDSwap*` pairs deleted along with the swap-only
+  `data8`/`data16`; `SNDiMulaw`/`SNDMulaw`→`SndMuLawToLinear`/
+  `SndLinearToMuLaw` with explicit casts and **no `LINCLIP`** —
+  the decode maxes out at 32124, which fits a `short`, and the
+  gate's multiplier is between 0.0 and 1.0, so the product can
+  only shrink, as in Envelope).  Two documented, not-fixed 1998
+  fingerprints, carried as a note above the format switch: in
+  the FLOAT/DOUBLE cases `abs(tempsnd)` truncates the sample to
+  an integer before the threshold compare (the state machine
+  runs on the integer part of the amplitude), and in the
+  LINEAR_8 case `tempsnd` is `char` with `hi_clip = CHAR_MAX` —
+  on a platform where char is unsigned (this one), the bytes
+  read as 0..255 and the threshold is 127.5 instead of the 1998
+  signed-char 63.5, so only the 1998 negative half of the 8-bit
+  range can release the gate.  Both preserved byte-identical (no
+  behavioural change).
+- The three stale per-module header copies synced to the ported
+  top-level files (as the earlier units).
+- The bundle build is the 1998 fingerprint and nothing else:
+  20 warnings — the 14 `-Wmissing-selector-name` re-emissions
+  from the 1998 headers (`ModuleSound.h` 10, `ModuleMenuNode.h`
+  2, `ModuleProtocol.h` 2) plus the six `-Wabsolute-value` on
+  the `abs(tempsnd)` lines (the integer `abs` on a float in the
+  FLOAT/DOUBLE cases, the no-effect `abs` on the `char` in
+  LINEAR_8), zero other classes, zero from any other file.
+
+**The gorm wiring (probed on the real installed bundle).**  A
+throwaway probe loaded the bundle, instantiated `GateModule` the
+way the app does, ran `ResoundNibs loadNibNamed: "Gate" owner:`
+for real, and dumped the module's ivars: the gorm connects all
+four declared outlets — `gatePanel` to the panel (`NSPanel`,
+title **"Noise Gate"**), `thresholdField`/`secondsWaitField`/
+`secondsCutField` to the three *text field views* (one per box
+row; the module reads all three only through `floatValue`).
+The panel's "Apply" control is a one-cell `NSMatrix` whose
+cell carries no action of its own — the **matrix** holds the
+action (`gateIt:`, explicit target: the owner, not the responder
+chain).
+
+**The `resoundmodule` Gate contract.**  As Zero/Mix/Envelope/
+EchoChamber, the tool dispatches on the principal class
+(`GateModule` → the gate contract): the one-leaf "Noise
+Gate..." (the 1998 three dots) → `showNoiseGatePanel:` menu
+tree; the `moduleController` ivar plus the four outlet ivars
+checked to exist and to start un-wired (all nil), and the
+`nib_loaded` flag checked to start unset.  `nib_loaded` is a
+one-byte `BOOL` declared ahead of the four outlet pointers — a
+pointer-sized `object_setIvar` on it would write into the
+outlets' bytes, so the contract reads and writes it through the
+type-encoding-aware sized ivar helpers.  `showNoiseGatePanel:`
+with the panel pre-set to a fake and the flag pre-set (skipping
+the nib load, which needs a display — the app-side half is the
+probe below), asserting the 1998 `makeKeyAndOrderFront:` on the
+fake twice (the flag stays set, so the second call just
+re-orders front).  Then `gateIt:` on real in-memory Snds over
+the five 1998 data formats, mono and stereo, a whole-sound
+selection and a partial one: the pattern (a silent lead-in, a
+loud run, a quiet tail) ramps and closes the per-channel gate
+state machine the 1998 code runs — the three panel floats are
+the 50/0.002/0.01 the module's own math turns into the
+88/440-sample state counts (checked), and the expected buffer
+mirrors the module's per-format DSP line for line, including
+its `abs` (the raw calls stay in the module build; the mirror's
+equivalent runs under a scoped pragma).  The gated range and the
+untouched rest are checked byte-for-byte, and the samples must
+sit in the zones the state machine implies — loud at or above
+the threshold, the long quiet tail gated to silence — so a
+common mistake in the module and its mirror could not hide
+behind the equality alone.  205 checks, 0 failures; no
+pasteboard involved (the 1998 flow's
+`checkForCurrentDataOnPasteboard` is a no-op in the fake view).
+
+**The `resoundmenu --perform` probe (extended with the unit).**
+The after-launch Modules menu must show "Noise Gate..." (along
+side Mix In / Zero / Envelope / Echo Chamber...), and
+`--perform "Noise Gate..."` drives the real
+`showNoiseGatePanel:` — the lazy gorm load included — asserting
+the panel comes up **visible with the gorm's own title** "Noise
+Gate".
+
+**Verification.**  In CI the `Gate.rmod` build + install is
+fatal; `resoundmodule` pins the bundle-side contract headlessly;
+the `resoundmenu` probe (non-fatal, under `xvfb`) asserts the
+after-launch menu entry **and** runs the third `--perform`,
+asserting the "Noise Gate" window.  Locally the same three plus
+`resoundnib --check`/`--load` at **60** gorm folders, 0
+failures (59 + the bundle-side copy) and the real-app launch
+with all five modules installed (it stays up, zero
+`objc-load` errors).  The app TU total stays at the 455-warning
+baseline (the unit touches no app file), and the gate TU stays
+at its 18 — the Gate additions cost the TU nothing new (the
+mirror's `abs` runs under the scoped pragma, and the 8-bit
+pattern value was chosen to classify the same on any platform:
+byte 0x80 is loud under either char signedness — +128 against
+the char-unsigned 127.5 threshold, -128 in magnitude against
+the signed-char 63.5 — while the quiet and silent levels sit
+below it under either).
+
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with
 `NOT_COMPILING_WITH_MODULES` *commented out* (modules compiled in) and
