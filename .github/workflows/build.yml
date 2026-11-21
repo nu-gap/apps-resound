@@ -318,13 +318,14 @@ jobs:
       - name: Build the modules (Phase 3)
         # The ported modules so far - Zero, the first Phase 3 unit,
         # Mix, the second, Envelope, the third, EchoChamber, the
-        # fourth, and Gate, the fifth (Envelope, EchoChamber and
-        # Gate are the three with a control-panel nib: the bundles
-        # carry the gorms at their resource root, the way the
-        # app's own bundle carries its gorms): gnustep-make bundles
-        # (gnustep-make bundle.make rules, ADR 0020) producing
-        # Zero.rmod, Mix.rmod, Envelope.rmod, EchoChamber.rmod and
-        # Gate.rmod, installed into the
+        # fourth, Gate, the fifth, and Filter, the sixth (Envelope,
+        # EchoChamber, Gate and Filter are the four with a
+        # control-panel nib: the bundles carry the gorms at their
+        # resource root, the way the app's own bundle carries its
+        # gorms): gnustep-make bundles (gnustep-make bundle.make
+        # rules, ADR 0020) producing Zero.rmod, Mix.rmod,
+        # Envelope.rmod, EchoChamber.rmod, Gate.rmod and
+        # Filter.rmod, installed into the
         # domain's library directory (lib/GNUstep/Resound with the
         # fhs filesystem layout) - the app's ModuleController searches
         # every library domain + /Resound (plus the app bundle), so
@@ -351,6 +352,9 @@ jobs:
           make -C Source/Modules/Gate -j"$(nproc)" -f GNUmakefile
           make -C Source/Modules/Gate -f GNUmakefile install
           find Source/Modules/Gate/Gate.rmod -maxdepth 3 | sort
+          make -C Source/Modules/Filter -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/Filter -f GNUmakefile install
+          find Source/Modules/Filter/Filter.rmod -maxdepth 3 | sort
           ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
 
       - name: Module load contract (Phase 3)
@@ -398,8 +402,24 @@ jobs:
         # whole-sound and partial selections, the expected buffer
         # computed with the module's own per-channel gate state
         # machine and the panel floats checked to derive the 1998
-        # state counts.  No pasteboard involved in the Envelope,
-        # EchoChamber or Gate cases.  The mix cases use the general
+        # state counts.  For Filter: the same principal-class and
+        # menu checks (one "Filter" submenu holding two leaves,
+        # "Comb Filter..." and "Echo Filter...", each targeting the
+        # module), then LoadFilterPanel: / LoadEchoFilterPanel:
+        # with the panel outlets as fakes and the WindowLoaded flag
+        # pre-set (skipping the nib load, which needs a display and
+        # runs in the app; the probe below drives it there for
+        # real), then Apply: / ApplyEcho: - the comb and echo
+        # filter DSP - on the one sound shape the 1998 methods
+        # accept without their modal conversion prompt (mono,
+        # 16-bit, 44.1k), the panel matrices and progress fields as
+        # fakes, the expected buffers computed with the module's
+        # own comb/echo arithmetic (the signed-short accumulator,
+        # the 1998 minval/maxval zero scans, the Max/Min clamp, the
+        # <= 0 range quirk), and the setSound:/newSound:for:
+        # hand-off of the freshly built (resized) sound checked.
+        # No pasteboard involved in the Envelope, EchoChamber,
+        # Gate or Filter cases.  The mix cases use the general
         # pasteboard for real:
         # GNUstep's client auto-launches a fresh gpbs when no
         # pasteboard server runs (filesystem name transport, no other
@@ -419,6 +439,7 @@ jobs:
           "$TOOL" Source/Modules/Envelope/Envelope.rmod
           "$TOOL" Source/Modules/EchoChamber/EchoChamber.rmod
           "$TOOL" Source/Modules/Gate/Gate.rmod
+          "$TOOL" Source/Modules/Filter/Filter.rmod
 
       - name: Module load probe (Phase 3)
         # The app-side half of the module load, run for real (test/
@@ -443,7 +464,12 @@ jobs:
         # must come up visible from the bundle's gorm.
         # --perform "Noise Gate..." runs the same for the third gorm
         # module: the Gate panel (title "Noise Gate") must come up
-        # visible from the bundle's gorm.
+        # visible from the bundle's gorm.  --perform "Comb
+        # Filter..." and --perform "Echo Filter..." run the same for
+        # the fourth gorm module: the two Filter panels (titles
+        # "Comb Filter" and "Echo Filter") must come up visible from
+        # the bundle's gorm, the submenu's two leaves appearing in
+        # the after-launch menu dump.
         # Non-fatal: a display environment can not be trusted the way
         # the build can be; the load contract above (headless) is the
         # hard gate.
@@ -481,6 +507,20 @@ jobs:
           test "$rc" -eq 0
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Noise Gate..."
           awk '/performing Noise Gate/{f=1} f' "$LOG" | grep -q "window: 'Noise Gate' visible=1"
+          LOG=$(mktemp)
+          rc=0
+          timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform "Comb Filter..." >"$LOG" 2>&1 || rc=$?
+          cat "$LOG"
+          test "$rc" -eq 0
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Comb Filter..."
+          awk '/performing Comb Filter/{f=1} f' "$LOG" | grep -q "window: 'Comb Filter' visible=1"
+          LOG=$(mktemp)
+          rc=0
+          timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform "Echo Filter..." >"$LOG" 2>&1 || rc=$?
+          cat "$LOG"
+          test "$rc" -eq 0
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Echo Filter..."
+          awk '/performing Echo Filter/{f=1} f' "$LOG" | grep -q "window: 'Echo Filter' visible=1"
 
       - name: NIB conversion format check
         # Every 1998 .nib in the tree has a converted .gorm twin

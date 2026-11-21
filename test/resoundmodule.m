@@ -4,9 +4,10 @@ For the GNUstep port of Resound (gnustep-port branch)
 
 The Phase 3 load contracts for the ported modules - so far the Zero
 module (zeroSound:), the Mix module (mix:), the Envelope module
-(applyEnvelope:), the EchoChamber module (begin:/performEcho:) and
-the Gate module (showNoiseGatePanel:/gateIt:) - the first five units
-from the module tree (see docs/GNUSTEP_BUILD.md).
+(applyEnvelope:), the EchoChamber module (begin:/performEcho:),
+the Gate module (showNoiseGatePanel:/gateIt:) and the Filter module
+(LoadFilterPanel:/Apply:/ApplyEcho:) - the first six units from
+the module tree (see docs/GNUSTEP_BUILD.md).
 
 What it does (headless: no display, no audio device):
 
@@ -17,20 +18,24 @@ What it does (headless: no display, no audio device):
      instantiates - so the test dispatches on the class name, exactly
      like the app: ZeroModule runs the zero contract, MixModule the
      mix contract, EnvelopeModule the envelope contract,
-     EchoChamber the echo contract, GateModule the gate contract.
+     EchoChamber the echo contract, GateModule the gate contract,
+     FilterModule the filter contract.
 
   2. Instantiates the module (the same alloc/init the app runs) and
      checks the menu tree the 1998 init builds: exactly one leaf -
      named "Zero" targeting zeroSound:, or "Mix In" targeting mix:,
      or "Envelope" targeting showEnvelopePanel:, or "Echo
      Chamber..." targeting begin:, or "Noise Gate..." targeting
-     showNoiseGatePanel:,
+     showNoiseGatePanel: - or, the Filter module, the first with
+     two, one "Filter" submenu holding the leaves "Comb
+     Filter..." and "Echo Filter...",
      on the module itself - what the app's "Modules" menu shows
      after the load.  The gorm-wired modules additionally expose
      their private ivars here (the Envelope panel outlets, the
      EchoChamber value outlets and windowLoaded flag, the Gate
-     panel outlets and nib_loaded flag), all checked to exist and
-     to start in the un-wired state.
+     panel outlets and nib_loaded flag, the Filter panel outlets
+     and WindowLoaded flag), all checked to exist and to start in
+     the un-wired state.
 
   3. Drives the module's DSP on real in-memory Snds, mono and stereo,
      over the five 1998 data formats, through a duck-typed
@@ -70,7 +75,17 @@ What it does (headless: no display, no audio device):
            fakes, and the panel window with the nib_loaded flag
            pre-set to skip the nib load the module performs for a
            real panel (the app-side half is the resoundmenu
-           --perform probe).
+           --perform probe);
+          - Apply:sender / ApplyEcho: (the comb and echo filter
+           DSP) on the one sound shape the 1998 methods accept
+           without their modal conversion prompt - mono, 16-bit
+           linear, 44.1k - the expected buffer computed with the
+           module's own comb / echo arithmetic (the signed-short
+           accumulator, the minval/maxval zero scans, the 1998
+           Max/Min clamp, the 1998 <= 0 range quirk), the panel's
+           matrices and progress fields as fakes, the view and
+           controller doubles recording the setSound:/newSound:for:
+           hand-off of the freshly built (resized) sound.
 
 The controller is injected by setting the module's private
 moduleController ivar directly (object_setIvar): the app's own wiring
@@ -82,9 +97,13 @@ from the module's gorm panel when it loads, and the gate stands in
 fakes for whatever that wiring would have provided (the 1998 nib
 leaves the applyToAllButton outlet unconnected, so in the app it
 stays nil - the gate's fakes drive the states explicitly instead).
-So are the EchoChamber's five value outlets and the Gate panel's
-three value outlets and panel window.  The Gate's nib_loaded flag
-is a one-byte BOOL - the 1998 header declares it ahead of the four
+So are the EchoChamber's five value outlets, the Gate panel's
+three value outlets and panel window, and the Filter's eight
+outlets - its slider, position and amplitude matrices, its two
+progress fields, the recursive button, the two panel windows -
+whose WindowLoaded flag is a full int, so a plain pointer-sized
+object_setIvar is exact on it.  The Gate's nib_loaded flag is a
+one-byte BOOL - the 1998 header declares it ahead of the four
 outlet pointers - so a pointer-sized object_setIvar on it would
 write into the outlets' bytes; the gate contract reads and writes
 it through the type-encoding-aware sized ivar helpers instead.
@@ -115,14 +134,14 @@ Exit status: 0 when every check passes, 1 otherwise.
    headers, so #import dedupes them. */
 #import "../Source/Module.h"
 
-/* Minimal local mirrors of the three module headers, instead of the
+/* Minimal local mirrors of the six module headers, instead of the
    module directories' copies: those import the module-directory
    copies of the base headers (a second path for the same classes),
    which #import would reject as duplicate interface definitions once
-   the app's ../Source copies are in.  The gate only needs the class
-   names and the selectors it drives; the bundles under test supply
-   the implementations (and their real headers stay next to them,
-   where the bundles' own builds use them). */
+   the app's ../Source copies are in.  The contracts only need the
+   class names and the selectors they drive; the bundles under test
+   supply the implementations (and their real headers stay next to
+   them, where the bundles' own builds use them). */
 @interface ZeroModule : Module
 - init;
 - zeroSound:sender;
@@ -156,6 +175,29 @@ Exit status: 0 when every check passes, 1 otherwise.
 - init;
 - showNoiseGatePanel:sender;
 - gateIt:sender;
+@end
+
+/* The 1998 Filter module keeps its olden-days capitalization (the
+   header's note: methods, classes and instance variables all
+   capitalized, deliberately unconverted).  The shapes matter: the
+   1998 code writes every method with no space after the colon
+   (- LoadFilterPanel:sender, - Apply:sender, ...): the no-space
+   "sender" reads as the parameter name, so each method's selector
+   is the part before the colon - LoadFilterPanel:,
+   LoadEchoFilterPanel:, Apply:, ApplyEcho: - exactly what the
+   gorm buttons and the 1998 nib fire.  (That colon-abuts-the-name
+   shape warns nothing, so the TU's warning baseline is unchanged;
+   the app's newWindow warns because its no-space sits between the
+   name and the colon instead.)  The mirror carries the 1998
+   shapes byte-faithful. */
+@interface FilterModule : Module
+- init;
+- LoadFilterPanel:sender;
+- LoadEchoFilterPanel:sender;
+- Apply:sender;
+- ApplyEcho:sender;
+- (int) Max;
+- (int) Min;
 @end
 
 static int failures = 0;
@@ -1023,6 +1065,301 @@ before the DSP, soundChanged after it).
 - (int) soundChangedCount
     {
     return _soundChanged;
+    }
+@end
+
+/*
+A stand-in for one of the Filter panel's value cells: the 1998
+code drives its 65 slider cells, its eight position cells, its
+eight amplitude cells, its recursive button and its two progress
+fields through floatValue / intValue and setFloatValue: /
+setIntValue:, so one fake serves all of them.
+
+Each cell wraps one slot of its matrix's slot array (a float and
+an int, the un-wired zero state): the matrix's cellAtRow:column:
+hands out a fresh autoreleased cell per call, all wrapping the
+same slot, so a set on any of them is what the 1998 code then
+reads back.
+*/
+struct FakeFilterSlot
+{
+    float f;
+    int i;
+};
+@interface FakeFilterValue : NSObject
+{
+    struct FakeFilterSlot *_slot;
+    BOOL _ownsSlot;
+}
+- (id) initWithSlot: (struct FakeFilterSlot *)slot;
+- (float) floatValue;
+- (int) intValue;
+- (void) setFloatValue: (float)value;
+- (void) setIntValue: (int)value;
+@end
+
+@implementation FakeFilterValue
+- init
+    {
+    if (self = [super init])
+        {
+        _slot = calloc (1, sizeof (struct FakeFilterSlot));
+        _ownsSlot = YES;
+        }
+    return self;
+    }
+- (id) initWithSlot: (struct FakeFilterSlot *)slot
+    {
+    if (self = [super init])
+        {
+        _slot = slot;
+        _ownsSlot = NO;
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    if (_ownsSlot)
+        free (_slot);
+    [super dealloc];
+    }
+- (float) floatValue
+    {
+    return _slot->f;
+    }
+- (int) intValue
+    {
+    return _slot->i;
+    }
+- (void) setFloatValue: (float)value
+    {
+    _slot->f = value;
+    }
+- (void) setIntValue: (int)value
+    {
+    _slot->i = value;
+    }
+@end
+
+/*
+A stand-in for the Filter panel's three matrices (the 65-tap
+slider matrix, the eight position cells, the eight amplitude
+cells - the 1998 code reaches all of them through
+cellAtRow:column:): an eight-by-sixty-five slot array (a plain
+C struct grid - Clang neither subscripts nor does pointer
+arithmetic on object pointers), the un-wired state the gorm
+would leave them in.
+*/
+#define FILTER_ROWS 8
+#define FILTER_COLUMNS 65
+@interface FakeFilterMatrix : NSObject
+{
+    struct FakeFilterSlot *_slots;
+}
+- (id) cellAtRow: (int)row column: (int)column;
+@end
+
+@implementation FakeFilterMatrix
+- init
+    {
+    if (self = [super init])
+        _slots = calloc (FILTER_ROWS * FILTER_COLUMNS,
+                         sizeof (struct FakeFilterSlot));
+    return self;
+    }
+- (void) dealloc
+    {
+    free (_slots);
+    [super dealloc];
+    }
+- (id) cellAtRow: (int)row column: (int)column
+    {
+    if (row < 0 || row >= FILTER_ROWS || column < 0 || column >= FILTER_COLUMNS)
+        return nil;
+    return [[ [FakeFilterValue alloc] initWithSlot:
+                     _slots + row * FILTER_COLUMNS + column ] autorelease];
+    }
+@end
+
+/*
+A stand-in for the Filter panel windows: records the
+makeKeyAndOrderFront: the 1998 Load...Panel: methods send them.
+*/
+@interface FakeFilterPanel : NSObject
+{
+    int _keyFront;
+}
+- (void) makeKeyAndOrderFront: (id)sender;
+- (int) keyFrontCount;
+@end
+
+@implementation FakeFilterPanel
+- (void) makeKeyAndOrderFront: (id)sender
+    {
+    _keyFront++;
+    }
+- (int) keyFrontCount
+    {
+    return _keyFront;
+    }
+@end
+
+/*
+A stand-in for the app's sound view: records the setSound:
+hand-off of the freshly built sound, and answers the pasteboard
+check the 1998 methods run on it.  (The modal conversion
+prompt's convertToSampleFormat: is deliberately absent - a
+conforming sound never reaches it, and the headless gate must not
+exercise it.)
+*/
+@interface FakeFilterView : NSObject
+{
+    Snd *_sound;
+    int _soundSet;
+    int _pasteboard;
+}
+- (id) initWithSound: (Snd *)sound;
+- (Snd *) sound;
+- (int) soundSetCount;
+- (int) pasteboardCheckCount;
+- (void) setSound: (Snd *)sound;
+- (void) checkForCurrentDataOnPasteboard;
+@end
+
+@implementation FakeFilterView
+- initWithSound: (Snd *)sound
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _soundSet = 0;
+        _pasteboard = 0;
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [super dealloc];
+    }
+- (Snd *) sound
+    {
+    return _sound;
+    }
+- (int) soundSetCount
+    {
+    return _soundSet;
+    }
+- (int) pasteboardCheckCount
+    {
+    return _pasteboard;
+    }
+- (void) setSound: (Snd *)sound
+    {
+    if (_sound != sound)
+        {
+        [_sound release];
+        _sound = [sound retain];
+        }
+    _soundSet++;
+    }
+- (void) checkForCurrentDataOnPasteboard
+    {
+    _pasteboard++;
+    }
+@end
+
+/*
+A stand-in for the app's ModuleController (the duck-typed double
+the other contracts inject through the moduleController ivar):
+answers currentSound / currentSoundView, records the newSound:for:
+hand-off the 1998 methods make, and answers the pasteboard
+ownership test of the 1998 PASTE_BUG block with NO - the build
+leaves the flag undefined, so the 1998 workaround never fires, as
+in the shipped 1998 OpenStep build; the counters pin that here.
+*/
+@interface FakeFilterController : NSObject
+{
+    Snd *_sound;
+    id _soundView;
+    Snd *_newSound;
+    int _handOffs;
+    int _ownerQueries;
+    int _invalidates;
+}
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView;
+- (id) currentSound;
+- (id) currentSoundView;
+- (Snd *) newSound;
+- (int) newSoundCount;
+- (int) ownerQueryCount;
+- (int) invalidateCount;
+- (BOOL) isOwner: (id)object;
+- (void) invalidatePasteboard;
+@end
+
+@implementation FakeFilterController
+- initWithSound: (Snd *)sound soundView: (id)soundView
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _soundView = [soundView retain];
+        _newSound = nil;
+        _handOffs = 0;
+        _ownerQueries = 0;
+        _invalidates = 0;
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [_soundView release];
+    [_newSound release];
+    [super dealloc];
+    }
+- (id) currentSound
+    {
+    return _sound;
+    }
+- (id) currentSoundView
+    {
+    return _soundView;
+    }
+- (void) newSound: (Snd *)sound for: (id)view
+    {
+    if (_newSound != sound)
+        {
+        [_newSound release];
+        _newSound = [sound retain];
+        }
+    _handOffs++;
+    }
+- (Snd *) newSound
+    {
+    return _newSound;
+    }
+- (int) newSoundCount
+    {
+    return _handOffs;
+    }
+- (BOOL) isOwner: (id)object
+    {
+    _ownerQueries++;
+    return NO;
+    }
+- (int) ownerQueryCount
+    {
+    return _ownerQueries;
+    }
+- (void) invalidatePasteboard
+    {
+    _invalidates++;
+    }
+- (int) invalidateCount
+    {
+    return _invalidates;
     }
 @end
 
@@ -2233,6 +2570,345 @@ static void testGate (id module, Ivar ivar, SndSampleFormat fmt, int ch,
     free (expected);
 }
 
+/*
+The Apply:sender (comb filter) DSP on a conforming sound (mono,
+16-bit linear, 44.1k - the only shape the 1998 method accepts
+without its modal NSRunAlertPanel conversion prompt, which the
+headless gate does not exercise), mirrored operation for
+operation: the 65 tap amplitudes read from the slider matrix, the
+minval/maxval zero scans (an all-zero curve would walk off the
+65-element stack array - the module's fingerprint, the contract's
+curves keep the zeros as edge taps only), the signed-short
+accumulator that wraps, each tapped sample scaled by its tap's
+amplitude over the sum before the short cast, and the range tests
+whose <= 0 counts index 0 out of range.
+
+  recursive : the 1998 feedback branch - the source is first
+              copied into the new sound (the same frame count), and
+              the comb then reads and writes the new sound's buffer
+              (the center tap taps the current sample, offset -32).
+  otherwise : the new sound carries 64 extra frames, the comb
+              reads the source buffer (offset -64), and the extra
+              frames come out as the range tests' zeros.
+*/
+static void combExpected (const signed short *src, signed short *dst,
+                          int len, const float *amp, int recursive)
+{
+    int minval = 0;
+    int maxval = 64;
+    int x, a, b;
+    float sum;
+
+    for (x = 0; amp[x] == 0; x++)
+        minval = x;
+    for (x = 64; amp[x] == 0; x--)
+        maxval = x;
+
+    sum = 0;
+    for (x = 0; x <= 64; x++)
+        sum += amp[x];
+
+    if (recursive)
+        for (x = 0; x < len; x++)
+            dst[x] = src[x];
+
+    const signed short *live = recursive ? dst : (const signed short *)src;
+    int off = recursive ? 32 : 64;
+    int len2 = recursive ? len : len + 64;
+    for (b = 0; b < len2; b++)
+    {
+        signed short accumulator = 0;
+        for (a = minval; a <= maxval; a++)
+            accumulator += (signed short)(
+                b - off + a <= 0 || b - off + a >= len ?
+                0 : amp[a] / sum * (float)live[b - off + a]);
+        dst[b] = accumulator;
+    }
+}
+
+/*
+The ApplyEcho: (echo filter) DSP on a conforming sound, mirrored
+operation for operation: the eight position cells read and
+negated (the 1998 theposition), the eight amplitude cells read,
+the new sound sized from -Min+Max of the 1998 strict-inequality
+Max/Min accumulators (the clamp: Min can never come out positive,
+Max can never come out negative), and the eight-tap mix into the
+resized buffer, the range tests skipping the samples past either
+end.
+*/
+static void echoExp (const signed short *src, signed short *dst, int len,
+                     const int *pos, const float *amp)
+{
+    int x, a;
+    int minval = 0;
+    int maxval = 0;
+
+    for (x = 0; x < 8; x++)
+    {
+        if (pos[x] > maxval)
+            maxval = pos[x];
+        if (pos[x] < minval)
+            minval = pos[x];
+    }
+
+    int extraarea = (-minval + maxval);
+    int min = (-maxval);
+    int theposition[8];
+    for (x = 0; x <= 7; x++)
+        theposition[x] = -pos[x];
+
+    for (x = 0; x < len + 2 * extraarea; x++)
+    {
+        int accumulator = 0;
+        for (a = 0; a <= 7; a++)
+        {
+            int idx = x + min + theposition[a];
+            if ((idx <= len) && (idx >= 0))
+                accumulator += (int)((float)(src[idx]) * amp[a]);
+        }
+        dst[x] = (signed short)accumulator;
+    }
+}
+
+/*
+The Apply:sender (comb) contract on one 65-tap curve and one
+recursive setting, over a conforming sound: the buffer must come
+out byte-identical to the 1998 comb arithmetic, the new sound must
+be the correctly sized one, and the hand-off must reach the view
+and the controller with it.
+
+  which : 0 = the uniform 1/65 curve, 1 = the edge-zero 1/54
+          curve (zeros as leading and trailing taps only),
+          2 = the single center tap - whose expected shape is
+          pinned explicitly below, the 1998 <= 0 range quirk
+          being the interesting part.
+*/
+static void testFilterApply (id module, Ivar ivar, const float *curve,
+                             int recursive, unsigned long frames, int which)
+{
+    printf ("== Apply:sender %s on a %lu-frame sound (curve %d)\n",
+            recursive ? "recursive" : "non-recursive", frames, which);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: SND_FORMAT_LINEAR_16
+                                channelCount: 1
+                                    frames: frames
+                              samplingRate: 44100.0] autorelease];
+    if (snd == nil || [snd lengthInSampleFrames] != frames
+       || [snd channelCount] != 1 || [snd dataFormat] != SND_FORMAT_LINEAR_16)
+    {
+        check (NO, "Snd construction");
+        return;
+    }
+    fillPattern (snd, 0);
+
+    FakeFilterMatrix *sliders = [[[FakeFilterMatrix alloc] init] autorelease];
+    int x;
+    for (x = 0; x <= 64; x++)
+        [ [sliders cellAtRow: 0 column: x] setFloatValue: curve[x] ];
+    FakeFilterValue *rec = [[[FakeFilterValue alloc] init] autorelease];
+    [rec setIntValue: recursive];
+    FakeFilterValue *pct = [[[FakeFilterValue alloc] init] autorelease];
+    FakeFilterValue *epct = [[[FakeFilterValue alloc] init] autorelease];
+
+    FakeFilterView *view =
+        [[[FakeFilterView alloc] initWithSound: snd] autorelease];
+    FakeFilterController *controller =
+        [[[FakeFilterController alloc] initWithSound: snd soundView: view] autorelease];
+
+    object_setIvar (module, ivar, controller);
+    object_setIvar (module, class_getInstanceVariable ([module class], "Sliders"), sliders);
+    object_setIvar (module, class_getInstanceVariable ([module class], "recursive"), rec);
+    object_setIvar (module, class_getInstanceVariable ([module class], "PercentDone"), pct);
+    object_setIvar (module, class_getInstanceVariable ([module class], "EchoPercentDone"), epct);
+
+    id ret = [(FilterModule *)module Apply: nil];
+
+    check (ret == module, "Apply:sender returns self");
+    check ([view pasteboardCheckCount] == 1, "the pasteboard check ran on the view");
+    check ([view soundSetCount] == 1, "the view got setSound:");
+    check ([controller newSoundCount] == 1, "the controller got newSound:for:");
+    check ([controller ownerQueryCount] == 0, "the PASTE_BUG workaround never fired");
+    Snd *out = [view sound];
+    check (out != nil && [controller newSound] == out,
+            "view and controller got the same sound");
+    int expectFrames = recursive ? (int)frames : (int)frames + 64;
+    check (out != nil && [out lengthInSampleFrames] == expectFrames
+             && [out channelCount] == 1 && [out dataFormat] == SND_FORMAT_LINEAR_16,
+            "the new sound keeps the shape, recursive keeps the length, the rest grows by 64");
+    check ([pct intValue] == 100, "the percent field ends at 100");
+
+    if (out == nil || [out lengthInSampleFrames] != expectFrames)
+        return;
+
+    signed short *expected = malloc ((size_t)expectFrames * sizeof (signed short));
+    combExpected ((const signed short *)[snd bytes], expected,
+                  (int)frames, curve, recursive);
+    check (memcmp ([out bytes], expected,
+                   (size_t)expectFrames * sizeof (signed short)) == 0,
+            "comb buffer matches the 1998 arithmetic");
+    free (expected);
+
+    /* Beyond the byte-for-byte match against the mirror, pin the
+       behaviour the shape implies.  With all non-negative
+       amplitudes the weights sum to 1, so no sample can grow. */
+    {
+        const signed short *in = (const signed short *)[snd bytes];
+        const signed short *o = (const signed short *)[out bytes];
+        int maxIn = 0, maxOut = 0;
+        for (x = 0; x < (int)frames; x++)
+        {
+            int v = abs ((int)in[x]);
+            if (v > maxIn)
+                maxIn = v;
+        }
+        for (x = 0; x < expectFrames; x++)
+        {
+            int v = abs ((int)o[x]);
+            if (v > maxOut)
+                maxOut = v;
+        }
+        check (maxOut <= maxIn, "the comb never amplifies (the weights sum to 1)");
+
+        /* The single center tap is the identity, the 1998 <= 0
+           range quirk zeroing frame 0 of the recursive copy
+           (index 0 counts out of range) and shifting the
+           non-recursive one 33 frames early (the 32-frame delay
+           plus the quirk's one). */
+        if (which == 2)
+            {
+            int ok = 1;
+            if (recursive)
+                {
+                check (o[0] == 0, "center tap recursive: frame 0 is zero (the <= 0 quirk)");
+                for (x = 1; x < (int)frames; x++)
+                    if (o[x] != in[x])
+                        ok = 0;
+                check (ok, "center tap recursive: every other frame is the untouched source");
+                }
+            else
+                {
+                ok = 1;
+                for (x = 33; x <= (int)frames + 31; x++)
+                    if (o[x] != in[x - 32])
+                        ok = 0;
+                check (ok, "center tap non-recursive: the 32-frame delay");
+                ok = 1;
+                for (x = 0; x <= 32; x++)
+                    if (o[x] != 0)
+                        ok = 0;
+                check (ok, "center tap non-recursive: the 33 leading zeros (the quirk's one included)");
+                ok = 1;
+                for (x = (int)frames + 32; x < (int)frames + 64; x++)
+                    if (o[x] != 0)
+                        ok = 0;
+                check (ok, "center tap non-recursive: the 32 trailing zeros");
+                }
+            }
+    }
+}
+
+/*
+The ApplyEcho: (echo) contract on one position shape (eight
+cells) and one amplitude shape, over a conforming sound: the
+buffer must come out byte-identical to the 1998 echo arithmetic,
+the new sound must be sized from the 1998 Max/Min clamp, and the
+hand-off must reach the view and the controller with it.
+*/
+static void testFilterApplyEcho (id module, Ivar ivar, const int *pos,
+                                 const float *amp, unsigned long frames)
+{
+    printf ("== ApplyEcho: positions %d..%d on a %lu-frame sound\n",
+            pos[0], pos[7], frames);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: SND_FORMAT_LINEAR_16
+                                channelCount: 1
+                                    frames: frames
+                              samplingRate: 44100.0] autorelease];
+    if (snd == nil || [snd lengthInSampleFrames] != frames
+       || [snd channelCount] != 1 || [snd dataFormat] != SND_FORMAT_LINEAR_16)
+    {
+        check (NO, "Snd construction");
+        return;
+    }
+    fillPattern (snd, 1);
+
+    FakeFilterMatrix *position = [[[FakeFilterMatrix alloc] init] autorelease];
+    FakeFilterMatrix *amplitude = [[[FakeFilterMatrix alloc] init] autorelease];
+    int x;
+    for (x = 0; x < 8; x++)
+    {
+        [ [position cellAtRow: x column: 0] setIntValue: pos[x] ];
+        [ [amplitude cellAtRow: x column: 0] setFloatValue: amp[x] ];
+    }
+    FakeFilterValue *epct = [[[FakeFilterValue alloc] init] autorelease];
+
+    FakeFilterView *view =
+        [[[FakeFilterView alloc] initWithSound: snd] autorelease];
+    FakeFilterController *controller =
+        [[[FakeFilterController alloc] initWithSound: snd soundView: view] autorelease];
+
+    object_setIvar (module, ivar, controller);
+    object_setIvar (module, class_getInstanceVariable ([module class], "Position"), position);
+    object_setIvar (module, class_getInstanceVariable ([module class], "Amplitude"), amplitude);
+    object_setIvar (module, class_getInstanceVariable ([module class], "EchoPercentDone"), epct);
+
+    /* The 1998 Max/Min clamp, driven by the same cells the method
+       reads: an all-positive matrix leaves Min at 0 (it
+       accumulates from 0 with a strict <), an all-negative one
+       leaves Max at 0 - the buffer sizing follows the clamp. */
+    int minv = 0, maxv = 0;
+    for (x = 0; x < 8; x++)
+    {
+        if (pos[x] < minv)
+            minv = pos[x];
+        if (pos[x] > maxv)
+            maxv = pos[x];
+    }
+    check ([ (FilterModule *)module Max ] == maxv
+             && [ (FilterModule *)module Min ] == minv,
+            "Max/Min clamp as in the 1998 strict-inequality accumulators");
+
+    id ret = [(FilterModule *)module ApplyEcho: nil];
+
+    check (ret == module, "ApplyEcho: returns self");
+    check ([view pasteboardCheckCount] == 1, "the pasteboard check ran on the view");
+    check ([view soundSetCount] == 1, "the view got setSound:");
+    check ([controller newSoundCount] == 1, "the controller got newSound:for:");
+    Snd *out = [view sound];
+    check (out != nil && [controller newSound] == out,
+            "view and controller got the same sound");
+    int expectFrames = (int)frames + 2 * ((-minv) + maxv);
+    check (out != nil && [out lengthInSampleFrames] == expectFrames
+             && [out channelCount] == 1 && [out dataFormat] == SND_FORMAT_LINEAR_16,
+            "the new sound is sized from the clamped -Min+Max, shape kept");
+    check ([epct intValue] == 100, "the echo percent field ends at 100");
+
+    if (out == nil || [out lengthInSampleFrames] != expectFrames)
+        return;
+
+    signed short *expected = malloc ((size_t)expectFrames * sizeof (signed short));
+    echoExp ((const signed short *)[snd bytes], expected,
+             (int)frames, pos, amp);
+    check (memcmp ([out bytes], expected,
+                   (size_t)expectFrames * sizeof (signed short)) == 0,
+            "echo buffer matches the 1998 arithmetic");
+    free (expected);
+
+    /* Beyond the byte-for-byte match: the all-positive positions
+       leave Min clamped at 0 and Max at the largest, so the
+       biggest index the range tests compute sits 27 frames before
+       the source start - 27 leading zero frames. */
+    if (minv == 0)
+        {
+        const signed short *o = (const signed short *)[out bytes];
+        int ok = 1;
+        for (x = 0; x < 27; x++)
+            if (o[x] != 0)
+                ok = 0;
+        check (ok, "all-positive positions: 27 leading zero frames (the clamped Min)");
+        }
+}
+
 static void runEcho (Class principal)
 {
     /* The menu tree the app's Modules menu is built from: one leaf,
@@ -2369,6 +3045,126 @@ static void runGate (Class principal)
     for (c = 0; c < 5; c++)
         for (ch = 1; ch <= 2; ch++)
             testGate (module, ivar, (SndSampleFormat)dspFormats[c], ch, 400, 500, 1200);
+}
+
+static void runFilter (Class principal)
+{
+    /* The menu tree the app's Modules menu is built from: one
+       submenu, "Filter", with exactly two leaves - the 1998
+       three-dot names, each targeting the module itself.  (The
+       first of the ported modules with a submenu - and with two
+       panels.) */
+    id module = [[principal alloc] init];
+    check (module != nil, "module instantiation");
+    id root = [module getModuleMenuNode];
+    check (root != nil, "root menu node");
+    check (root != nil && [root numSubmenus] == 1, "root has exactly one submenu");
+    id sub = root != nil ? [root getSubmenu: 0] : nil;
+    check (sub != nil && ![sub isLeafNode], "the submenu is not a leaf");
+    check (sub != nil && [[sub getNameAsString] isEqualToString: @"Filter"],
+            "the submenu is named Filter");
+    check (sub != nil && [sub numSubmenus] == 2, "the submenu holds exactly two leaves");
+    static const char *leafNames[] = { "Comb Filter...", "Echo Filter..." };
+    static const char *leafTargets[] = { "LoadFilterPanel:", "LoadEchoFilterPanel:" };
+    int i;
+    for (i = 0; i < 2; i++)
+        {
+        char what[80];
+        id leaf = sub != nil ? [sub getSubmenu: i] : nil;
+        check (leaf != nil && [leaf isLeafNode], "leaf node");
+        snprintf (what, sizeof what, "leaf %d is named %s", i, leafNames[i]);
+        check (leaf != nil && [[leaf getNameAsString] isEqualToString: [NSString stringWithUTF8String: leafNames[i]]],
+                what);
+        snprintf (what, sizeof what, "leaf %d targets %s", i, leafTargets[i]);
+        check (leaf != nil && [NSStringFromSelector ([leaf getMessage]) isEqualToString: [NSString stringWithUTF8String: leafTargets[i]]],
+                what);
+        check (leaf != nil && [leaf getReceiver] == module, "leaf targets the module");
+        }
+
+    /* The controller ivar (inherited from Module) and the eight
+       outlet ivars the 1998 header declares - all eight wired by
+       the gorm (the probe of the real wiring: the slider matrix,
+       the percent field, the position matrix, the amplitude
+       matrix, the echo percent field, the two panel windows, the
+       recursive button) - so all must exist and start nil, and
+       the WindowLoaded flag must start unset. */
+    Ivar ivar = class_getInstanceVariable ([module class], "moduleController");
+    check (ivar != NULL, "moduleController ivar (for the DSP cases)");
+    static const char *outletNames[] = {
+        "Sliders", "PercentDone", "Position", "Amplitude",
+        "EchoPercentDone", "FilterPanel", "EchoFilterPanel", "recursive"
+    };
+    int o;
+    for (o = 0; o < 8; o++)
+        {
+        char what[80];
+        snprintf (what, sizeof what, "%s ivar exists", outletNames[o]);
+        check (class_getInstanceVariable ([module class], outletNames[o]) != NULL, what);
+        snprintf (what, sizeof what, "%s ivar starts nil", outletNames[o]);
+        check (readObjIvar (module, outletNames[o]) == nil, what);
+        }
+    check (readIntIvar (module, "WindowLoaded") == 0, "WindowLoaded starts unset");
+
+    /* The two panel methods with the flag pre-set (a real panel
+       load needs a display - the app-side half is the resoundmenu
+       --perform probe, where the gorm panel comes up for real):
+       each then just orders its panel key and front.  The 1998
+       WindowLoaded is a full int (not the Gate's one-byte flag),
+       so a pointer-sized object_setIvar is exact on it. */
+    Ivar winIvar = class_getInstanceVariable ([module class], "WindowLoaded");
+    Ivar combPanelIvar = class_getInstanceVariable ([module class], "FilterPanel");
+    Ivar echoPanelIvar = class_getInstanceVariable ([module class], "EchoFilterPanel");
+    check (winIvar != NULL && combPanelIvar != NULL && echoPanelIvar != NULL,
+            "WindowLoaded/panel ivars");
+    FakeFilterPanel *combPanel = [[[FakeFilterPanel alloc] init] autorelease];
+    FakeFilterPanel *echoPanel = [[[FakeFilterPanel alloc] init] autorelease];
+    object_setIvar (module, winIvar, (id)(intptr_t)1);
+    object_setIvar (module, combPanelIvar, combPanel);
+    object_setIvar (module, echoPanelIvar, echoPanel);
+
+    id ret = [(FilterModule *)module LoadFilterPanel: nil];
+    check (ret == module, "LoadFilterPanel: returns self");
+    check ([combPanel keyFrontCount] == 1, "LoadFilterPanel: ordered the comb panel key and front");
+    check ([echoPanel keyFrontCount] == 0, "LoadFilterPanel: left the echo panel alone");
+    [(FilterModule *)module LoadFilterPanel: nil];
+    check ([combPanel keyFrontCount] == 2, "LoadFilterPanel: is repeatable (the loaded flag stays set)");
+
+    ret = [(FilterModule *)module LoadEchoFilterPanel: nil];
+    check (ret == module, "LoadEchoFilterPanel: returns self");
+    check ([echoPanel keyFrontCount] == 1, "LoadEchoFilterPanel: ordered the echo panel key and front");
+    check ([combPanel keyFrontCount] == 2, "LoadEchoFilterPanel: left the comb panel alone");
+    check (readIntIvar (module, "WindowLoaded") == 1, "the flag reads back as set");
+
+    /* The comb DSP: three shapes of the 65-tap curve (the uniform
+       1/65, the edge-zero 1/54, the single center tap) x the
+       recursive setting.  2000 frames for the wide curves, 1500
+       for the center tap (both keep datalength/1000 off zero for
+       the 1998 percent modulo). */
+    float uniform[65];
+    float edged[65];
+    float center[65];
+    int x;
+    for (x = 0; x <= 64; x++)
+        {
+        uniform[x] = 1.0f / 65.0f;
+        edged[x] = (x >= 5 && x <= 58) ? 1.0f / 54.0f : 0.0f;
+        center[x] = (x == 32) ? 1.0f : 0.0f;
+        }
+    testFilterApply (module, ivar, uniform, 1, 2000, 0);
+    testFilterApply (module, ivar, uniform, 0, 2000, 0);
+    testFilterApply (module, ivar, edged, 1, 2000, 1);
+    testFilterApply (module, ivar, edged, 0, 2000, 1);
+    testFilterApply (module, ivar, center, 1, 1500, 2);
+    testFilterApply (module, ivar, center, 0, 1500, 2);
+
+    /* The echo DSP: the two position shapes that pin the 1998
+       Max/Min clamp from opposite sides (all-positive leaves Min
+       at 0, all-negative leaves Max at 0), same amplitudes. */
+    static const int posPos[8] = { 10, 11, 12, 13, 14, 15, 16, 17 };
+    static const int posNeg[8] = { -17, -16, -15, -14, -13, -12, -11, -10 };
+    static const float amps[8] = { 0.8f, 0.6f, 0.4f, 0.2f, 0.1f, 0.05f, 0.02f, 0.01f };
+    testFilterApplyEcho (module, ivar, posPos, amps, 2000);
+    testFilterApplyEcho (module, ivar, posNeg, amps, 2000);
 }
 
 static void runZero (Class principal)
@@ -2536,6 +3332,8 @@ int main (int argc, char **argv)
         runEcho (principal);
     else if ([NSStringFromClass (principal) isEqualToString: @"GateModule"])
         runGate (principal);
+    else if ([NSStringFromClass (principal) isEqualToString: @"FilterModule"])
+        runFilter (principal);
     else
         check (NO, "principal class is none of the ported module classes");
 

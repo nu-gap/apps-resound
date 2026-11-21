@@ -865,6 +865,143 @@ the char-unsigned 127.5 threshold, -128 in magnitude against
 the signed-char 63.5 — while the quiet and silent levels sit
 below it under either).
 
+**The Filter module unit (2026-11-21, sixth of the ten) — and
+the fourth with a control panel, and the first with two.**
+
+- `Source/Modules/Filter/GNUmakefile` (new): the Zero/Mix/
+  EchoChamber/Gate template — the gnustep-make bundle building
+  `Filter.rmod` in-tree (`FilterModule` as the principal class,
+  `ModuleInfo.rtfd` as the bundle resource, the SndKit chain
+  linked per ADR 0020) plus the two panels: `Filter_RESOURCE_FILES`
+  lists `ModuleInfo.rtfd` **and the `FilterModule.gorm` directory**
+  — the gorm is at the *module root* in the tree (no
+  `English.lproj` wrapper; the 1998 `FilterModule.nib` folder sat
+  at the bundle root), the same placement as the other nib'd
+  modules.
+- `Source/Modules/Filter/FilterModule.{h,m}` (1998: 64/461 lines;
+  ported: 64/526): the first nib'd module with *two* panels (the
+  comb filter and the echo filter) and the first with a *submenu*
+  in the module menu tree ("Filter" → "Comb Filter..." / "Echo
+  Filter...").  The header is byte-identical to 1998.  Two 1998
+  shapes carried deliberately: the olden-days all-caps naming (the
+  header's note: methods, classes and instance variables all
+  capitalized, never converted), and every method written with no
+  space after the colon (`- LoadFilterPanel:sender`,
+  `- Apply:sender`, ...): Clang reads the no-space `sender` as the
+  parameter name, so each method's selector is the part before the
+  colon — `LoadFilterPanel:`, `LoadEchoFilterPanel:`, `Apply:`,
+  `ApplyEcho:`, ... — exactly what the gorm buttons and the 1998
+  nib fire.  (That colon-abuts-the-name shape warns nothing; the
+  app's `newWindow` warns because its no-space sits between the
+  name and the colon instead.)  The `.m` is the standard mapping
+  set: `NSBundle loadNibNamed:` → `ResoundNibs loadNibNamed:`;
+  `Sound*`/`SoundView*` → `Snd*`/`SndView*`; `samplingRate !=
+  SND_RATE_HIGH` → `!= 44100.0` (the 1998 constant is 44100 Hz,
+  SndKit's rate is a double — the EchoChamber port made the same
+  change); `convertToFormat:…samplingRate:` →
+  `convertToSampleFormat:…` with the written-out rate (the 1998
+  SoundView proper lacked the method — Resound's `ModuleSoundView`
+  category supplied it, as the 1998 note says); `data` →
+  `bytes`, `sampleCount` → `lengthInSampleFrames`; both
+  `SNDSwap*` calls deleted (host order); the 1998
+  `[[Sound alloc] init]` + `setDataSize:` pair replaced by the
+  documented SndKit initializer in the same size, the info string
+  carried over with `setInfo:` (the EchoChamber change).  The
+  `PSWait()` progress-pump calls stay byte-identical — GNUstep's
+  AppKit ships `PSWait` as a static inline no-op.
+- Five documented, not-fixed 1998 fingerprints, kept
+  byte-identical: the two zero-scans that walk off the 65-element
+  stack array (an all-zero curve leaves `sum` at 0, which the comb
+  loop divides by); the percent modulo that divides by
+  `datalength/1000` (zero for a sound of fewer than 1000
+  samples); the range test whose `<= 0` counts index 0 out of
+  range (so the single center tap zeros frame 0 of the recursive
+  copy); the echo's Max/Min strict-inequality clamp (an
+  all-positive position matrix leaves `Min` at 0, an all-negative
+  one leaves `Max` at 0); and the `PASTE_BUG` workaround blocks,
+  left undefined as in the shipped 1998 build (the `NXUserAborted`
+  checks never fire).
+- The three stale per-module header copies synced to the ported
+  top-level files (as the earlier units).
+- The bundle build is the 1998 fingerprint and nothing else: 14
+  warnings — the `-Wmissing-selector-name` re-emissions from the
+  1998 headers (`ModuleSound.h` 10, `ModuleProtocol.h` 2,
+  `ModuleMenuNode.h` 2), zero other classes, zero from
+  `FilterModule.m` itself (the no-space `:sender` shapes warn
+  nothing — see above).
+
+**The gorm wiring (probed on the real installed bundle).**  A
+throwaway probe loaded the bundle, instantiated `FilterModule` the
+way the app does, ran `ResoundNibs loadNibNamed: "FilterModule"
+owner:` for real, and dumped the module's ivars: the gorm connects
+all eight declared outlets — `Sliders` to the 65-cell slider
+`NSMatrix`, `Position`/`Amplitude` to the two 8-cell matrices,
+`PercentDone`/`EchoPercentDone` to the two progress `NSTextField`s,
+`FilterPanel`/`EchoFilterPanel` to the two panels (titles **"Comb
+Filter"** / **"Echo Filter"**), `recursive` to the recursive/
+non-recursive `NSButtonCell`.  The comb panel's "Apply" button
+carries the action with the module as explicit target: **`Apply:`**
+— the no-space 1998 shape's selector (the 1998 nib wires the same);
+the echo panel's button carries `ApplyEcho:` (the gorm byte scan;
+the bundle exports `-[FilterModule ApplyEcho:]`).  The
+`WindowLoaded` flag — a full `int` in the 1998 header, not the
+Gate's one-byte `BOOL` — starts unset, and a pointer-sized
+`object_setIvar` on it is exact.
+
+**The `resoundmodule` Filter contract.**  As the earlier five, the
+tool dispatches on the principal class (`FilterModule` → the filter
+contract): the menu tree — one "Filter" submenu holding exactly the
+two leaves "Comb Filter..." / "Echo Filter...", each targeting the
+module; the `moduleController` ivar plus the eight outlet ivars
+checked to exist and to start un-wired (all nil), and the
+`WindowLoaded` flag checked to start unset.  `LoadFilterPanel:` /
+`LoadEchoFilterPanel:` with the flag pre-set (skipping the nib
+load, which needs a display — the app-side half is the probe
+below), asserting the 1998 `makeKeyAndOrderFront:` on the right
+fake panel, the wrong one left alone, and repeatability (the flag
+stays set, so the second call just re-orders front).  Then
+`Apply:` / `ApplyEcho:` on the one sound shape the 1998 methods
+accept without their modal conversion prompt (mono, 16-bit linear,
+44.1k): six comb cases (the uniform 1/65 curve, the edge-zero 1/54
+curve and the single center tap, recursive and non-recursive) and
+two echo cases (all-positive / all-negative position matrices), the
+expected buffers mirrored operation for operation — the signed-
+short accumulator, the zero scans, the 1998 Max/Min clamp, the
+`<= 0` range quirk — and the `setSound:`/`newSound:for:` hand-off
+of the freshly built (resized) sound to the view and the
+controller.  Beyond the byte match: the comb never amplifies (the
+weights sum to 1), the center tap is the identity the quirk
+punctuates (frame 0 zeroed recursive; 33 leading zeros + 32-frame
+delay + 32 trailing zeros non-recursive), the all-positive echo
+comes out with 27 leading zero frames (the clamped `Min`), the new
+sound sizes are pinned (recursive keeps the length, the rest grows
+by 64; the echo by `2·(-Min+Max)`), the percent fields end at 100,
+and the `PASTE_BUG` counters stay at 0 (the workaround never
+fires).  128 checks, 0 failures; no pasteboard involved (the fake
+view's `checkForCurrentDataOnPasteboard:` is the no-op counter).
+
+**The `resoundmenu --perform` probe (extended with the unit).**
+The after-launch Modules menu must show the "Filter" submenu with
+both leaves (alongside Zero / Mix In / Envelope / Echo Chamber... /
+Noise Gate...), and `--perform "Comb Filter..."` /
+`--perform "Echo Filter..."` drive the real `LoadFilterPanel:` /
+`LoadEchoFilterPanel:` — the lazy gorm load included — asserting
+the two panels come up **visible with the gorm's own titles**
+"Comb Filter" / "Echo Filter".
+
+**Verification.**  In CI the `Filter.rmod` build + install is
+fatal; `resoundmodule` pins the bundle-side contract headlessly;
+the `resoundmenu` probe (non-fatal, under `xvfb`) asserts the
+after-launch submenu **and** runs the two `--perform`s, asserting
+both panel windows.  Locally the same three plus
+`resoundnib --check`/`--load` at **61** gorm folders, 0 failures
+(60 + the bundle-side copy) and the real-app launch with all six
+modules installed (it stays up, zero `objc-load` errors).  The app
+TU total stays at the 455-warning baseline (the unit touches no
+app file), the bundle TU is the 14 header re-emissions above, and
+the contract TU stays at its 18 (the no-space mirror shapes warn
+nothing).
+
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with
 `NOT_COMPILING_WITH_MODULES` *commented out* (modules compiled in) and

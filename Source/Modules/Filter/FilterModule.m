@@ -26,6 +26,10 @@ IMPLIED WARRANTIES.
 
 /* It appears that there's no OpenStep/Rhapsody equivalent to this very useful
    little function.  That's very sad. -- Sean */
+/* GNUstep's AppKit ships no NXUserAborted either (it was an
+   NX private), so the 1998 workaround stays in force: the
+   cancellation checks below never fire, as in the shipped
+   1998 OpenStep build. */
 #define NXUserAborted() NO
 
 @implementation FilterModule
@@ -76,10 +80,10 @@ IMPLIED WARRANTIES.
 
 - Apply:sender
 {
-    Sound* TheCurrentSound;
-	SoundView* TheCurrentSoundView;
+    Snd* TheCurrentSound;
+	SndView* TheCurrentSoundView;
 	
-	Sound* TheNewSound;
+	Snd* TheNewSound;
 	signed short* data1;
 	signed short* data2;
 	int datalength1;
@@ -106,14 +110,24 @@ IMPLIED WARRANTIES.
 	
 	if ([TheCurrentSound channelCount]>1||
 		[TheCurrentSound dataFormat]!=SND_FORMAT_LINEAR_16||
-		[TheCurrentSound samplingRate]!=SND_RATE_HIGH)
+		/* 1998: samplingRate]!=SND_RATE_HIGH)  The 1998 SoundKit
+		   SND_RATE_HIGH is 44100 Hz; SndKit's samplingRate is a
+		   double, so the value is written out (the EchoChamber
+		   port made the same change). */
+		[TheCurrentSound samplingRate]!=44100.0)
 		{
 		if (NSRunAlertPanel(@"Filter",
 			@"Convert this sound to mono, 16-bit, 44.1 KHz to perform this operation?",
                       @"Okay",@"Cancel",nil)==NSAlertDefaultReturn)
 			{
-			if ([TheCurrentSoundView convertToFormat: SND_FORMAT_LINEAR_16 
-							samplingRate:   SND_RATE_HIGH 
+			if ([TheCurrentSoundView convertToSampleFormat: SND_FORMAT_LINEAR_16 
+	// 1998: convertToFormat: SND_RATE_HIGH.  The 1998 SoundKit
+	// SoundView proper lacked the method (see the 1998 note in
+	// ApplyEcho below); Resound's ModuleSoundView.h category
+	// supplied it, and the ported twin of that file declares it
+	// on SndView, so the receiver stays the view, as in 1998 and
+	// in the EchoChamber port.
+							samplingRate:   44100.0 
 							channelCount:   1]!= SND_ERR_NONE)
 				{
 				NSRunAlertPanel(@"Filter", 
@@ -127,24 +141,40 @@ IMPLIED WARRANTIES.
 		
 	[TheCurrentSound compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
-	TheNewSound=[[[Sound alloc]init] autorelease];
+	/* 1998: TheNewSound=[[[Sound alloc]init] autorelease];
+	   The fresh sound is built in the two branches below, where
+	   its size differs; the 1998 alloc + setDataSize: pair is
+	   replaced there. */
 	[PercentDone setIntValue: 0];
+	/* 1998: PSWait() pumped the SoundKit progress machinery
+	   between the counter updates.  GNUstep's AppKit
+	   (PSOperators.h, pulled in by <AppKit/AppKit.h>) supplies
+	   PSWait as a static inline no-op, so the calls below stay
+	   byte-identical and do nothing here; the percent counter
+	   still drives the panel's progress field. */
 	PSWait();
 	
-	data1=(signed short*)[TheCurrentSound data];
+	data1=(signed short*)[TheCurrentSound bytes];
 
-	SNDSwapSoundToHost
-		((void*)data1, (void*)data1, [TheCurrentSound sampleCount],
-			[TheCurrentSound channelCount],
-			[TheCurrentSound dataFormat]);
+	/* 1998 also swapped the buffer to host order here; SndKit
+	   keeps sample data in host byte order, so the swap is gone
+	   (the Zero port made the same change). */
 
-	datalength1=[TheCurrentSound sampleCount];
+	/* 1998: [TheCurrentSound sampleCount];  renamed to SndKit's
+	   lengthInSampleFrames (the Mix port made the same change). */
+	datalength1=[TheCurrentSound lengthInSampleFrames];
 	
 	// Grab amplitude slider information
 	
 	minval=0;
 	maxval=64;
 	for (x=0;x<=64;x++) theamplitude[x]=[[Sliders cellAtRow:0 column:x] floatValue];
+	/* 1998 fingerprint: the two zero-scans run while the cell is
+	   zero, so an all-zero curve (all 65 sliders at 0, reachable
+	   from the panel) walks off both ends of the 65-element stack
+	   array and leaves sum at 0, which the comb loop below
+	   divides by.  Preserved byte-identical; the contract's curve
+	   keeps the zeros as leading and trailing taps only. */
 	for (x=0;theamplitude[x]==0;x++) minval=x;
 	for (x=64;theamplitude[x]==0;x--) maxval=x;
 	
@@ -156,16 +186,25 @@ IMPLIED WARRANTIES.
 
 	if (is_recursive)
 		{
-		[TheNewSound setDataSize:  
-			[TheCurrentSound dataSize]
-			dataFormat:   [TheCurrentSound dataFormat]
-			samplingRate: [TheCurrentSound samplingRate]
+		/* 1998: [TheNewSound setDataSize: [TheCurrentSound dataSize]
+		   dataFormat:.. samplingRate:.. channelCount:.. infoSize:..];
+		   (the //sets proper data size only for 16-bit mono
+		   samples note - the pre-check above has left the sound
+		   mono/16-bit/44.1k).  SndKit has no setDataSize:, so the
+		   sound is built directly with the documented initializer
+		   in the same size, and the info string is carried over
+		   (the 1998 call only reserved the space for it); the
+		   early empty alloc is superseded by this.  The
+		   EchoChamber port made the same change. */
+		TheNewSound=[[[Snd alloc]
+			initWithFormat:   [TheCurrentSound dataFormat]
 			channelCount: [TheCurrentSound channelCount]
-			infoSize:     [TheCurrentSound infoSize]];		
-			//sets proper data size only for 16-bit mono samples
+			frames:       [TheCurrentSound lengthInSampleFrames]
+			samplingRate: [TheCurrentSound samplingRate]] autorelease];
+		[TheNewSound setInfo: [TheCurrentSound info]];
 	
-		data2=(signed short*)[TheNewSound data];
-		datalength2=[TheNewSound sampleCount];
+		data2=(signed short*)[TheNewSound bytes];
+		datalength2=[TheNewSound lengthInSampleFrames];
 
 		// First copy data over to new sound to allow cancellation...
 		
@@ -185,6 +224,10 @@ IMPLIED WARRANTIES.
 				cancelled=1;
 				break;
 				}
+			/* 1998 fingerprint: for a sound with fewer than 1000
+			   samples, datalength1/1000 is 0 and this modulo
+			   divides by zero; preserved byte-identical, and the
+			   contract feeds it sounds of 1000 samples or more. */
 			if (!(b%((int)(datalength1/1000))))
 				{
 				[PercentDone setIntValue:1+[PercentDone intValue]];
@@ -198,10 +241,8 @@ IMPLIED WARRANTIES.
 		if ([moduleController isOwner:TheCurrentSoundView])
 			[moduleController invalidatePasteboard];
 #endif			
-			SNDSwapHostToSound
-			((void*)data2, (void*)data2, [TheCurrentSound sampleCount]+64,
-				[TheCurrentSound channelCount],
-				[TheCurrentSound dataFormat]);
+			/* (The 1998 code swapped the buffer back to storage order
+			   here; gone - see above.) */
 	
 			[TheCurrentSoundView setSound: TheNewSound];
 			[moduleController newSound: TheNewSound for: TheCurrentSoundView];
@@ -209,16 +250,22 @@ IMPLIED WARRANTIES.
 		}
 	else
 		{
-		[TheNewSound setDataSize:  
-			[TheCurrentSound dataSize]+64*2		// 64 16-byte samples
-			dataFormat:   [TheCurrentSound dataFormat]
-			samplingRate: [TheCurrentSound samplingRate]
+		/* 1998: [TheNewSound setDataSize: [TheCurrentSound dataSize]
+		   +64*2  // 64 16-byte samples ...]  - for the guaranteed
+		   mono/16-bit sound the 1998 +64*2 bytes is +64 frames.
+		   SndKit has no setDataSize:, so the sound is built
+		   directly with the documented initializer in that size,
+		   and the info string is carried over (as above); the
+		   EchoChamber port made the same change. */
+		TheNewSound=[[[Snd alloc]
+			initWithFormat:   [TheCurrentSound dataFormat]
 			channelCount: [TheCurrentSound channelCount]
-			infoSize:     [TheCurrentSound infoSize]];		
-			//sets proper data size only for 16-bit mono samples
+			frames:       [TheCurrentSound lengthInSampleFrames]+64
+			samplingRate: [TheCurrentSound samplingRate]] autorelease];
+		[TheNewSound setInfo: [TheCurrentSound info]];
 	
-		data2=(signed short*)[TheNewSound data];
-		datalength2=[TheNewSound sampleCount];
+		data2=(signed short*)[TheNewSound bytes];
+		datalength2=[TheNewSound lengthInSampleFrames];
 
 		// Run comb
 		
@@ -242,10 +289,8 @@ IMPLIED WARRANTIES.
 		if ([moduleController isOwner:TheCurrentSoundView])
 			[moduleController invalidatePasteboard];
 #endif	
-			SNDSwapHostToSound
-			((void*)data2, (void*)data2, [TheCurrentSound sampleCount]+64,
-				[TheCurrentSound channelCount],
-				[TheCurrentSound dataFormat]);
+			/* (The 1998 code swapped the buffer back to storage order
+			   here; gone - see above.) */
 	
 			[TheCurrentSoundView setSound: TheNewSound];
 			[moduleController newSound: TheNewSound for: TheCurrentSoundView];
@@ -293,10 +338,10 @@ IMPLIED WARRANTIES.
 
 - ApplyEcho:sender;
 {
-    Sound* TheCurrentSound;
-	SoundView* TheCurrentSoundView;
+    Snd* TheCurrentSound;
+	SndView* TheCurrentSoundView;
 	
-	Sound* TheNewSound;
+	Snd* TheNewSound;
 	signed short* data1;
 	signed short* data2;
 	int datalength1;
@@ -323,16 +368,21 @@ IMPLIED WARRANTIES.
 
 	if ([TheCurrentSound channelCount]>1||
 		[TheCurrentSound dataFormat]!=SND_FORMAT_LINEAR_16||
-		[TheCurrentSound samplingRate]!=SND_RATE_HIGH)
+		/* (as in Apply above: the 1998 SND_RATE_HIGH written out.) */
+		[TheCurrentSound samplingRate]!=44100.0)
 		{
 		if (NSRunAlertPanel(@"Filter",
 			@"Convert this sound to mono, 16-bit, 44.1 KHz to perform this operation?",
                       @"Okay",@"Cancel",nil)==NSAlertDefaultReturn)
 			{
-			if ([TheCurrentSoundView convertToFormat: SND_FORMAT_LINEAR_16 
+			if ([TheCurrentSoundView convertToSampleFormat: SND_FORMAT_LINEAR_16 
 	// we might get a warning here because the sound view doesn't have this
 	// function yet
-							samplingRate:   SND_RATE_HIGH 
+	// (1998: that is the SoundKit SoundView proper - Resound's
+	// ModuleSoundView.h category supplied the method; the ported
+	// twin of the file declares it on SndView, so the call
+	// compiles and the app's MiscSoundView implements it.)
+							samplingRate:   44100.0 
 							channelCount:   1]!= SND_ERR_NONE)
 				{
 				NSRunAlertPanel(@"Filter", 
@@ -350,24 +400,29 @@ IMPLIED WARRANTIES.
 
 	[EchoPercentDone setIntValue: 0];
 	PSWait();
-	TheNewSound=[[[Sound alloc] init] autorelease];
+	/* 1998: TheNewSound=[[Sound alloc] init]; [TheNewSound
+	   setDataSize: [TheCurrentSound dataSize]+2*extraarea ...];
+	   (the //sets proper data size only for 16-bit mono
+	   samples note - the pre-check above has left the sound
+	   mono/16-bit/44.1k).  SndKit has no setDataSize:, so the
+	   sound is built directly with the documented initializer in
+	   that size, and the info string is carried over; the
+	   EchoChamber port made the same change. */
+	TheNewSound=[[[Snd alloc]
+		initWithFormat:   [TheCurrentSound dataFormat]
+		channelCount: [TheCurrentSound channelCount]
+		frames:       [TheCurrentSound lengthInSampleFrames]+2*extraarea
+		samplingRate: [TheCurrentSound samplingRate]] autorelease];
+	[TheNewSound setInfo: [TheCurrentSound info]];
 	
-	[TheNewSound setDataSize:  [TheCurrentSound dataSize]+2*extraarea		
-			dataFormat:   [TheCurrentSound dataFormat]
-			samplingRate: [TheCurrentSound samplingRate]
-			channelCount: [TheCurrentSound channelCount]
-			infoSize:     [TheCurrentSound infoSize]];		
-			//sets proper data size only for 16-bit mono samples
+	data1=(signed short*)[TheCurrentSound bytes];
+	data2=(signed short*)[TheNewSound bytes];
+	datalength1=[TheCurrentSound lengthInSampleFrames];
+	datalength2=[TheNewSound lengthInSampleFrames];
 	
-	data1=(signed short*)[TheCurrentSound data];
-	data2=(signed short*)[TheNewSound data];
-	datalength1=[TheCurrentSound sampleCount];
-	datalength2=[TheNewSound sampleCount];
-	
-	SNDSwapSoundToHost
-		((void*)data1, (void*)data1, [TheCurrentSound sampleCount],
-			[TheCurrentSound channelCount],
-			[TheCurrentSound dataFormat]);
+	/* 1998 also swapped the buffer to host order here; SndKit
+	   keeps sample data in host byte order, so the swap is gone
+	   (see above). */
 
 	
 	for (x=0;x<=7;x++)
@@ -390,6 +445,10 @@ IMPLIED WARRANTIES.
 			}
 		data2[x]=accumulator;
 		
+		/* 1998 fingerprint: for an output of fewer than 100
+		   samples, datalength2/100 is 0 and this modulo divides
+		   by zero; preserved byte-identical, and the contract
+		   feeds it outputs of 100 samples or more. */
 		if (!(x%(datalength2/100)))
 			{
 			[EchoPercentDone setIntValue:1+[EchoPercentDone intValue]];
@@ -411,10 +470,8 @@ IMPLIED WARRANTIES.
 		if ([moduleController isOwner:TheCurrentSoundView])
 			[moduleController invalidatePasteboard];
 #endif			
-		SNDSwapHostToSound
-			((void*)data2, (void*)data2, [TheCurrentSound sampleCount]+extraarea,
-				[TheCurrentSound channelCount],
-				[TheCurrentSound dataFormat]);
+		/* (The 1998 code swapped the buffer back to storage order
+		   here; gone - see above.) */
 		[TheCurrentSoundView setSound: TheNewSound];
 		[moduleController newSound: TheNewSound for: TheCurrentSoundView];
 		}
@@ -430,6 +487,13 @@ IMPLIED WARRANTIES.
     return self;
 }
 
+/* 1998 fingerprint: both of these accumulate from n=0 with a
+   strict inequality, so Max can never be negative and Min can
+   never be positive - with an all-positive position matrix,
+   Min returns 0 instead of the smallest position, and the
+   buffer sizing in ApplyEcho (extraarea = -Min+Max,
+   min = -Max) follows the clamp.  Preserved byte-identical;
+   the contract mirrors it. */
 - (int) Max
 {
 	int x;
