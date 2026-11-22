@@ -17,10 +17,10 @@ the framework — not from edits to the app.
 ## Decision
 
 Small, individually justified port patches live in `patches/`, in three
-families — `MusicKit-0001…0005` (five SndKit/MusicKit fixes),
-`GNUstep-0002/0003` (gnustep-gui), `Gorm-0001` (apps-gorm) — each documented
-in `docs/UPSTREAM_PATCHES.md` with symptom, explanation, and the proposed
-fix.  Each patch is **submitted upstream** and is **dropped on the pin bump
+families — `MusicKit-0001…0006` (six SndKit/MusicKit fixes),
+`GNUstep-0002/0003` (gnustep-gui), `Gorm-0001/0002` (apps-gorm) —
+each documented in `docs/UPSTREAM_PATCHES.md` with symptom, explanation,
+and the proposed fix.  Each patch is **submitted upstream** and is **dropped on the pin bump
 that carries it**.  One documented **inversion** of that rule: a patch
 whose upstream issue was *closed without merging* stays in the build and
 leaves only on a pin bump to a commit that already carries the fix (the

@@ -32,6 +32,7 @@ by NNNN** rather than deleted.
 | [0018](0018-ci-screenshot-scene-and-publish.md) | The README screenshot: a staged whole-screen CI scene, published to a `screenshot` branch | accepted |
 | [0019](0019-module-dsp-architecture.md) | Module DSP architecture: real-time Audio Units, retained offline processing | **proposed** |
 | [0020](0020-module-bundle-build.md) | Module builds: gnustep-make bundles with an explicit `NSPrincipalClass`; the 1998 no-modules switch restored to its shipped state | accepted |
+| [0021](0021-openstep-string-encoding-per-system-version.md) | Decode the reader's strings per the archive's system version (1000+: UTF-8 with per-string NEXTSTEP fallback; below: NEXTSTEP only) | accepted |
 
 ## How the ADRs relate to the other documents
 

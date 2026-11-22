@@ -21,7 +21,10 @@ codebases, all kept in `patches/`:
   source commit; a dev-time tool — the CI validates the files it
   produces but never builds or runs it): a main-menu rename and a
   deterministic object-graph walk, so converting the same 1998 `.nib`
-  twice yields byte-identical `.gorm` files.
+  twice yields byte-identical `.gorm` files; plus a string-encoding fix
+  that decodes each string per the writer's system version, so the
+  UTF-8 strings of the Rhapsody-stamped 1998 archives stop converting
+  to mojibake.
 
 MusicKit patches apply from the repository root:
 
@@ -46,7 +49,7 @@ patch -p1 < ../GNUstep-0002-nspasteboard-retained-wrapper-map.diff
 patch -p1 < ../GNUstep-0003-gsnibcontainer-deterministic-serialization.diff
 ```
 
-The apps-gorm patch applies the same way from the root of a source
+The apps-gorm patches apply the same way from the root of a source
 checkout of the pinned converter (`d11b5291`, branch
 `OPENSTEP_nib_support`; a dev-time recipe — see the *apps-gorm*
 section below):
@@ -55,6 +58,8 @@ section below):
 cd apps-gorm-d11b5291
 patch -p1 --dry-run < ../Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff
 patch -p1 < ../Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff
+patch -p1 --dry-run < ../Gorm-0002-openstepnibreader-string-encoding-per-system-version.diff
+patch -p1 < ../Gorm-0002-openstepnibreader-string-encoding-per-system-version.diff
 ```
 
 (When a fix lands upstream, drop the corresponding patch and bump the
@@ -958,11 +963,11 @@ The `.gorm` files in this repository were converted from the 1998
 reads the 1998 typed streams (see `docs/RESOUND_SNDKIT_PLAN.md`,
 *NIB / Interface Builder file migration*).  The converter is a
 **dev-time** tool: the CI never builds or runs it — it only validates
-the files it produced (`resoundnib --check`) — so this patch is a
-reproducibility fix for anyone who re-converts a nib with the pinned
-converter, not a gate dependency.  It applies from the root of a
-source checkout of the pinned tree (it carries both changes of the
-conversion, see below).
+the files it produced (`resoundnib --check`) — so these patches are
+reproducibility fixes for anyone who re-converts a nib with the pinned
+converter, not gate dependencies.  They apply from the root of a
+source checkout of the pinned tree (Gorm-0001 carries the two
+conversion changes, Gorm-0002 the string-encoding fix, see below).
 
 ## Gorm-0001. `GormNibWrapperLoader`: the main menu name and a deterministic object walk (patch `Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff`)
 
@@ -1009,4 +1014,16 @@ old non-deterministic conversion: three auto-named objects carry a
 different (now canonical) index; the menu structure is identical.  The
 known-bad `WaveBuilder.bad.nib` (the pre-`NS`-prefix typed stream the
 reader rejects) is untouched.
+
+## Gorm-0002. `GormOpenStepNibReader`: string decoding follows the writer's system version (patch `Gorm-0002-openstepnibreader-string-encoding-per-system-version.diff`)
+
+**Upstream status:** pending — the issue is being prepared for gnustep/apps-gorm (it carries this section, the full diff, and the `Tests/` regression additions); the line updates with the issue number once submitted.  As with Gorm-0001 this is a dev-time converter fix — the CI never builds the converter, so the patch gates nothing — and it follows the unchanged retirement rule (it leaves only on a pin bump to a commit that carries the fix).
+
+**1. The bug.** Rhapsody (and Mac OS X) Interface Builder wrote typed-stream string bytes as UTF-8; NeXTSTEP/OpenStep wrote single-byte NEXTSTEP text.  The pinned reader decoded every string unconditionally as `NSNEXTSTEPStringEncoding` (its source comment: "These archives predate UTF-8. Do not guess UTF-8 from byte validity.").  That instinct is right, but it was applied to *every* archive: in a Rhapsody-stamped 1998 archive, an em dash (`E2 80 94` in UTF-8) came out as `U+00ED U+00A0 U+00D4` (í, nbsp, Ô — the legitimate NEXTSTEP characters of those bytes) and rendered as mojibake in the converted gorms.  Every one of the 43 tracked `objects.nib` files carries the Rhapsody stamp; the 1996 known-bad `WaveBuilder.bad.nib` carries 930 (the last NeXTSTEP stamp) — so the whole 1998 corpus is affected wherever a string is non-ASCII.
+
+**2. Why the header decides, not byte validity.** A per-string "if valid UTF-8" is not a disambiguator in either direction: a single NEXTSTEP byte `0xD0` is the em dash in the NEXTSTEP character set (and an invalid UTF-8 lead byte), while a three-byte NEXTSTEP string `E2 80 94` (í nbsp Ô) is *simultaneously* a valid UTF-8 em dash — guessing by validity would corrupt 930 archives.  The stream itself records the disambiguator: the typed-stream header carries the writer toolchain's `NXSYSTEMVERSION` (the Objective-C runtime constant, Darwin 0.1 `objc-1.3.1/typedstream.h`: 1000 for Rhapsody and all of Mac OS X, 930 or below for NeXTSTEP/OpenStep).  The reader now decodes per string: in a 1000+ archive it prefers UTF-8 and falls back to NEXTSTEP for a string whose bytes are not valid UTF-8 (a Rhapsody archive may still hold a single-byte string, e.g. `0xDD` → `U+00E9`); in a 930 archive it decodes NEXTSTEP only.  The reader's NSFont name bytes (a separate byte buffer with the same history) get the same gating.
+
+**3. Why this is the fix and not another byte patch.** A 2026-11-21 follow-up had restored the mangled string *bytes* at file level in the eleven affected `objects.gorm` files; that is byte fidelity only.  A `.gorm` string slot records an *encoding tag*: a C-representation string stores one byte per character tagged `NSISOLatin1StringEncoding` (5), a wide string stores UTF-16 tagged `NSUnicodeStringEncoding` (10) — and the runtime unarchiver decodes the slot by that tag.  So the restored UTF-8 bytes `E2 80 99` in a tag-5 slot still decode at runtime as `U+00E2 U+0080 U+0099` (â + two invisible C1 controls): the app kept showing mojibake (menu A/B: the committed file prints `C3 A2 C2 80 C2 99`, the conversion through this patch prints `E2 80 99` = the genuine `U+2019`).  Converting through the fixed reader stores the correct *characters* (the em dash as wide `U+2014`), and the runtime decodes them correctly through their slot.
+
+**Verified.** Re-converting the full 43-file corpus with the patched reader changes exactly 11 files, all inside non-ASCII string payloads (the three strings of the byte-restoration follow-up, plus the `≤` and `π` strings the original conversion mangled into the two-codepoint wide forms `U+00ED U+00C9 U+2044` / `U+02C7 U+00A0`); the other 32 files and every `data.classes` are byte-identical.  Every changed file loads through the real `NSBundle` machinery (61/61 `resoundnib --load`), the Filter echo label prints `0.0—1.0 x Current Value` with a genuine em dash, the menu prints `Resound's Web Page` with the genuine `U+2019`, and the `Tests/` suite now covers the decision itself — a 1000 archive with a UTF-8 string, a 1000 archive with a not-valid-UTF-8 string, and a 930 archive with a UTF-8-*looking* string, each through the reader, the `gormtool` CLI, and a keyed re-import.
 
