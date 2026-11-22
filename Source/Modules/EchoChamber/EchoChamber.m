@@ -75,10 +75,7 @@ IMPLIED WARRANTIES.
 	
 	if ([currentSound channelCount]>1||
 		[currentSound dataFormat]!=SND_FORMAT_LINEAR_16||
-		/* 1998: samplingRate]!=SND_RATE_HIGH)  The 1998 SoundKit Snd.h
-		   defined SND_RATE_HIGH (44100.0); SndKit has no SND_RATE_*
-		   constants, so the value is written out. */
-		[currentSound samplingRate]!=44100.0)
+		[currentSound samplingRate]!=SND_RATE_HIGH)
 		{
 		if (NSRunAlertPanel(@"Echo Chamber",
 			@"Convert this sound to mono, 16-bit, 44.1 KHz to perform this operation?",
@@ -87,7 +84,7 @@ IMPLIED WARRANTIES.
 			if ([currentSoundView convertToSampleFormat: SND_FORMAT_LINEAR_16 
 	// we might get a warning here because the sound view doesn't have this
 	// function yet
-							samplingRate:   44100.0 
+							samplingRate:   SND_RATE_HIGH 
 							channelCount:   1]!= SND_ERR_NONE)
 				{
 				NSRunAlertPanel(@"Echo Chamber", 
