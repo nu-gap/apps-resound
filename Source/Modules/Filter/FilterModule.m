@@ -110,11 +110,7 @@ IMPLIED WARRANTIES.
 	
 	if ([TheCurrentSound channelCount]>1||
 		[TheCurrentSound dataFormat]!=SND_FORMAT_LINEAR_16||
-		/* 1998: samplingRate]!=SND_RATE_HIGH)  The 1998 SoundKit
-		   SND_RATE_HIGH is 44100 Hz; SndKit's samplingRate is a
-		   double, so the value is written out (the EchoChamber
-		   port made the same change). */
-		[TheCurrentSound samplingRate]!=44100.0)
+		[TheCurrentSound samplingRate]!=SND_RATE_HIGH)
 		{
 		if (NSRunAlertPanel(@"Filter",
 			@"Convert this sound to mono, 16-bit, 44.1 KHz to perform this operation?",
@@ -127,7 +123,7 @@ IMPLIED WARRANTIES.
 	// supplied it, and the ported twin of that file declares it
 	// on SndView, so the receiver stays the view, as in 1998 and
 	// in the EchoChamber port.
-							samplingRate:   44100.0 
+							samplingRate:   SND_RATE_HIGH 
 							channelCount:   1]!= SND_ERR_NONE)
 				{
 				NSRunAlertPanel(@"Filter", 
@@ -368,8 +364,7 @@ IMPLIED WARRANTIES.
 
 	if ([TheCurrentSound channelCount]>1||
 		[TheCurrentSound dataFormat]!=SND_FORMAT_LINEAR_16||
-		/* (as in Apply above: the 1998 SND_RATE_HIGH written out.) */
-		[TheCurrentSound samplingRate]!=44100.0)
+		[TheCurrentSound samplingRate]!=SND_RATE_HIGH)
 		{
 		if (NSRunAlertPanel(@"Filter",
 			@"Convert this sound to mono, 16-bit, 44.1 KHz to perform this operation?",
@@ -382,7 +377,7 @@ IMPLIED WARRANTIES.
 	// ModuleSoundView.h category supplied the method; the ported
 	// twin of the file declares it on SndView, so the call
 	// compiles and the app's MiscSoundView implements it.)
-							samplingRate:   44100.0 
+							samplingRate:   SND_RATE_HIGH 
 							channelCount:   1]!= SND_ERR_NONE)
 				{
 				NSRunAlertPanel(@"Filter", 
