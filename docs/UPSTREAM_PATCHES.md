@@ -981,7 +981,7 @@ rejects) is untouched.
 
 ## Gorm-0002. `GormOpenStepNibReader`: string decoding follows the writer's system version (patch `Gorm-0002-openstepnibreader-string-encoding-per-system-version.diff`)
 
-**Submitted upstream:** pending — ready to file against gnustep/apps-gorm; the issue is this section (Symptom through Verified) plus the environment and the full diff, and the line updates with the issue number once submitted.  As with Gorm-0001 this is a dev-time converter fix — the CI never builds the converter, so the patch gates nothing — and it follows the unchanged retirement rule (it leaves only on a pin bump to a commit that carries the fix).
+**Submitted upstream:** pending — ready to file against gnustep/apps-gorm; the issue is this section (Symptom through Verified, including the diff) plus the environment, and the line updates with the issue number once submitted.  As with Gorm-0001 this is a dev-time converter fix — the CI never builds the converter, so the patch gates nothing — and it follows the unchanged retirement rule (it leaves only on a pin bump to a commit that carries the fix).
 
 **Suggested issue title:** *`GormOpenStepNibReader` decodes every string as NEXTSTEP: Rhapsody-stamped (system version 1000 or above) archives write UTF-8, so their non-ASCII strings convert to mojibake*
 
@@ -994,5 +994,349 @@ The stamp is the right signal because byte validity disambiguates in **neither**
 And the fix belongs in the reader, not in another byte patch to the generated `.gorm` files: a `.gorm` string slot records an *encoding tag* (one byte per character, `NSISOLatin1StringEncoding` = 5; wide, `NSUnicodeStringEncoding` = 10), and the runtime unarchiver decodes the slot *by that tag* — it never re-sniffs the bytes.  Follow the apostrophe in "Resound's Web Page": the nib holds it as the UTF-8 bytes `E2 80 99`; put back into the still-tag-5 slot, the runtime reads three latin-1 code points `U+00E2 U+0080 U+0099` (â + two invisible C1 controls), and the menu kept printing `C3 A2 C2 80 C2 99` — exactly what the 2026-11-21 byte-level restoration produced.  Only decoding the bytes into the right *characters* at conversion time changes what the slot holds: the apostrophe becomes `U+2019` (≥ 256, so stored wide in a tag-10 slot), and the em dash becomes `U+2014`.  The difference is *when the bytes are interpreted* — that happens in the reader.
 
 **Proposed fix:** thread the stamp (`archive->system_version`) through the reader — `Text`/`StringObject`, the selector paths, and the NSFont name bytes — and decode per the rules above.  The patch is `patches/Gorm-0002-openstepnibreader-string-encoding-per-system-version.diff`: the reader change, plus three `Tests/` cases that pin the decision itself — a 1000 archive with a UTF-8 string, a 1000 archive with a not-valid-UTF-8 string, and a 930 archive with a UTF-8-*looking* string, each through the reader, the `gormtool` CLI, and a keyed re-import.
+
+```diff
+diff --git a/Plugins/Nib/GormOpenStepNibReader.m b/Plugins/Nib/GormOpenStepNibReader.m
+index bc1685a7..b88b6174 100644
+--- a/Plugins/Nib/GormOpenStepNibReader.m
++++ b/Plugins/Nib/GormOpenStepNibReader.m
+@@ -109,12 +109,20 @@ IsMenuMatrix(const ts_object *o)
+   return NO;
+ }
+ 
++/* The archive's system version is the writer toolchain's NXSYSTEMVERSION
++ * from the Objective-C runtime's typedstream.h:  1000 for Rhapsody and all
++ * versions of Mac OS X,  930 or below for NeXTSTEP/OpenStep.  Rhapsody and
++ * later write string bytes as UTF-8;  earlier systems wrote single-byte
++ * NEXTSTEP text.  Do not guess the encoding from byte validity alone - a
++ * NEXTSTEP byte can spell a valid UTF-8 sequence - but for archives stamped
++ * by a Rhapsody or later writer, prefer UTF-8, per string, falling back to
++ * NEXTSTEP for a string that is not valid UTF-8. */
+ static NSString *
+-Text(const ts_value *v)
++Text(const ts_value *v, int64_t systemVersion)
+ {
+   const char *s;
+   size_t n;
+-  NSString *result;
++  NSString *result = nil;
+   if (v->kind == TS_V_NIL) return nil;
+   if (v->kind == TS_V_STRING) { s = v->u.str.p; n = v->u.str.n; }
+   else if (v->kind == TS_V_SELECTOR || v->kind == TS_V_SHARED
+@@ -122,21 +130,24 @@ Text(const ts_value *v)
+     { s = v->u.shared.text; n = v->u.shared.len; }
+   else { Bad(NULL, @"expected string bytes"); return nil; }
+   if (s == NULL) return nil;
+-  /* These archives predate UTF-8.  Do not guess UTF-8 from byte validity. */
+-  result = AUTORELEASE([[NSString alloc] initWithBytes: s length: n
+-                                            encoding: NSNEXTSTEPStringEncoding]);
+-  if (result == nil) Bad(NULL, @"invalid NEXTSTEP string");
++  if (systemVersion >= 1000)
++    result = AUTORELEASE([[NSString alloc] initWithBytes: s length: n
++                                              encoding: NSUTF8StringEncoding]);
++  if (result == nil || systemVersion < 1000)
++    result = AUTORELEASE([[NSString alloc] initWithBytes: s length: n
++                                              encoding: NSNEXTSTEPStringEncoding]);
++  if (result == nil) Bad(NULL, @"invalid string bytes");
+   return result;
+ }
+ 
+ static NSString *
+-StringObject(const ts_object *o)
++StringObject(const ts_object *o, int64_t systemVersion)
+ {
+   if (o == NULL) return nil;
+   if (strcmp(o->cls->name.text, "NSString") || o->cls->version != 1
+       || o->ngroups != 1 || strcmp(o->groups[0].encoding.text, "+"))
+     Bad(o, @"expected NSString version 1");
+-  return Text(&o->groups[0].vals[0]);
++  return Text(&o->groups[0].vals[0], systemVersion);
+ }
+ 
+ static NSNumber *Number(long long n)
+@@ -240,6 +251,7 @@ static NSDictionary *UID(NSUInteger n)
+   NSMutableArray *_rtf;
+   const ts_object *_owner;
+   unsigned _depth;
++  int64_t _systemVersion;
+ }
+ - (NSDictionary *) reference: (const ts_object *)o;
+ - (NSData *) translate: (const ts_archive *)archive;
+@@ -257,6 +269,7 @@ static NSDictionary *UID(NSUInteger n)
+       _visible = [NSMutableArray new];
+       _periodic = [NSMutableArray new];
+       _rtf = [NSMutableArray new];
++      _systemVersion = 0;
+     }
+   return self;
+ }
+@@ -532,7 +545,9 @@ static NSDictionary *UID(NSUInteger n)
+       GET("ff:");
+       [d setObject: [NSNumber numberWithDouble: Real(v)] forKey: @"NSCurValue"];
+       [d setObject: [NSNumber numberWithDouble: Real(v + 1) * 100.0] forKey: @"NSPercent"];
+-      if (Text(v + 2)) [d setObject: [self literal: Text(v + 2)] forKey: @"NSAction"];
++      if (Text(v + 2, self->_systemVersion))
++        [d setObject: [self literal: Text(v + 2, self->_systemVersion)]
++           forKey: @"NSAction"];
+       GET("c");
+       GET("c");
+     }
+@@ -544,7 +559,9 @@ static NSDictionary *UID(NSUInteger n)
+       [d setObject: [NSNumber numberWithDouble: Real(v + 3)] forKey: @"NSRowHeight"];
+       [d setObject: [NSNumber numberWithDouble: Real(v + 4)] forKey: @"NSIntercellSpacingWidth"];
+       OBJ(5, @"NSGridColor"); OBJ(6, @"NSBackgroundColor");
+-      if (Text(v + 8)) [d setObject: [self literal: Text(v + 8)] forKey: @"NSDoubleAction"];
++      if (Text(v + 8, self->_systemVersion))
++        [d setObject: [self literal: Text(v + 8, self->_systemVersion)]
++           forKey: @"NSDoubleAction"];
+       GET("@"); if (Object(v)) Bad(o, @"unsupported table auxiliary field");
+       GET("@"); if (Object(v)) Bad(o, @"unsupported table auxiliary field");
+       GET("@"); if (Object(v)) Bad(o, @"unsupported table auxiliary field");
+@@ -601,7 +618,8 @@ static NSDictionary *UID(NSUInteger n)
+           resource->ngroups != 1 ||
+           strcmp(resource->groups[0].encoding.text, "@@"))
+         Bad(o, @"unsupported cursor resource");
+-      name = StringObject(Object(resource->groups[0].vals + 1));
++      name = StringObject(Object(resource->groups[0].vals + 1),
++                          self->_systemVersion);
+       if (![name isEqual: @"NSIBeamCursor"] && ![name isEqual: @"NSArrowCursor"])
+         Bad(o, @"unsupported cursor image");
+       [d setObject: Number([name isEqual: @"NSIBeamCursor"] ? 1 : 0) forKey: @"NSCursorType"];
+@@ -651,7 +669,8 @@ static NSDictionary *UID(NSUInteger n)
+       INT(3, @"NSKeyEquivModMask"); INT(5, @"NSState");
+       OBJ(6, @"NSImage"); OBJ(7, @"NSOnImage"); OBJ(8, @"NSOffImage");
+       OBJ(9, @"NSMixedImage");
+-      [d setObject: [self literal: Text(v + 10)] forKey: @"NSAction"];
++      [d setObject: [self literal: Text(v + 10, self->_systemVersion)]
++         forKey: @"NSAction"];
+       OBJ(12, @"NSTarget");
+       GET("@"); /* popup cell owner */
+       if (c->version == 321) { GET("@"); OBJ(0, @"NSSubmenu"); }
+@@ -691,7 +710,9 @@ static NSDictionary *UID(NSUInteger n)
+     return;
+   else if (IS("NSPopUpButton", 24))
+     {
+-      GET(":"); if (Text(v)) Bad(o, @"unsupported popup selector");
++      GET(":");
++      if (Text(v, self->_systemVersion))
++        Bad(o, @"unsupported popup selector");
+       GET("@"); if (Object(v)) OBJ(0, @"NSMenu");
+       GET("c"); if (Integer(v)) Bad(o, @"unsupported popup flag");
+     }
+@@ -719,7 +740,9 @@ static NSDictionary *UID(NSUInteger n)
+       GET("@"); OBJ(0, @"NSPreviousKeyView");
+       GET("icc@"); INT(0, @"NSTag"); OBJ(3, @"NSCell");
+       GET("@"); OBJ(0, @"NSDelegate");
+-      GET(":"); if (Text(v)) Bad(o, @"unsupported swapped text selector");
++      GET(":");
++      if (Text(v, self->_systemVersion))
++        Bad(o, @"unsupported swapped text selector");
+     }
+   else if (IS("NSViewTemplate", 46))
+     { GET("@"); /* archived view class name */ }
+@@ -750,7 +773,8 @@ static NSDictionary *UID(NSUInteger n)
+     }
+   else if (IS("NSTextField", 25))
+     { GET("@"); OBJ(0, @"NSDelegate"); GET(":");
+-      if (Text(v)) Bad(o, @"unsupported text-field validation selector"); }
++      if (Text(v, self->_systemVersion))
++        Bad(o, @"unsupported text-field validation selector"); }
+   else if ((IS("NSCell", 60) || IS("NSCell", 62)))
+     {
+       GET("ii");
+@@ -768,7 +792,8 @@ static NSDictionary *UID(NSUInteger n)
+   else if (IS("NSActionCell", 17))
+     {
+       GET("i:"); INT(0, @"NSTag");
+-      [d setObject: [self literal: Text(v + 1)] forKey: @"NSAction"];
++      [d setObject: [self literal: Text(v + 1, self->_systemVersion)]
++         forKey: @"NSAction"];
+       GET("@");
+       if (IsPopUpButtonCell(o)) OBJ(0, @"NSMenu");
+       else if (strcmp(o->cls->name.text, "NSMenuItem")) OBJ(0, @"NSTarget");
+@@ -865,7 +890,7 @@ static NSDictionary *UID(NSUInteger n)
+     {
+       size_t n, length;
+       const unsigned char *bytes;
+-      NSString *fontName;
++      NSString *fontName = nil;
+       GET("i"); length = (size_t)Integer(v);
+       if (*i >= o->ngroups) Bad(o, @"missing font bytes");
+       g = &o->groups[(*i)++]; v = g->vals;
+@@ -878,8 +903,13 @@ static NSDictionary *UID(NSUInteger n)
+       }
+       bytes = (const unsigned char *)v->u.str.p;
+       for (n = 8; n < length && bytes[n]; n++) { }
+-      fontName = AUTORELEASE([[NSString alloc] initWithBytes: bytes + 8 length: n - 8
+-                                                  encoding: NSNEXTSTEPStringEncoding]);
++      if (self->_systemVersion >= 1000)
++        fontName = AUTORELEASE([[NSString alloc]
++            initWithBytes: bytes + 8 length: n - 8
++              encoding: NSUTF8StringEncoding]);
++      if (fontName == nil || self->_systemVersion < 1000)
++        fontName = AUTORELEASE([[NSString alloc] initWithBytes: bytes + 8 length: n - 8
++                                                      encoding: NSNEXTSTEPStringEncoding]);
+       if (![fontName length]) Bad(o, @"empty font name");
+       [d setObject: [self literal: fontName] forKey: @"NSName"];
+       GET("f"); [d setObject: [NSNumber numberWithDouble: Real(v)] forKey: @"NSSize"];
+@@ -955,7 +985,7 @@ static NSDictionary *UID(NSUInteger n)
+     }
+   if ([name isEqual: @"NSString"])
+     {
+-      ref = [self literal: StringObject(o)];
++      ref = [self literal: StringObject(o, self->_systemVersion)];
+       [_references setObject: ref forKey: key];
+       return ref;
+     }
+@@ -1003,6 +1033,9 @@ static NSDictionary *UID(NSUInteger n)
+   NSDictionary *top, *plist;
+   NSData *data;
+   NSString *error = nil;
++  /* The writer toolchain's NXSYSTEMVERSION:  1000 for Rhapsody and Mac OS
++   * X,  930 or below for NeXTSTEP/OpenStep.  Decides the string encoding. */
++  self->_systemVersion = archive->system_version;
+   if (archive->nroot != 1 || strcmp(archive->root[0].encoding.text, "@"))
+     Bad(NULL, @"expected a single root object");
+   root = Object(archive->root[0].vals);
+diff --git a/Plugins/Nib/Tests/README.md b/Plugins/Nib/Tests/README.md
+index beb7bc33..1fdb8c5a 100644
+--- a/Plugins/Nib/Tests/README.md
++++ b/Plugins/Nib/Tests/README.md
+@@ -23,6 +23,10 @@ standalone fixtures in `OpenStepFixtures` for manual inspection.
+ 
+ Coverage:
+ 
++* String decoding per the archive's system version:  UTF-8 preferred (with a
++  per-string NEXTSTEP fallback) in Rhapsody and later archives stamped 1000
++  or above, NEXTSTEP only in earlier ones, so a NEXTSTEP byte that spells a
++  valid UTF-8 sequence is never misread.
+ * Streamer versions 3 and 4, both byte orders, window/button graphs, unnamed
+   objects, owner custom class, fractional geometry, shared outlet identity,
+   window-template replacement, action endpoints, and periodic button timing.
+diff --git a/Plugins/Nib/Tests/check.py b/Plugins/Nib/Tests/check.py
+index bee97e35..06f3098e 100644
+--- a/Plugins/Nib/Tests/check.py
++++ b/Plugins/Nib/Tests/check.py
+@@ -102,6 +102,35 @@ def main():
+                         # Periodic timing has integer precision in ordinary keyed nibs.
+                         # Inspect the other graph invariants after a fresh-process reopen.
+                         print(run([exe, reopened, 'roundtrip']), end='')
++        # The reader's string-encoding decision:  Rhapsody and Mac OS X
++        # (system version 1000 or above) wrote strings as UTF-8, so prefer
++        # UTF-8 per string and fall back to NEXTSTEP for one that is not
++        # valid UTF-8;  NeXTSTEP/OpenStep (930 or below) wrote single-byte
++        # NEXTSTEP text, and a NEXTSTEP byte can spell a valid UTF-8
++        # sequence, so never guess UTF-8 there.  The big-endian version 4
++        # header matches every real file of the 1998 corpus.
++        # Expected values follow GNUstep's NEXTSTEP character set, in which
++        # for example 0xE2 is U+00ED (i-acute) and 0xE9 is U+00D8 (O-stroke).
++        # (Loop-local names:  the legacy bundle section below reuses the
++        # matrix's writer and source, so do not clobber them here.)
++        for system_version, title, want_title in (
++            (1000, b"0.0\xe2\x80\x941.0", "0.0\u20141.0"),   # UTF-8 em dash
++            (1000, b"\xdd", "\u00e9"),                       # invalid UTF-8
++            ( 930, b"0.0\xe2\x80\x941.0", "0.0\u00ed\u00a0\u00d41.0"),
++        ):
++            uwriter = fixtures.Writer(">", 4, system_version)
++            uwriter.group("@", [fixtures.document(views=True, title=title)])
++            usource = tmp / f"unicode-v4-{system_version}-{title.hex()[:4]}.nib"
++            usource.write_bytes(uwriter.data)
++            print(run([translator, usource]), end='')
++            print(run([exe, usource, "unicode", want_title]), end='')
++            udestination = tmp / f"unicode-{system_version}-{title.hex()[:4]}.gorm"
++            output = run([ROOT / 'Tools/gormtool/obj/gormtool', '--read', usource, '--write', udestination])
++            assert (udestination / 'objects.gorm').stat().st_size > 0, output
++            ureopened = tmp / f"unicode-reopened-{system_version}-{title.hex()[:4]}.nib"
++            output = run([ROOT / 'Tools/gormtool/obj/gormtool', '--read', udestination, '--write', ureopened])
++            assert (ureopened / 'keyedobjects.nib').stat().st_size > 0, output
++            print(run([exe, ureopened, "unicode", want_title]), end='')
+         for name, graph in [('objects', fixtures.document()),
+                             ('scroll', fixtures.scroll_document()),
+                             ('min-size', fixtures.document(views=True, window_min_size=True)),
+diff --git a/Plugins/Nib/Tests/import.m b/Plugins/Nib/Tests/import.m
+index 526db139..019589dc 100644
+--- a/Plugins/Nib/Tests/import.m
++++ b/Plugins/Nib/Tests/import.m
+@@ -26,7 +26,10 @@ int main(int argc, char **argv)
+   PASS([pluginPath rangeOfString: @"GormCore/GormCore.framework"].location != NSNotFound,
+     "importer comes from checkout framework")
+   GormNibWrapperLoader *loader = [loaderClass new];
+-  BOOL expected = argc < 3 || strcmp(argv[2], "roundtrip") == 0;
++  /* "unicode <want-title>":  the window title must decode to the bytes the
++   * archive's system version says they are (see the reader's Text()). */
++  BOOL unicode = argc > 2 && strcmp(argv[2], "unicode") == 0;
++  BOOL expected = argc < 3 || strcmp(argv[2], "roundtrip") == 0 || unicode;
+   [NSClassSwapper setIsInInterfaceBuilder: YES];
+   BOOL loaded = [loader loadFileWrapper: wrapper withDocument: doc];
+   PASS(loaded == expected, "import succeeds only for valid preferred payloads")
+@@ -52,7 +55,14 @@ int main(int argc, char **argv)
+       PASS(window != nil, "unnamed top-level window is imported")
+       for (id obj in [[window contentView] subviews])
+         if ([obj isKindOfClass: [NSButton class]]) button = obj;
+-      PASS([[window title] isEqual: @"OPENSTEP fixture"], "window title survives")
++      if (unicode)
++        {
++          NSString *wantTitle = [NSString stringWithUTF8String: argv[3]];
++          PASS([[window title] isEqual: wantTitle],
++            "window title decodes per the archive's system version")
++        }
++      else
++        PASS([[window title] isEqual: @"OPENSTEP fixture"], "window title survives")
+       PASS([[button title] isEqual: @"Run"], "nested button survives")
+       PASS(NSEqualRects([button frame], NSMakeRect(12.5,18.25,90.5,24.75)), "fractional geometry survives")
+       PASS([[[doc filesOwner] className] isEqual: @"OpenStepTestOwner"], "owner custom class survives")
+diff --git a/Plugins/Nib/Tests/make-openstep-fixtures.py b/Plugins/Nib/Tests/make-openstep-fixtures.py
+index fc494ff8..330e97db 100644
+--- a/Plugins/Nib/Tests/make-openstep-fixtures.py
++++ b/Plugins/Nib/Tests/make-openstep-fixtures.py
+@@ -16,7 +16,9 @@ class Obj:
+ 
+ 
+ def string(s):
+-    return Obj([("NSString", 1)], [("+", [s.encode("ascii")])])
++    if not isinstance(s, bytes):
++        s = s.encode("ascii")
++    return Obj([("NSString", 1)], [("+", [s])])
+ 
+ 
+ def array(items):
+@@ -25,13 +27,15 @@ def array(items):
+ 
+ 
+ class Writer:
+-    def __init__(self, endian, version):
++    def __init__(self, endian, version, system_version=1000):
+         self.order = endian
+         self.data = bytearray([version, 11])
+         self.data += b"streamtyped" if endian == "<" else b"typedstream"
+         self.slots = 0
+         self.objects = {}
+-        self.integer(1000)
++        # The writer toolchain's NXSYSTEMVERSION:  1000 for Rhapsody and
++        # Mac OS X,  930 or below for NeXTSTEP/OpenStep.
++        self.integer(system_version)
+ 
+     def integer(self, n):
+         if -110 <= n <= 127:
+@@ -92,7 +96,8 @@ class Writer:
+                 raise ValueError(typ)
+ 
+ 
+-def document(views=False, bad_version=False, window_min_size=False):
++def document(views=False, bad_version=False, window_min_size=False,
++             title="OPENSTEP fixture"):
+     # Match import.m so imports and round trips exercise a custom owner class.
+     owner = Obj([("NSCustomObject", 41)], [("@@", [string("OpenStepTestOwner"), None])])
+     custom = Obj([("NSCustomObject", 41)],
+@@ -121,7 +126,7 @@ def document(views=False, bad_version=False, window_min_size=False):
+                         0, 0, 240, 100, 0, 0, 240, 100]),
+                        ("@", [None]), ("@", [None]), ("@", [None]), ("@", [None])]
+         window_groups = [("iiffffi@@@@@c", [3, 2, 100, 100, 240, 100, 0x40000000,
+-                          string("OPENSTEP fixture"), string("NSWindow"),
++                          string(title), string("NSWindow"),
+                           string("View"), view, None, 1]),
+                          ("ffff", [0, 0, 1024, 768]),
+                          ("c", [1 if window_min_size else 0])]
+```
 
 **Verified.** Re-converting the corpus's 43 stamped-1000 files with the patched reader changes exactly 11, all inside non-ASCII string payloads (em dash, apostrophe, ≤, π — each now the correct code point, stored wide); the other 32 files and every `data.classes` are byte-identical, and the one 930-stamped file (`WaveBuilder.bad.nib`) is untouched (the reader already rejects its pre-`NS` stream).  Every changed file loads through the real `NSBundle` machinery (61/61 `resoundnib --load`), the menu prints "Resound's Web Page" with a genuine `U+2019`, and the Filter's echo label prints `0.0—1.0 x Current Value` with a genuine em dash; the full `Tests/` suite (5854 checks) passes.
