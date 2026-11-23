@@ -4,27 +4,24 @@ This project carries small port patches for three pinned third-party
 codebases, all kept in `patches/`:
 
 - **leighsmith/MusicKit** (the SndKit source, vendored as the pinned
-  `third_party/MusicKit` submodule): six fixes, three to build on
-  modern toolchains and non-x86 architectures and to run on machines
-  with half-duplex audio devices, and three for runtime correctness of
-  the recording, conversion and pasteboard paths that the port
-  exercises.  Applied by `third_party/build-sndkit.sh` so the submodule
-  stays pristine.
-- **the hermetic GNUstep stack** (pinned source commits, built into the
-  CI prefix by `.github/workflows/build.yml`; there is no submodule —
-  the CI fetches the trees, and the stack build step applies the
-  patches to the fetch): one lifetime-semantics fix in gnustep-gui
-  that the 1998 code (which must stay byte-identical) depends on,
-  plus a serialization-determinism fix in the same library for
-  reproducible `.gorm` conversion.
-- **gnustep/apps-gorm** (the `gormtool` nib→gorm converter, pinned
-  source commit; a dev-time tool — the CI validates the files it
-  produces but never builds or runs it): a main-menu rename and a
-  deterministic object-graph walk, so converting the same 1998 `.nib`
-  twice yields byte-identical `.gorm` files; plus a string-encoding fix
-  that decodes each string per the writer's system version, so the
-  UTF-8 strings of the Rhapsody-stamped 1998 archives stop converting
-  to mojibake.
+  `third_party/MusicKit` submodule): six fixes, three to build on modern
+  toolchains and non-x86 architectures and to run on machines with half-duplex
+  audio devices, and three for runtime correctness of the recording, conversion
+  and pasteboard paths that the port exercises.  Applied by
+  `third_party/build-sndkit.sh` so the submodule stays pristine.
+- **the hermetic GNUstep stack** (pinned source commits, built into the CI
+  prefix by `.github/workflows/build.yml`; there is no submodule — the CI
+  fetches the trees, and the stack build step applies the patches to the fetch):
+  one lifetime-semantics fix in gnustep-gui that Resound's 1998 code (which must
+  stay byte-identical) depends on, plus a serialization-determinism fix in the
+  same library for reproducible `.gorm` conversion.
+- **gnustep/apps-gorm** (the `gormtool` nib→gorm converter, pinned source
+  commit; a dev-time tool — the CI validates the files it produces but never
+  builds or runs it): a main-menu rename and a deterministic object-graph walk,
+  so converting the same 1998 Resound `.nib` twice yields byte-identical `.gorm`
+  files; plus a string-encoding fix that decodes each string per the writer's
+  system version, so the UTF-8 strings in the Rhapsody-stamped 1998 Resound
+  archives stop converting to mojibake.
 
 MusicKit patches apply from the repository root:
 
@@ -568,52 +565,46 @@ format, played through the PipeWire/Pulse device, and both delegate
 messages (`willPlay:… duringPerformance:`, `didPlay:… duringPerformance:`)
 observed at the Snd's delegate on the main run loop.
 
-Patches 0004 and 0005 were developed against the same snapshot for the
-Phase 2 unit 1b recording re-route (see
-`docs/RESOUND_SNDKIT_PLAN.md`): 0004 was verified with a standalone
-probe on the Raspberry Pi 500 running the full
-`SndStreamRecorder` flow (start-to-file, threshold, user stop,
-read-back, conversion) with a silent virtual input, and 0005 with an
-8-second capture converted 44.1 kHz -> 8 kHz, which aborted 3/3 before
-the fix and completed 3/3 (plus a 1/2/4/6/10/15 s duration matrix)
-after it, with the file-I/O contract tests (`resoundio`, `sndsmoke`)
-unchanged. **In-app verification (2026-11-07, Phase 2 unit 1c, the
-console unit):** the console's `recordDown:`/`stopDown:` path runs the
-same flow inside the app (the 1998 six-argument `record:::::` call →
-`SndStreamRecorder` capture of the silent virtual input on the dev
-machine → user stop at ~2 s → `_finishRecording` read-back and
+Patches 0004 and 0005 were developed against the same snapshot for the Phase 2
+unit 1b recording re-route (see `docs/RESOUND_SNDKIT_PLAN.md`): 0004 was
+verified with a standalone probe on the Raspberry Pi 500 running the full
+`SndStreamRecorder` flow (start-to-file, threshold, user stop, read-back,
+conversion) with a silent virtual input, and 0005 with an 8-second capture
+converted 44.1 kHz -> 8 kHz, which aborted 3/3 before the fix and completed 3/3
+(plus a 1/2/4/6/10/15 s duration matrix) after it, with the file-I/O contract
+tests (`resoundio`, `sndsmoke`) unchanged. **In-app verification (2026-11-07,
+Phase 2 unit 1c, the console unit):** the console's `recordDown:`/`stopDown:`
+path runs the same flow inside the app (Resound's 1998 six-argument
+`record:::::` call → `SndStreamRecorder` capture of the silent virtual input on
+the dev machine → user stop at ~2 s → `_finishRecording` read-back and
 conversion; the capture is 44.1 kHz so the convert is same-rate
-float32→linear-16 — the cross-rate path 0005 guards was verified by
-the probe). This is the first in-app exercise of the 0004 threshold
-(unit 1b's verification was a standalone probe on the Pi) and of the
-whole `_finishRecording` sequence.
+float32→linear-16 — the cross-rate path 0005 guards was verified by the probe).
+This is the first in-app exercise of the 0004 threshold (unit 1b's verification
+was a standalone probe on the Pi) and of the whole `_finishRecording` sequence.
 
-0006 was developed against the same snapshot on 2026-11-18 during the
-Phase 3 Mix unit port, on the Pi (aarch64): the byte-dump probe in the
-section above (raw `0x646e732e` → `NSSwapBigLongToHost` `0x00000000` vs
-`NSSwapBigIntToHost` `0x2e736e64`); the layer-1-only variant (all six
-swaps at the 32-bit width, struct assignments unchanged) decodes
-non-nil but with `frameCount` 0 and NULL buffer bytes, isolating
-defect 2, whose presence in the built framework was confirmed by
-disassembly; with both layers fixed, a 4-frame 16-bit mono 8 kHz sound
-round-trips `-dataEncodedAsFormat: @"au"` → `-initWithData:` byte-exact
-(format, rate, channel count, frame count, and every sample byte), and
-the full pasteboard path of a real `SndView`
-(`writeSelectionToPasteboard:types:` → `readSelectionFromPasteboard:`)
-works headless with no display and no `NSApplication` (the general
-pasteboard auto-launches its `gpbs` server in-process).  This also
-restores the app's own pasteboard paste, which decodes through the same
-`initWithData:`.  Two verification-boundary notes: the SndKit↔SndKit
-round trip is self-consistent in *host* byte order for the sample data
-(the writer appends the in-memory buffer bytes as-is, no endian swap),
-so the fix makes the encode/decode pair agree in *width*, not
-endianness — a foreign big-endian AU producer would mis-decode, the
-same exposure the 1998 build had in reverse; and the probes exposed a
-separate, long-standing SndKit buffer-list artifact (a fresh
-`[[Snd alloc] init]` carries one zero-frame buffer, so a paste into a
-fresh sound leaves a two-buffer sound whose first buffer is empty —
-`-[Snd bytes]` reads buffer 0) which this patch does not address; the
-Mix port works around it in the app (`compactSamples`).
+0006 was developed against the same snapshot on 2026-11-18 during the Phase 3
+Mix unit port, on the Pi (aarch64): the byte-dump probe in the section above
+(raw `0x646e732e` → `NSSwapBigLongToHost` `0x00000000` vs `NSSwapBigIntToHost`
+`0x2e736e64`); the layer-1-only variant (all six swaps at the 32-bit width,
+struct assignments unchanged) decodes non-nil but with `frameCount` 0 and NULL
+buffer bytes, isolating defect 2, whose presence in the built framework was
+confirmed by disassembly; with both layers fixed, a 4-frame 16-bit mono 8 kHz
+sound round-trips `-dataEncodedAsFormat: @"au"` → `-initWithData:` byte-exact
+(format, rate, channel count, frame count, and every sample byte), and the full
+pasteboard path of a real `SndView` (`writeSelectionToPasteboard:types:` →
+`readSelectionFromPasteboard:`) works headless with no display and no
+`NSApplication` (the general pasteboard auto-launches its `gpbs` server
+in-process).  This also restores the app's own pasteboard paste, which decodes
+through the same `initWithData:`.  Two verification-boundary notes: the
+SndKit↔SndKit round trip is self-consistent in *host* byte order for the sample
+data (the writer appends the in-memory buffer bytes as-is, no endian swap), so
+the fix makes the encode/decode pair agree in *width*, not endianness — a
+foreign big-endian AU producer would mis-decode, the same exposure SndKit's 1998
+build had in reverse; and the probes exposed a separate, long-standing SndKit
+buffer-list artifact (a fresh `[[Snd alloc] init]` carries one zero-frame
+buffer, so a paste into a fresh sound leaves a two-buffer sound whose first
+buffer is empty — `-[Snd bytes]` reads buffer 0) which this patch does not
+address; the Mix port works around it in the app (`compactSamples`).
 
 0001 and 0002 were submitted upstream on 2026-11-03 as issue
 [#2](https://github.com/leighsmith/MusicKit/issues/2) (vDSP arch guard) and
@@ -636,54 +627,49 @@ lands.
 
 # Upstream patches for the GNUstep stack (gnustep-gui)
 
-The CI builds a hermetic GNUstep stack from pinned source commits into
-its own prefix (`.github/workflows/build.yml`: libobjc2 `c9f4002a`,
-gnustep-make `4e31a03…`, gnustep-base `5bda5222`, gnustep-gui
-`8f804fd5…`, gnustep-back `bbcc3de7…`).  One lifetime-semantics fix
-in **gnustep-gui** (G2) is required for the 1998 code to run safely,
-and a second (G3), serialization-determinism, makes the port's
-`.gorm` conversion reproducible.  The 1998 sources must stay
-byte-identical (except forced platform mappings), so anything a 1998
-ownership pattern needs has to come from the framework — hence
-patches, applied by the stack build step, with `GNUSTEP_STACK_REV`
-bumped to `"4"` (2026-11-11: the retired G1 lifetime fix of the
-earlier rev left the stack).  (`third_party/build-sndkit.sh`
-deliberately picks up only `MusicKit-*.diff`, so the three patch
-families in `patches/` do not interfere.)
+The CI builds a hermetic GNUstep stack from pinned source commits into its own
+prefix (`.github/workflows/build.yml`: libobjc2 `c9f4002a`, gnustep-make
+`4e31a03…`, gnustep-base `5bda5222`, gnustep-gui `8f804fd5…`, gnustep-back
+`bbcc3de7…`).  One lifetime-semantics fix in **gnustep-gui** (G2) is required
+for Resound's 1998 code to run safely, and a second (G3),
+serialization-determinism, makes the port's `.gorm` conversion
+reproducible.  Resound's 1998 sources must stay byte-identical (except forced
+platform mappings), so anything a 1998 ownership pattern needs has to come from
+the framework — hence patches, applied by the stack build step, with
+`GNUSTEP_STACK_REV` bumped to `"4"` (2026-11-11: the retired G1 lifetime fix of
+the earlier rev left the stack).  (`third_party/build-sndkit.sh` deliberately
+picks up only `MusicKit-*.diff`, so the three patch families in `patches/` do
+not interfere.)
 
-The lifetime fix (G2) was developed against the pinned gnustep-gui
-on the aarch64 dev machine with a throwaway probe (`MiscSoundView` /
-`MiscSoundViewRuler` / `ResoundMiscSoundView` in a real window,
-exactly the app's view chain, plus the 1998 pasteboard cut/copy
-flow) and submitted upstream on 2026-11-09 as libs-gui issue #1029
-(referenced in its section below); when it lands, drop the
-corresponding patch on the next stack pin bump (and bump
-`GNUSTEP_STACK_REV`).  A second lifetime fix (G1, the `NSWindow`
-released-when-closed default) was likewise submitted as issue #1028
-and **retired 2026-11-11**: the maintainer declined the change, and
-a full audit of the built 1998 sources shows nothing the build
-compiles needs it (see the G1 section).  The determinism fix (G3)
-was developed against the same pinned tree with a differential
-conversion of the 1998 nibs (convert the same source twice, compare
-bytes) and submitted upstream on 2026-11-10 (libs-gui #1032, the
-converter half as apps-gorm #105); #1032 was closed by the
-maintainer as not relevant (see the G3 section), the patch stays in
-the stack.  All three were verified on the hermetic stack (see
-*Verification* below).
+The lifetime fix (G2) was developed against the pinned gnustep-gui on the
+aarch64 dev machine with a throwaway probe (`MiscSoundView` /
+`MiscSoundViewRuler` / `ResoundMiscSoundView` in a real window, exactly the
+app's view chain, plus Resound's 1998 pasteboard cut/copy flow) and submitted
+upstream on 2026-11-09 as libs-gui issue #1029 (referenced in its section
+below); when it lands, drop the corresponding patch on the next stack pin bump
+(and bump `GNUSTEP_STACK_REV`).  A second lifetime fix (G1, the `NSWindow`
+released-when-closed default) was likewise submitted as issue #1028 and
+**retired 2026-11-11**: the maintainer declined the change, and a full audit of
+the app's built 1998 sources shows nothing the build compiles needs it (see the
+G1 section).  The determinism fix (G3) was developed against the same pinned
+tree with a differential conversion of the app's 1998 nibs (convert the same
+source twice, compare bytes) and submitted upstream on 2026-11-10 (libs-gui
+#1032, the converter half as apps-gorm #105); #1032 was closed by the maintainer
+as not relevant (see the G3 section), the patch stays in the stack.  All three
+were verified on the hermetic stack (see *Verification* below).
 
 ## G1. `NSWindow`: `isReleasedWhenClosed` defaults to NO — **retired 2026-11-11**
 
-The patch `GNUstep-0001-nswindow-released-when-closed-default.diff`
-flipped the `_initDefaults` default (`_f.is_released_when_closed =
-YES` → `NO`, one hunk in `Source/NSWindow.m`) so that `-[NSWindow
-close]`'s unconditional `RELEASE` is always balanced by a `RETAIN` —
-the retain/release guarantee the 1998 code is written against, and
-the one `NSMiniWindow` already opts into.  It was submitted as
-gnustep/libs-gui issue [#1028](https://github.com/gnustep/libs-gui/issues/1028)
-(2026-11-09) and **dropped from the stack on 2026-11-11**
-(`GNUSTEP_STACK_REV` → `"4"`): the maintainer declined the change,
-and a full audit of the built sources confirms it is not needed by
-anything the build compiles.
+The patch `GNUstep-0001-nswindow-released-when-closed-default.diff` flipped the
+`_initDefaults` default (`_f.is_released_when_closed = YES` → `NO`, one hunk in
+`Source/NSWindow.m`) so that `-[NSWindow close]`'s unconditional `RELEASE` is
+always balanced by a `RETAIN` — the retain/release guarantee Resound's 1998 code
+is written against, and the one `NSMiniWindow` already opts into.  It was
+submitted as gnustep/libs-gui issue
+[#1028](https://github.com/gnustep/libs-gui/issues/1028) (2026-11-09) and
+**dropped from the stack on 2026-11-11** (`GNUSTEP_STACK_REV` → `"4"`): the
+maintainer declined the change, and a full audit of the built sources confirms
+it is not needed by anything the build compiles.
 
 **Maintainer position** (fredkiefer, #1028): *"I see no reason to
 change this. In NSPanel _initDefaults we already have `[self
@@ -692,27 +678,25 @@ already behave as you expect it. If there is an issue inside of
 Resound it might have a different reason and you should try to
 address that instead."*
 
-**The audit — the maintainer is right.** The crash that motivated
-the patch (`objc_msg_lookup_sender`, wild isa → wild dtable, 8/10
-natural runs of the dev probe) came from the probe's *own* teardown:
-a **modern** `alloc` + `close` + `release` on a plain `NSWindow` —
-a pattern the OpenStep contract does not support and the 1998 code
-does not use.  Enumerating every window-close/release idiom in the
-**built** 1998 sources:
+**The audit — the maintainer is right.** The crash that motivated the patch
+(`objc_msg_lookup_sender`, wild isa → wild dtable, 8/10 natural runs of the dev
+probe) came from the probe's *own* teardown: a **modern** `alloc` + `close` +
+`release` on a plain `NSWindow` — a pattern the OpenStep contract does not
+support and Resound's 1998 code does not use.  Enumerating every
+window-close/release idiom in the **built** Resound 1998 sources:
 
-- the only `setReleasedWhenClosed` is `FileController`'s explicit
-  `NO` for the main window — the 1998 authors' own fix, exactly
-  what the patch would impose as a default; the only `NSWindow`
-  allocation is that same main window;
-- the only `[w close]` is `ModuleController.m:171 [loadPanel
-  close]` — a file the no-modules build does not compile at all;
-  its `loadPanel` ("LoadingPanel") is an `NSPanel`, whose
-  `_initDefaults` already sets `NO` (the maintainer's point);
-- the console nib's windows are `NSPanel` ("Console", "Record
-  Format") plus one `NSWindow` ("Window") that no code closes;
-  `FileController`'s `performClose`/`windowShouldClose` paths
-  target the main window (explicit `NO`); `MiscVolumeMeter`'s
-  `windowShouldClose` stops the meter and never releases a window.
+- the only `setReleasedWhenClosed` is `FileController`'s explicit `NO` for the
+  main window — Resound's 1998 authors' own fix, exactly what the patch would
+  impose as a default; the only `NSWindow` allocation is that same main window;
+- the only `[w close]` is `ModuleController.m:171 [loadPanel close]` — a file
+  the no-modules build does not compile at all; its `loadPanel` ("LoadingPanel")
+  is an `NSPanel`, whose `_initDefaults` already sets `NO` (the maintainer's
+  point);
+- the console nib's windows are `NSPanel` ("Console", "Record Format") plus one
+  `NSWindow` ("Window") that no code closes; `FileController`'s
+  `performClose`/`windowShouldClose` paths target the main window (explicit
+  `NO`); `MiscVolumeMeter`'s `windowShouldClose` stops the meter and never
+  releases a window.
 
 So under the stock default no compiled path double-frees: the main
 window opts out explicitly, every other closable window is a panel,
@@ -722,79 +706,71 @@ the end-to-end proof — app launch, window close, screenshot, fatal
 gates — runs in CI on the new stack rev.  Issue #1028 can be
 closed: no change requested.
 
-**Independent re-confirmation (2026-11-12).** The #1029 pristine
-repros re-create exactly this teardown crash at the smallest possible
-size: a 15-line program (pure AppKit, no pasteboard, no SndKit)
-running the same `close` + `release` sequence dies 15/15 under the
-stock `YES` default and 0/15 with the one hunk applied, and the full
-Resound.app flow probe agrees.  That is the audit's "probe artifact"
-explanation reproduced at the cleanest possible size — the modern
-`alloc` + `close` + `release` pattern, which no compiled 1998 path
-uses — and it leaves the retirement unchanged: the no-G1 stack is
-what ships.
+**Independent re-confirmation (2026-11-12).** The #1029 pristine repros
+re-create exactly this teardown crash at the smallest possible size: a 15-line
+program (pure AppKit, no pasteboard, no SndKit) running the same `close` +
+`release` sequence dies 15/15 under the stock `YES` default and 0/15 with the
+one hunk applied, and the full Resound.app flow probe agrees.  That is the
+audit's "probe artifact" explanation reproduced at the cleanest possible size —
+the modern `alloc` + `close` + `release` pattern, which no path of the compiled
+1998 app uses — and it leaves the retirement unchanged: the no-G1 stack is what
+ships.
 
 ## G2. `NSPasteboard`: retain the wrapper in the name→pasteboard map (patch `GNUstep-0002-nspasteboard-retained-wrapper-map.diff`)
 
 **Submitted upstream:** gnustep/libs-gui issue [#1029](https://github.com/gnustep/libs-gui/issues/1029) (2026-11-09), carrying this section verbatim.
 
-**Upstream status (2026-11-11):** the maintainers dispute the
-proposed mechanism.  rfm: *"I already looked, and agree that the
-proposed fix looks wrong. My inclination would be to look again after
-the next release. Possibly there's something just released too soon
-and a simple retain and autorelease in the right place would fix
-it."* — a pasteboard wrapper that lives in the registry forever is
-not a fix they will take — and then: *"Is there a testcase to
-reproduce the problem?"*  The patch stays in the stack in the
-meantime: the 1998 cut/copy flow is live, and the audit pinned the
-wrapper/target lifetime as the root cause (the *where* — map
-callback vs. a too-early release — is exactly the open question).
-A minimal testcase reply (the autorelease-pool-boundary snippet,
-with the two candidate fix sites) was posted 2026-11-11 (noting
-that the crash was established on the modern libobjc2 runtime
-without ARC).  rfm replied 2026-11-12: no crash on his x86_64 in
-either of his two environments (gcc+GNU runtime, clang+recent
-libobjc2), with or without gpbs running, using "current build from
-github".  A pristine (unpatched) rebuild of the pinned stack then
-reproduced the full picture (2026-11-11/12): `NSPasteboard.m` is
-byte-identical between the pin and the master tip (474 commits
-apart, zero changes to the file), and the pinned `-dealloc` removes
-the registry slot, so the posted snippet cannot crash on current
-code on *any* platform (pointer identity verified; 30/30 clean on
-aarch64) — his non-reproduction is expected, not a counterexample.
-Two programs were then measured against the pristine stack: the
-15-line window program (pure AppKit — `close` + `release`, no
-pasteboard, no SndKit) and the full Resound.app flow probe — both
-die 15/15 SIGSEGV on pristine, and neither crashes again once the
-#1028 one-line hunk is present (15-line program: 0/15 against a
-pin + hunk-only gui; app-flow probe: 0/30 against the 3-patch
-stack).  The crash they die in is the window close/release UAF of
-#1028 (a pattern no compiled 1998 path uses and no modern app
-uses), not the pasteboard-FFI variant of this issue.  The
-pasteboard-specific half is then reproduced as a plain crasher
-(2026-11-13): a ~45-line pure-AppKit program (no SndKit, no
-pasteboard dependency beyond gpbs) that re-uses the
-generalPasteboard wrapper across the pool boundary — the 1998 app
-flow pattern the posted snippet never does — with the
-application-like heap traffic that makes the re-use fatal: 30/30
-SIGSEGV on the pristine pinned gui (scribbled isa from the re-used
-chunk, dies in the class lookup), 0/30 with the one-line
-registry-retain hunk (the wrapper pointer survives the pool), and
-10/10 vs 0/10 on the ASAN build of the same stack (the
-heap-use-after-free with allocation/free/use stacks, independent of
-re-use luck).  A postable repro document (program inline +
-backtrace + the A/B) is ready for the issue comment.
+**Upstream status (2026-11-11):** the maintainers dispute the proposed
+mechanism.  rfm: *"I already looked, and agree that the proposed fix looks
+wrong. My inclination would be to look again after the next release. Possibly
+there's something just released too soon and a simple retain and autorelease in
+the right place would fix it."* — a pasteboard wrapper that lives in the
+registry forever is not a fix they will take — and then: *"Is there a testcase
+to reproduce the problem?"*  The patch stays in the stack in the meantime:
+Resound's 1998 cut/copy flow is live, and the audit pinned the wrapper/target
+lifetime as the root cause (the *where* — map callback vs. a too-early release —
+is exactly the open question). A minimal testcase reply (the
+autorelease-pool-boundary snippet, with the two candidate fix sites) was posted
+2026-11-11 (noting that the crash was established on the modern libobjc2 runtime
+without ARC).  rfm replied 2026-11-12: no crash on his x86_64 in either of his
+two environments (gcc+GNU runtime, clang+recent libobjc2), with or without gpbs
+running, using "current build from github".  A pristine (unpatched) rebuild of
+the pinned stack then reproduced the full picture (2026-11-11/12):
+`NSPasteboard.m` is byte-identical between the pin and the master tip (474
+commits apart, zero changes to the file), and the pinned `-dealloc` removes the
+registry slot, so the posted snippet cannot crash on current code on *any*
+platform (pointer identity verified; 30/30 clean on aarch64) — his
+non-reproduction is expected, not a counterexample. Two programs were then
+measured against the pristine stack: the 15-line window program (pure AppKit —
+`close` + `release`, no pasteboard, no SndKit) and the full Resound.app flow
+probe — both die 15/15 SIGSEGV on pristine, and neither crashes again once the
+#1028 one-line hunk is present (15-line program: 0/15 against a pin + hunk-only
+gui; app-flow probe: 0/30 against the 3-patch stack).  The crash they die in is
+the window close/release UAF of #1028 (a pattern no compiled path of the 1998
+app uses and no modern app uses), not the pasteboard-FFI variant of this
+issue.  The pasteboard-specific half is then reproduced as a plain crasher
+(2026-11-13): a ~45-line pure-AppKit program (no SndKit, no pasteboard
+dependency beyond gpbs) that re-uses the generalPasteboard wrapper across the
+pool boundary — the 1998 app flow pattern the posted snippet never does — with
+the application-like heap traffic that makes the re-use fatal: 30/30 SIGSEGV on
+the pristine pinned gui (scribbled isa from the re-used chunk, dies in the class
+lookup), 0/30 with the one-line registry-retain hunk (the wrapper pointer
+survives the pool), and 10/10 vs 0/10 on the ASAN build of the same stack (the
+heap-use-after-free with allocation/free/use stacks, independent of re-use
+luck).  A postable repro document (program inline + backtrace + the A/B) is
+ready for the issue comment.
 
 **Suggested issue title:** *NSPasteboard wrappers die with the
 autorelease pool while their DO target proxy is still in use: FFI
 use-after-free in `GSFFIInvocationCallback`*
 
-**Symptom.** Pasteboard operations on a wrapper that outlives its
-creating autorelease pool can die inside the DO/FFI trampoline
-(`GSFFIInvocationCallback`, `obj = *(id*)args[0]` on a freed target
-proxy).  The probe reproduced it under gdb on the 1998 cut/copy flow
-(a second `changeCount` after `copy:`); the crash object is the
-wrapper's `target` ivar — the local proxy for the pasteboard-server
-object — not the wrapper the caller holds.
+**Symptom.** Pasteboard operations on a wrapper that outlives its creating
+autorelease pool can die inside the DO/FFI trampoline
+(`GSFFIInvocationCallback`, `obj = *(id*)args[0]` on a freed target proxy).  The
+probe reproduced it under gdb on Resound's 1998 cut/copy flow (a second
+`changeCount` after `copy:`); the crash object is the wrapper's `target` ivar —
+the local proxy for the pasteboard-server object — not the wrapper the caller
+holds.
 
 **Explanation.** `+[NSPasteboard initialize]` builds the name→wrapper
 registry with *non-retained* values:
@@ -838,41 +814,36 @@ API changes.
 
 **Submitted upstream:** gnustep/libs-gui issue [#1032](https://github.com/gnustep/libs-gui/issues/1032) (2026-11-10), carrying this section verbatim plus the full diff, under the title *Gorm serialization is not reproducible: the container's top-level collections are sets whose enumeration order is pointer-hash dependent, so converting the same nib twice yields different `.gorm` bytes*; the converter half is cross-referenced there as apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (and back).
 
-**Upstream status (2026-11-11): closed as not relevant.**  The
-maintainer (fredkiefer): *"Having byte identical reproducible archives
-is not an aim for the Gorm format. @gcasa introduced a new format in
-Gorm that is human readable and version control friendly that should
-fulfill your expectations. Closing this issue as not relevant."*  gcasa
-concurred: the determinism part is "at best a feature request" — the
-.gorm format was *never* designed to be deterministic in that way and
-it does not help with merging (GUX is for that) — though he took the
-`_NSMainMenu` remapping part of the patch ("glad you caught that"),
-the rest to be reconsidered after the release.  This is a reasonable
-upstream call — a new human-readable gorm format addresses the
-version-control concern from the other side, and byte-identical
-*archives* is not a goal the project is taking on.  The maintainer
-was also confused by the "1998" in the issue texts (suspecting the
-port's AI agent of using it as an unexplained name); it was clarified
-as the app's vintage — from now on the upstream texts say
-*Resound.app*.  He likewise flagged "lengthy confusing output" (human
-or AI) as something he does not like and which "could be avoided
-easily" in the AI case; noted for the follow-up comments.
-**The patch stays in the hermetic stack regardless:** it is applied
-from this repository's `patches/` directory (not pulled from
-upstream), and the port needs a *reproducible conversion of the pinned
-1998 `.nib` input* to regenerate byte-identical `.gorm` artifacts — a
-property of the pinned converter's process, which the new format (a
-future, different input) does not supply for the 1998 streams.  So the
-retirement rule inverts here: this patch leaves the stack only on a
-pin bump to a commit that already carries it, never on the issue's
-closure.
+**Upstream status (2026-11-11): closed as not relevant.**  The maintainer
+(fredkiefer): *"Having byte identical reproducible archives is not an aim for
+the Gorm format. @gcasa introduced a new format in Gorm that is human readable
+and version control friendly that should fulfill your expectations. Closing this
+issue as not relevant."*  gcasa concurred: the determinism part is "at best a
+feature request" — the .gorm format was *never* designed to be deterministic in
+that way and it does not help with merging (GUX is for that) — though he took
+the `_NSMainMenu` remapping part of the patch ("glad you caught that"), the rest
+to be reconsidered after the release.  This is a reasonable upstream call — a
+new human-readable gorm format addresses the version-control concern from the
+other side, and byte-identical *archives* is not a goal the project is taking
+on.  The maintainer was also confused by the "1998" in the issue texts
+(suspecting the port's AI agent of using it as an unexplained name); it was
+clarified as the app's vintage — from now on the upstream texts say
+*Resound.app*.  He likewise flagged "lengthy confusing output" (human or AI) as
+something he does not like and which "could be avoided easily" in the AI case;
+noted for the follow-up comments. **The patch stays in the hermetic stack
+regardless:** it is applied from this repository's `patches/` directory (not
+pulled from upstream), and the port needs a *reproducible conversion of the
+pinned 1998 Resound `.nib` input* to regenerate byte-identical `.gorm` artifacts
+— a property of the pinned converter's process, which the new format (a future,
+different input) does not supply for the 1998 Resound streams.  So the
+retirement rule inverts here: this patch leaves the stack only on a pin bump to
+a commit that already carries it, never on the issue's closure.
 
-**Symptom.** Converting the same 1998 `.nib` to `.gorm` twice
-produces different files: the objects appear in a different sequence
-on each run, and for the menu-heavy main model the auto-generated
-names differ as well (the names are the converter's half of the
-story, see the *apps-gorm* section).  The model is identical; the
-archive bytes are not.
+**Symptom.** Converting the same 1998 Resound `.nib` to `.gorm` twice produces
+different files: the objects appear in a different sequence on each run, and for
+the menu-heavy main model the auto-generated names differ as well (the names are
+the converter's half of the story, see the *apps-gorm* section).  The model is
+identical; the archive bytes are not.
 
 **Explanation.** `GSNibContainer`'s `topLevelObjects` is a
 `NSMutableSet`, and a GNUstep set enumerates in pointer-hash order —
@@ -893,22 +864,20 @@ consumers expect.  Objects without a name (which should not occur for
 top-level objects) sort after the named ones, keeping their input
 order among themselves.
 
-**Compatibility.** Files written by an unpatched stack store the
-top-level objects as a set; the decoder accepts both encodings, so
-older files load unmodified in the patched one, and the
-newly-converted main-model gorm (the only file the port re-converts)
-loads in the CI-built stack.  The CI never re-converts a nib — it
-only validates the committed files — so this patch is a
-reproducibility feature for anyone who re-converts a 1998 nib with
-the hermetic stack, not a gate dependency.
+**Compatibility.** Files written by an unpatched stack store the top-level
+objects as a set; the decoder accepts both encodings, so older files load
+unmodified in the patched one, and the newly-converted main-model gorm (the only
+file the port re-converts) loads in the CI-built stack.  The CI never
+re-converts a nib — it only validates the committed files — so this patch is a
+reproducibility feature for anyone who re-converts one of Resound's 1998 nibs
+with the hermetic stack, not a gate dependency.
 
-**Verified.** With the deterministic converter of the *apps-gorm*
-section running against the patched stack, the 1998 `Console.nib`
-(22146 bytes) and `Resound.nib` (15188 bytes) convert to
-byte-identical files across 10 consecutive runs, a `.gorm` re-
-converted to `.gorm` is byte-stable, and the regenerated main-model
-gorm loads in the app (1998 main window + menu; 25 s run clean) and
-passes `resoundnib --check` on all 43 folders.
+**Verified.** With the deterministic converter of the *apps-gorm* section
+running against the patched stack, Resound's 1998 `Console.nib` (22146 bytes)
+and `Resound.nib` (15188 bytes) convert to byte-identical files across 10
+consecutive runs, a `.gorm` re- converted to `.gorm` is byte-stable, and the
+regenerated main-model gorm loads in the app (its 1998 main window + menu; 25 s
+run clean) and passes `resoundnib --check` on all 43 folders.
 
 ## Verification (GNUstep patches)
 
@@ -918,32 +887,29 @@ with the throwaway probe of the app's view chain + pasteboard flow
 (two variants: full, and one skipping the pasteboard sections), run
 15 times each before and after the patches:
 
-- **before** (stock gui): the full-variant probe crashed in **8/10**
-  natural runs, all at the *window teardown* — the probe's own
-  modern `close`+`release` idiom, which the stock default does not
-  support (G1's territory, since retired); the no-pasteboard
-  variant in **7/15** (its plain build: 2/10–7/15), likewise.  The
-  pasteboard section — an unretained wrapper, the 1998 pattern left
-  unguarded — crashed in the DO/FFI trampoline, additionally
+- **before** (stock gui): the full-variant probe crashed in **8/10** natural
+  runs, all at the *window teardown* — the probe's own modern `close`+`release`
+  idiom, which the stock default does not support (G1's territory, since
+  retired); the no-pasteboard variant in **7/15** (its plain build: 2/10–7/15),
+  likewise.  The pasteboard section — an unretained wrapper, the app's 1998
+  pattern left unguarded — crashed in the DO/FFI trampoline, additionally
   visible under gdb (G2's territory).
-- **after** (both patches in, the original matrix): **0/15** for
-  every variant, including the full one; the app's 10 s live run is
-  clean.
+- **after** (both patches in, the original matrix): **0/15** for every variant,
+  including the full one; the app's 10 s live run is clean.
 - A control probe written with the *corrected* patterns (`setReleased
-  WhenClosed: NO` + retaining the pasteboard) ran 0/40 across both
-  variants (15 natural + 15 natural + 10 under gdb) before *and*
-  after the patches — confirming that the two patched semantics, and
-  nothing else, were the root cause.
+  WhenClosed: NO` + retaining the pasteboard) ran 0/40 across both variants (15
+  natural + 15 natural + 10 under gdb) before *and* after the patches —
+  confirming that the two patched semantics, and nothing else, were the root
+  cause.
 
-With G1 dropped from the stack (2026-11-11) the window-teardown half
-of that matrix reverts to stock behaviour in the probe — by design:
-its teardown idiom is a modern pattern the 1998 code does not use
-(the G1 section carries the audit; the probe is a dev-machine tool,
-not part of the build).  G2's half is untouched by the drop: the
-pasteboard wrapper lifetime it fixes is what the 1998 cut/copy flow
-needs.  The end-to-end app verification on the two-patch stack
-(launch, window close, screenshot, fatal gates) runs in CI on the
-new stack rev.
+With G1 dropped from the stack (2026-11-11) the window-teardown half of that
+matrix reverts to stock behaviour in the probe — by design: its teardown idiom
+is a modern pattern Resound's 1998 code does not use (the G1 section carries the
+audit; the probe is a dev-machine tool, not part of the build).  G2's half is
+untouched by the drop: the pasteboard wrapper lifetime it fixes is what
+Resound's 1998 cut/copy flow needs.  The end-to-end app verification on the
+two-patch stack (launch, window close, screenshot, fatal gates) runs in CI on
+the new stack rev.
 
 G3 was verified with a differential conversion of the 1998 menu nibs
 (`Console`, `Resound`) on the same machine: with the stock converter,
@@ -957,21 +923,20 @@ folders with the app's 25 s live run clean.
 
 # Upstream patches for the nib converter (gnustep/apps-gorm)
 
-The `.gorm` files in this repository were converted from the 1998
-`.nib` folders with `gormtool` from `gnustep/apps-gorm` (branch
-`OPENSTEP_nib_support`, tip `d11b5291`) — the only converter that
-reads the 1998 typed streams (see `docs/RESOUND_SNDKIT_PLAN.md`,
-*NIB / Interface Builder file migration*).  The converter is a
-**dev-time** tool: the CI never builds or runs it — it only validates
-the files it produced (`resoundnib --check`) — so these patches are
-reproducibility fixes for anyone who re-converts a nib with the pinned
-converter, not gate dependencies.  They apply from the root of a
-source checkout of the pinned tree (Gorm-0001 carries the two
-conversion changes, Gorm-0002 the string-encoding fix, see below).
+The `.gorm` files in this repository were converted from Resound's 1998 `.nib`
+folders with `gormtool` from `gnustep/apps-gorm` (branch `OPENSTEP_nib_support`,
+tip `d11b5291`) — the only converter that reads Resound's 1998 typed streams
+(see `docs/RESOUND_SNDKIT_PLAN.md`, *NIB / Interface Builder file
+migration*).  The converter is a **dev-time** tool: the CI never builds or runs
+it — it only validates the files it produced (`resoundnib --check`) — so these
+patches are reproducibility fixes for anyone who re-converts a nib with the
+pinned converter, not gate dependencies.  They apply from the root of a source
+checkout of the pinned tree (Gorm-0001 carries the two conversion changes,
+Gorm-0002 the string-encoding fix, see below).
 
 ## Gorm-0001. `GormNibWrapperLoader`: the main menu name and a deterministic object walk (patch `Gorm-0001-nibwrapperloader-mainmenu-and-deterministic-load.diff`)
 
-**Submitted upstream:** gnustep/apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (2026-11-10), carrying both changes and the full diff, cross-referencing the runtime half (libs-gui issue #1032) and back.  gcasa replied 2026-11-11: he **took the `_NSMainMenu` remapping part** of the patch ("we can reconsider this after the release"); the determinism half is "at best a feature request" in his reading (the .gorm format was never designed to be deterministic; it does not help with merging — "this is what GUX is for").  The patch stays in the stack on the unchanged retirement rule (it leaves only on a pin bump to a commit that carries it).  (The patch is a dev-time reproducibility fix — the converter is never built by CI — so its upstream status does not gate anything; it is submitted for the benefit of anyone who re-converts 1998-era nibs with the pinned tree.)
+**Submitted upstream:** gnustep/apps-gorm issue [#105](https://github.com/gnustep/apps-gorm/issues/105) (2026-11-10), carrying both changes and the full diff, cross-referencing the runtime half (libs-gui issue #1032) and back.  gcasa replied 2026-11-11: he **took the `_NSMainMenu` remapping part** of the patch ("we can reconsider this after the release"); the determinism half is "at best a feature request" in his reading (the .gorm format was never designed to be deterministic; it does not help with merging — "this is what GUX is for").  The patch stays in the stack on the unchanged retirement rule (it leaves only on a pin bump to a commit that carries it).  (The patch is a dev-time reproducibility fix — the converter is never built by CI — so its upstream status does not gate anything; it is submitted for the benefit of anyone who re-converts Resound's 1998-era nibs with the pinned tree.)
 
 **1. The main menu.** Legacy OpenStep/Rhapsody nibs name the
 application's main menu `MainMenu` (or `_NSMainMenu`).  The gorm
@@ -1005,15 +970,14 @@ allocated with `alloc/init`: the autoreleased `[NSMutableArray array]`
 was double-freed through the pool drain at exit (11/11
 `malloc_consolidate` aborts in bisection).
 
-**Verified.** With this patch plus *G3* (the serialization half of
-the same story), the 1998 `Console.nib` and `Resound.nib` convert to
-byte-identical `.gorm` files across 10 runs, the name-table key
-multiset is stable (83 keys for `Resound`), and a `.gorm`→`.gorm`
-round-trip is byte-stable.  The only semantic difference versus the
-old non-deterministic conversion: three auto-named objects carry a
-different (now canonical) index; the menu structure is identical.  The
-known-bad `WaveBuilder.bad.nib` (the pre-`NS`-prefix typed stream the
-reader rejects) is untouched.
+**Verified.** With this patch plus *G3* (the serialization half of the same
+story), Resound's 1998 `Console.nib` and `Resound.nib` convert to byte-identical
+`.gorm` files across 10 runs, the name-table key multiset is stable (83 keys for
+`Resound`), and a `.gorm`→`.gorm` round-trip is byte-stable.  The only semantic
+difference versus the old non-deterministic conversion: three auto-named objects
+carry a different (now canonical) index; the menu structure is identical.  The
+known-bad `WaveBuilder.bad.nib` (the pre-`NS`-prefix typed stream the reader
+rejects) is untouched.
 
 ## Gorm-0002. `GormOpenStepNibReader`: string decoding follows the writer's system version (patch `Gorm-0002-openstepnibreader-string-encoding-per-system-version.diff`)
 
