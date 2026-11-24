@@ -981,7 +981,7 @@ rejects) is untouched.
 
 ## Gorm-0002. `GormOpenStepNibReader`: string decoding follows the writer's system version (patch `Gorm-0002-openstepnibreader-string-encoding-per-system-version.diff`)
 
-**Submitted upstream:** pending — ready to file against gnustep/apps-gorm; the issue is this section (Symptom through Verified, including the diff) plus the environment, and the line updates with the issue number once submitted.  As with Gorm-0001 this is a dev-time converter fix — the CI never builds the converter, so the patch gates nothing — and it follows the unchanged retirement rule (it leaves only on a pin bump to a commit that carries the fix).
+**Submitted upstream:** gnustep/apps-gorm issue [#110](https://github.com/gnustep/apps-gorm/issues/110) (2026-11-23), with PR [#111](https://github.com/gnustep/apps-gorm/pull/111) (2026-11-24) carrying the patch — the report is this section (Symptom through Verified, including the diff) plus the environment, now awaiting gcasa's review.  As with Gorm-0001 this is a dev-time converter fix — the CI never builds the converter, so the patch gates nothing — and it follows the unchanged retirement rule (it leaves only on a pin bump to a commit that carries the fix).
 
 **Suggested issue title:** *`GormOpenStepNibReader` decodes every string as NEXTSTEP: Rhapsody-stamped (system version 1000 or above) archives write UTF-8, so their non-ASCII strings convert to mojibake*
 
