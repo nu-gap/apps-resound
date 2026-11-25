@@ -5,9 +5,10 @@ For the GNUstep port of Resound (gnustep-port branch)
 The Phase 3 load contracts for the ported modules - so far the Zero
 module (zeroSound:), the Mix module (mix:), the Envelope module
 (applyEnvelope:), the EchoChamber module (begin:/performEcho:),
-the Gate module (showNoiseGatePanel:/gateIt:) and the Filter module
-(LoadFilterPanel:/Apply:/ApplyEcho:) - the first six units from
-the module tree (see docs/GNUSTEP_BUILD.md).
+the Gate module (showNoiseGatePanel:/gateIt:), the Filter module
+(LoadFilterPanel:/Apply:/ApplyEcho:) and the WaveBuilder module
+(loadSinPanel:/generateSin:/generateOthers:) - the first seven
+units from the module tree (see docs/GNUSTEP_BUILD.md).
 
 What it does (headless: no display, no audio device):
 
@@ -19,7 +20,8 @@ What it does (headless: no display, no audio device):
      like the app: ZeroModule runs the zero contract, MixModule the
      mix contract, EnvelopeModule the envelope contract,
      EchoChamber the echo contract, GateModule the gate contract,
-     FilterModule the filter contract.
+     FilterModule the filter contract, WaveBuilderModule the wave
+     builder contract.
 
   2. Instantiates the module (the same alloc/init the app runs) and
      checks the menu tree the 1998 init builds: exactly one leaf -
@@ -28,13 +30,16 @@ What it does (headless: no display, no audio device):
      Chamber..." targeting begin:, or "Noise Gate..." targeting
      showNoiseGatePanel: - or, the Filter module, the first with
      two, one "Filter" submenu holding the leaves "Comb
-     Filter..." and "Echo Filter...",
+     Filter..." and "Echo Filter...", or, the WaveBuilder module,
+     the first generator, one "Generate Sounds" submenu holding
+     the leaves "Sine Harmonics..." and "Other Waves...",
      on the module itself - what the app's "Modules" menu shows
      after the load.  The gorm-wired modules additionally expose
      their private ivars here (the Envelope panel outlets, the
      EchoChamber value outlets and windowLoaded flag, the Gate
      panel outlets and nib_loaded flag, the Filter panel outlets
-     and WindowLoaded flag), all checked to exist and to start in
+     and WindowLoaded flag, the WaveBuilder panel outlets and
+     windowLoaded flag), all checked to exist and to start in
      the un-wired state.
 
   3. Drives the module's DSP on real in-memory Snds, mono and stereo,
@@ -86,6 +91,18 @@ What it does (headless: no display, no audio device):
            matrices and progress fields as fakes, the view and
            controller doubles recording the setSound:/newSound:for:
            hand-off of the freshly built (resized) sound.
+          - generateSin: / generateOthers: (the sine and waveform
+           generation) building a fresh 16-bit mono 44.1k sound
+           from the panel values - the first contract with no
+           current sound at all: the expected buffer computed with
+           the module's own 1998 arithmetic (the harmonic sines
+           with the SHRT_MAX/SHRT_MIN clamps, the five waveform
+           functions, the noise through the re-seeded rand()
+           sequence), the panels, the pull-down and the six text
+           fields as fakes with the windowLoaded flag pre-set, the
+           ModuleController double recording the brandNewSound:
+           hand-off, and the note actions' string writes checked
+           against the 1998 %f / %d formatting.
 
 The controller is injected by setting the module's private
 moduleController ivar directly (object_setIvar): the app's own wiring
@@ -102,11 +119,18 @@ three value outlets and panel window, and the Filter's eight
 outlets - its slider, position and amplitude matrices, its two
 progress fields, the recursive button, the two panel windows -
 whose WindowLoaded flag is a full int, so a plain pointer-sized
-object_setIvar is exact on it.  The Gate's nib_loaded flag is a
-one-byte BOOL - the 1998 header declares it ahead of the four
-outlet pointers - so a pointer-sized object_setIvar on it would
-write into the outlets' bytes; the gate contract reads and writes
-it through the type-encoding-aware sized ivar helpers instead.
+object_setIvar is exact on it.  So are the WaveBuilder's fifteen
+outlets - its six 16x1 matrices, its six text fields at their
+gorm values, its pull-down, its two panel windows - whose
+windowLoaded flag is a full int the same pointer-sized set is
+exact on; and the generator's hand-off partner, the app's
+ModuleController, stands in as the double that records the
+brandNewSound: the 1998 module finishes with.  The Gate's
+nib_loaded flag is a one-byte BOOL - the 1998 header declares it
+ahead of the four outlet pointers - so a pointer-sized
+object_setIvar on it would write into the outlets' bytes; the
+gate contract reads and writes it through the type-encoding-aware
+sized ivar helpers instead.
 
 The mix: controller double answers the 1998 newWindow call with the
 selector the app's ModuleController actually carries: the 1998
@@ -128,6 +152,8 @@ Exit status: 0 when every check passes, 1 otherwise.
 #import <objc/runtime.h>
 #import <limits.h>
 #import <stdlib.h>
+#include <string.h>
+#include <math.h>
 
 /* The app's copy of the module base classes, the same files the tool
    compiles in below (../Source/Module.m) - one path for the shared
@@ -198,6 +224,37 @@ Exit status: 0 when every check passes, 1 otherwise.
 - ApplyEcho:sender;
 - (int) Max;
 - (int) Min;
+@end
+
+/* The 1998 WaveBuilder header is the plain one: every method with
+   the space after the colon, so the selectors are the part after
+   the space - generateSin:, A:, doNoise:, ... - and the mirror
+   carries the 1998 shapes byte-faithful. */
+@interface WaveBuilderModule : Module
+- init;
+- generateSin:sender;
+- generateOthers:sender;
+- loadSinPanel:sender;
+- loadOthersPanel:sender;
+- A:sender;
+- As:sender;
+- B:sender;
+- C:sender;
+- Cs:sender;
+- D:sender;
+- Ds:sender;
+- E:sender;
+- F:sender;
+- Fs:sender;
+- G:sender;
+- Gs:sender;
+- cosA:sender;
+- clear:sender;
+- doNoise:sender;
+- doSquare:sender;
+- doPulse:sender;
+- doTriangle:sender;
+- doSawtooth:sender;
 @end
 
 static int failures = 0;
@@ -1362,6 +1419,347 @@ in the shipped 1998 OpenStep build; the counters pin that here.
     return _invalidates;
     }
 @end
+
+/*
+WaveBuilder, the seventh unit - the one that generates rather
+than processes: its two panels ("Sine Wave Harmonics" and
+"Other Waves") build a fresh 16-bit mono 44.1k sound from the
+panel values and hand it off through brandNewSound: - no current
+sound, no view, no pasteboard.
+*/
+
+/*
+A stand-in for one of the WaveBuilder panel's text outlets (the
+gorm wires the six fields the same way as the 16x1 matrix
+cells; the module reaches them through floatValue / intValue on
+the generate reads, setStringValue: on the note-action writes,
+and setIntValue: on the percent counters).  The slot keeps the
+string the 1998 text field would hold and derives the numbers
+through the same NSNumber parsing the real cell does, so the
+values travel the real path: string in, number out.
+*/
+struct FakeWaveFieldSlot
+{
+    char *c;                 /* the string, NULL for the empty one */
+};
+
+@interface FakeWaveField : NSObject
+{
+    struct FakeWaveFieldSlot *_slot;
+    BOOL _ownsSlot;
+}
+- (id) init;
+- (id) initWithSlot: (struct FakeWaveFieldSlot *)slot;
+- (id) initWithString: (NSString *)string;
+- (void) setStringValue: (NSString *)string;
+- (NSString *) stringValue;
+- (float) floatValue;
+- (int) intValue;
+- (void) setIntValue: (int)value;
+@end
+
+@implementation FakeWaveField
+- init
+    {
+    if (self = [super init])
+        {
+        _slot = calloc (1, sizeof (struct FakeWaveFieldSlot));
+        _ownsSlot = YES;
+        _slot->c = strdup ("0");
+        }
+    return self;
+    }
+- (id) initWithSlot: (struct FakeWaveFieldSlot *)slot
+    {
+    if (self = [super init])
+        {
+        _slot = slot;
+        _ownsSlot = NO;
+        }
+    return self;
+    }
+- (id) initWithString: (NSString *)string
+    {
+    if (self = [super init])
+        {
+        _slot = calloc (1, sizeof (struct FakeWaveFieldSlot));
+        _ownsSlot = YES;
+        _slot->c = strdup (string ? [string UTF8String] : "");
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    if (_ownsSlot)
+        {
+        free (_slot->c);
+        free (_slot);
+        }
+    [super dealloc];
+    }
+- (void) setStringValue: (NSString *)string
+    {
+    free (_slot->c);
+    _slot->c = strdup (string ? [string UTF8String] : "");
+    }
+- (NSString *) stringValue
+    {
+    return [NSString stringWithUTF8String: _slot->c ? _slot->c : ""];
+    }
+- (float) floatValue
+    {
+    return [[self stringValue] floatValue];
+    }
+- (int) intValue
+    {
+    return [[self stringValue] intValue];
+    }
+- (void) setIntValue: (int)value
+    {
+    [self setStringValue: [NSString stringWithFormat: @"%d", value]];
+    }
+@end
+
+#define WAVBUILDER_ROWS 16
+#define WAVBUILDER_COLUMNS 1
+
+/*
+A stand-in for the WaveBuilder panel's six 16-row matrices (the
+harmonic frequency / amplitude / phase values, and their text
+twins): a 16x1 slot grid, the same plain-C-struct pattern as the
+Filter matrix, whose cells are FakeWaveField instances bound to
+the shared slots - a second cellAtRow: on the same cell sees the
+first one's writes, as in the real matrix.
+*/
+@interface FakeSinMatrix : NSObject
+{
+    struct FakeWaveFieldSlot *_slots;
+}
+- (id) cellAtRow: (int)row column: (int)column;
+@end
+
+@implementation FakeSinMatrix
+- init
+    {
+    if (self = [super init])
+        {
+        int i;
+        _slots = calloc (WAVBUILDER_ROWS * WAVBUILDER_COLUMNS,
+                         sizeof (struct FakeWaveFieldSlot));
+        for (i = 0; i < WAVBUILDER_ROWS * WAVBUILDER_COLUMNS; i++)
+            _slots[i].c = strdup ("0");
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    int i;
+    for (i = 0; i < WAVBUILDER_ROWS * WAVBUILDER_COLUMNS; i++)
+        free (_slots[i].c);
+    free (_slots);
+    [super dealloc];
+    }
+- (id) cellAtRow: (int)row column: (int)column
+    {
+    if (row < 0 || row >= WAVBUILDER_ROWS
+        || column < 0 || column >= WAVBUILDER_COLUMNS)
+        return nil;
+    return [[ [FakeWaveField alloc] initWithSlot:
+                 _slots + row * WAVBUILDER_COLUMNS + column ] autorelease];
+    }
+@end
+
+/*
+A stand-in for the WaveBuilder panel windows: records the
+makeKeyAndOrderFront: the 1998 load...Panel: methods send them.
+With the panels pre-set - and the 1998 full-int windowLoaded
+flag pre-set the pointer-sized way the Filter contract does -
+the methods skip the nib load the module performs for a real
+panel (that needs a display; the app-side half is the
+resoundmenu --perform probe, where the gorm panels come up for
+real).
+*/
+@interface FakeWavePanel : NSObject
+{
+    int _keyFront;
+}
+- (void) makeKeyAndOrderFront: (id)sender;
+- (int) keyFrontCount;
+@end
+
+@implementation FakeWavePanel
+- (void) makeKeyAndOrderFront: (id)sender
+    {
+    _keyFront++;
+    }
+- (int) keyFrontCount
+    {
+    return _keyFront;
+    }
+@end
+
+/*
+A stand-in for the sin panel's pull-down (the gorm wires it to
+the 1998 "Actions..." menu): the 1998 loadSinPanel: flips it to
+pulls-down and re-sets its title - both recorded here.
+*/
+@interface FakeWavePopUp : NSObject
+{
+    BOOL _pullsDown;
+    NSString *_title;
+}
+- (void) setPullsDown: (BOOL)down;
+- (BOOL) pullsDown;
+- (void) setTitle: (NSString *)title;
+- (NSString *) title;
+@end
+
+@implementation FakeWavePopUp
+- (void) dealloc
+    {
+    [_title release];
+    [super dealloc];
+    }
+- (void) setPullsDown: (BOOL)down
+    {
+    _pullsDown = down;
+    }
+- (BOOL) pullsDown
+    {
+    return _pullsDown;
+    }
+- (void) setTitle: (NSString *)title
+    {
+    if (title != _title)
+        {
+        [_title release];
+        _title = [title retain];
+        }
+    }
+- (NSString *) title
+    {
+    return _title;
+    }
+@end
+
+/*
+A stand-in for the app's ModuleController for the WaveBuilder
+contract: the 1998 module is a generator - it never reads the
+document (no currentSound / currentSoundView call), and each
+generation finishes with the brandNewSound: hand-off of the
+freshly built sound, which this records.
+*/
+@interface FakeWaveController : NSObject
+{
+    id _newSound;
+    int _handOffs;
+}
+- (void) brandNewSound: (id)thisSound;
+- (id) newSound;
+- (int) newSoundCount;
+@end
+
+@implementation FakeWaveController
+- (void) dealloc
+    {
+    [_newSound release];
+    [super dealloc];
+    }
+- (void) brandNewSound: (id)thisSound
+    {
+    if (_newSound != thisSound)
+        {
+        [_newSound release];
+        _newSound = [thisSound retain];
+        }
+    _handOffs++;
+    }
+- (id) newSound
+    {
+    return _newSound;
+    }
+- (int) newSoundCount
+    {
+    return _handOffs;
+    }
+@end
+
+/*
+The five waveform functions the 1998 module carries -
+byte-identical copies, the way the other contracts mirror the
+module's own arithmetic to compute the expected buffer.  The
+operator-precedence quirks (the % binding tighter than the * in
+the sawtooth / square / triangle range tests, and the 1998
+"okay, don't mock it; it works" note on the triangle's last
+branch) are part of the expectation.  The noise is the only
+non-pure one: rand() is deterministic under a fixed seed, so the
+contract seeds, runs the module (which consumes the sequence),
+re-seeds, and regenerates the same values for the expectation.
+The RAND_MAX division is the 1998 fingerprint the module's copy
+documents (2^31-1 does not fit a float, so it converts to
+2^31) - the same rounding, which modern clang points out with
+-Wimplicit-const-int-float-conversion.
+*/
+static float wbPulse (int position, int wavelength)
+    {
+    if (position%wavelength==0)    return 1.0;
+    if ((position-1)%wavelength==0) return -1.0;
+    return 0.0;
+    }
+
+static float wbSawtooth (int position, int wavelength)
+    {
+    if (position%wavelength*2<wavelength)         // positive rise
+        {
+        return (
+            ((float)(position%wavelength))*2/wavelength);
+        }
+    else                                        // negative rise
+        {
+        return (
+            ((float)(position%wavelength-(wavelength/2)))*2/wavelength)-1;
+        }
+    }
+
+static float wbNoise (int position, int wavelength)
+    {
+    return 2*((float)rand())/RAND_MAX-1;
+    }
+
+static float wbSquare (int position, int wavelength)
+    {
+    if (position%wavelength*2>wavelength)
+        {
+        return -1.0;
+        }
+    return 1.0;
+    }
+
+static float wbTriangle (int position, int wavelength)
+    {
+    if (position%wavelength*4<wavelength)         // positive rise
+        {
+        return (
+            ((float)(position%wavelength))*4/wavelength);
+        }
+    else if (position%wavelength*2<wavelength)    // positive fall
+        {
+        return 1-(
+            ((float)(position%wavelength)-(wavelength/4))*4/wavelength);
+        }
+    else if ((position%wavelength*4)<wavelength*3) // negative fall
+        {
+        return 0-(
+            ((float)(position%wavelength)-(wavelength/2))*4/wavelength);
+        }
+    else                                        // negative rise
+        {
+        return (
+            (((float)(position%wavelength)/(float)(wavelength))-.75)*4)
+            -1;
+            // okay, don't mock it; it works.
+        }
+    }
 
 /*
 Fill the sound's buffer with a non-silence pattern: a 16-bit linear
@@ -3167,6 +3565,445 @@ static void runFilter (Class principal)
     testFilterApplyEcho (module, ivar, posNeg, amps, 2000);
 }
 
+/*
+The 1998 sine arithmetic, mirrored exactly as the module runs
+it: zero the whole buffer, then for each active harmonic (the
+1998 frequency && amplitude if) add the 32767-scaled sine of
+the harmonic - the int accumulator over the double product (the
+1998 2*3.1415 is a double), the SHRT_MAX / SHRT_MIN clamps, the
+signed-short store, so the expectation is bit-exact against the
+module's buffer.
+*/
+static void sinExpected (const float *freq, const float *amp,
+                         const float *ph, int length,
+                         signed short *expected)
+{
+    int x;
+    int y;
+    for (y = 0; y < length; y++)
+        expected[y] = 0;
+    for (x = 0; x < 16; x++)
+        if (freq[x] && amp[x])
+            for (y = 0; y < length; y++)
+            {
+            int tempvalue = expected[y] +
+                (32767*amp[x]*sin((y*freq[x]*2*3.1415)/44100+ph[x]));
+            if (tempvalue > SHRT_MAX)
+                tempvalue = SHRT_MAX;
+            if (tempvalue < SHRT_MIN)
+                tempvalue = SHRT_MIN;
+            expected[y] = (signed short)tempvalue;
+            }
+}
+
+/*
+The 1998 "other waves" arithmetic, mirrored through the
+byte-identical waveform function above: the 1998 wavelength
+(1/frequency*44100 truncated to int), the 32767-scaled
+amplitude, the per-frame waveform value cast to signed short -
+the same truncations, the same order.
+*/
+static void othersExpected (float (*wave) (int, int), int length,
+                            float frequency, float ampField,
+                            signed short *expected)
+{
+    int wavelength = (int)(1/frequency*44100);
+    float amplitude = 32767*ampField;
+    int y;
+    for (y = 0; y < length; y++)
+        expected[y] = (signed short)(amplitude*wave(y, wavelength));
+}
+
+/*
+The generateSin: contract on one harmonic shape: set the length
+field and the three 16-row matrices through the same string
+writes the real controls carry, run the method, and check the
+brandNewSound: hand-off, the shape of the fresh sound, the
+percent counter, and the buffer against the mirrored 1998
+arithmetic.  A zero length is the 1998 guard - no sound at all,
+the percent sentinel untouched.
+*/
+static void testWaveGenerateSin (id module, int frames, const float *freq,
+                                 const float *amp, const float *ph)
+{
+    /* The injected outlets as their concrete fake types (the id
+       form would trip -Wobjc-multiple-method-names where a
+       control of AppKit's declares the same selector - the Filter
+       contract's concrete fakes keep the dispatch unambiguous). */
+    FakeWaveField *length = readObjIvar (module, "sinLength");
+    FakeWaveField *percent = readObjIvar (module, "percentDoneSin");
+    FakeSinMatrix *harmonics = readObjIvar (module, "sinHarmonics");
+    FakeSinMatrix *amplitudes = readObjIvar (module, "sinAmplitudes");
+    FakeSinMatrix *phases = readObjIvar (module, "sinPhases");
+    FakeWaveController *controller = readObjIvar (module, "moduleController");
+    int before = [controller newSoundCount];
+    int active = 0;
+    int x;
+    for (x = 0; x < 16; x++)
+        if (freq[x] && amp[x])
+            active++;
+
+    [length setStringValue: [NSString stringWithFormat: @"%d", frames]];
+    for (x = 0; x < 16; x++)
+        {
+        [ [harmonics cellAtRow: x column: 0]
+          setStringValue: [NSString stringWithFormat: @"%g", freq[x]] ];
+        [ [amplitudes cellAtRow: x column: 0]
+          setStringValue: [NSString stringWithFormat: @"%g", amp[x]] ];
+        [ [phases cellAtRow: x column: 0]
+          setStringValue: [NSString stringWithFormat: @"%g", ph[x]] ];
+        }
+    [percent setStringValue: @"55"];
+
+    id ret = [(WaveBuilderModule *)module generateSin: nil];
+
+    check (ret == module, "generateSin: returns self");
+    check ([controller newSoundCount] == before + (frames ? 1 : 0),
+           "the controller got the fresh sound (the length-0 guard builds none)");
+    check ([percent intValue] == (frames ? active : 55),
+           "the percent counter counts the active harmonics (the guard leaves it alone)");
+    if (!frames)
+        return;
+    Snd *out = [controller newSound];
+    check (out != nil && [out lengthInSampleFrames] == (unsigned long)frames
+             && [out channelCount] == 1
+             && [out dataFormat] == SND_FORMAT_LINEAR_16
+             && [out samplingRate] == SND_RATE_HIGH,
+            "the fresh sound is 16-bit mono 44.1k, sized from the length field");
+    if (out == nil)
+        return;
+    signed short *expected = malloc ((size_t)frames * sizeof (signed short));
+    sinExpected (freq, amp, ph, frames, expected);
+    check (memcmp ([out bytes], expected,
+                   (size_t)frames * sizeof (signed short)) == 0,
+            "sine buffer matches the 1998 arithmetic");
+    free (expected);
+}
+
+/*
+The generateOthers: contract on one waveform: the doX: setter
+that picks it (the 1998 "Type" pull-down drives the same five),
+the length / size / amplitude fields, and the run - the 1998
+guard is length && frequency && amplitude, so any zero field
+skips the whole generation.  The percent counter and the
+buffer are checked against the mirrored 1998 arithmetic; the
+noise case through the re-seeded rand sequence, the module
+consuming one rand() per frame.
+*/
+static void testWaveGenerateOthers (id module, const char *wave,
+                                    int expectedWhich, SEL doX,
+                                    int frames, const char *sizeStr,
+                                    const char *ampStr,
+                                    float (*waveFn) (int, int))
+{
+    FakeWaveField *length = readObjIvar (module, "othersLength");
+    FakeWaveField *size = readObjIvar (module, "othersSize");
+    FakeWaveField *amp = readObjIvar (module, "othersAmplitude");
+    FakeWaveField *percent = readObjIvar (module, "percentDoneOthers");
+    FakeWaveController *controller = readObjIvar (module, "moduleController");
+    int before = [controller newSoundCount];
+    char what[80];
+
+    [(WaveBuilderModule *)module performSelector: doX withObject: nil];
+    snprintf (what, sizeof what, "%s: doX: sets whichToDo", wave);
+    /* whichToDo sits ahead of the windowLoaded int, which the
+       panel cases above set: the type-encoding-aware sized read
+       takes exactly the 4 bytes, where the pointer-sized
+       readIntIvar would sweep in the neighbor's bit. */
+    check (readSizedIvar (module, "whichToDo") == expectedWhich, what);
+
+    [length setStringValue: [NSString stringWithFormat: @"%d", frames]];
+    [size setStringValue: [NSString stringWithUTF8String: sizeStr]];
+    [amp setStringValue: [NSString stringWithUTF8String: ampStr]];
+    [percent setStringValue: @"55"];
+
+    /* The module and the expectation run in this one process, so
+       a re-seeded rand() regenerates exactly the sequence the
+       module consumed. */
+    srand (1998);
+    id ret = [(WaveBuilderModule *)module generateOthers: nil];
+    srand (1998);
+
+    int expect = ([length intValue] && [size floatValue] && [amp floatValue])
+        ? 1 : 0;
+    snprintf (what, sizeof what, "%s: returns self", wave);
+    check (ret == module, what);
+    snprintf (what, sizeof what, "%s: the controller got the fresh sound", wave);
+    check ([controller newSoundCount] == before + expect, what);
+    snprintf (what, sizeof what, "%s: the percent counter ends right", wave);
+    check ([percent intValue] == (expect ? 100 : 55), what);
+    if (!expect)
+        return;
+    Snd *out = [controller newSound];
+    check (out != nil && [out lengthInSampleFrames] == (unsigned long)frames
+             && [out channelCount] == 1
+             && [out dataFormat] == SND_FORMAT_LINEAR_16
+             && [out samplingRate] == SND_RATE_HIGH,
+            "the fresh sound is 16-bit mono 44.1k, sized from the length field");
+    if (out == nil)
+        return;
+    signed short *expected = malloc ((size_t)frames * sizeof (signed short));
+    othersExpected (waveFn, frames, [size floatValue], [amp floatValue], expected);
+    snprintf (what, sizeof what, "%s: buffer matches the 1998 arithmetic", wave);
+    check (memcmp ([out bytes], expected,
+                   (size_t)frames * sizeof (signed short)) == 0, what);
+    free (expected);
+}
+
+static void runWaveBuilder (Class principal)
+{
+    /* The menu tree the app's Modules menu is built from: one
+       submenu, "Generate Sounds", with exactly two leaves - the
+       1998 three-dot names, each targeting the module itself.
+       (The first of the ported modules that generates: the two
+       panel methods only bring the panels up, and the generate
+       methods build a fresh sound - no current sound anywhere.) */
+    id module = [[principal alloc] init];
+    check (module != nil, "module instantiation");
+    id root = [module getModuleMenuNode];
+    check (root != nil, "root menu node");
+    check (root != nil && [root numSubmenus] == 1, "root has exactly one submenu");
+    id sub = root != nil ? [root getSubmenu: 0] : nil;
+    check (sub != nil && ![sub isLeafNode], "the submenu is not a leaf");
+    check (sub != nil && [[sub getNameAsString] isEqualToString: @"Generate Sounds"],
+            "the submenu is named Generate Sounds");
+    check (sub != nil && [sub numSubmenus] == 2, "the submenu holds exactly two leaves");
+    static const char *leafNames[] = { "Sine Harmonics...", "Other Waves..." };
+    static const char *leafTargets[] = { "loadSinPanel:", "loadOthersPanel:" };
+    int i;
+    for (i = 0; i < 2; i++)
+        {
+        char what[80];
+        id leaf = sub != nil ? [sub getSubmenu: i] : nil;
+        check (leaf != nil && [leaf isLeafNode], "leaf node");
+        snprintf (what, sizeof what, "leaf %d is named %s", i, leafNames[i]);
+        check (leaf != nil && [[leaf getNameAsString] isEqualToString: [NSString stringWithUTF8String: leafNames[i]]],
+                what);
+        snprintf (what, sizeof what, "leaf %d targets %s", i, leafTargets[i]);
+        check (leaf != nil && [NSStringFromSelector ([leaf getMessage]) isEqualToString: [NSString stringWithUTF8String: leafTargets[i]]],
+                what);
+        check (leaf != nil && [leaf getReceiver] == module, "leaf targets the module");
+        }
+
+    /* The controller ivar (inherited from Module) and the fifteen
+       outlet ivars the 1998 header declares - the three 16x1
+       value matrices, their three text twins, the two length
+       fields, the size and amplitude fields, the two percent
+       counters, the pull-down, the two panel windows - all must
+       exist and start nil, and the 1998 whichToDo / windowLoaded
+       ints must start at their init values (DOSQUARE, unset). */
+    Ivar ivar = class_getInstanceVariable ([module class], "moduleController");
+    check (ivar != NULL, "moduleController ivar (for the hand-off cases)");
+    static const char *outletNames[] = {
+        "sinHarmonics", "sinAmplitudes", "sinPhases",
+        "sinTextHarmonics", "sinTextAmplitudes", "sinTextPhases",
+        "sinLength", "othersLength", "othersSize", "othersAmplitude",
+        "percentDoneSin", "percentDoneOthers",
+        "sinPopUpButton", "sinPanel", "othersPanel"
+    };
+    int o;
+    for (o = 0; o < 15; o++)
+        {
+        char what[80];
+        snprintf (what, sizeof what, "%s ivar exists", outletNames[o]);
+        check (class_getInstanceVariable ([module class], outletNames[o]) != NULL, what);
+        snprintf (what, sizeof what, "%s ivar starts nil", outletNames[o]);
+        check (readObjIvar (module, outletNames[o]) == nil, what);
+        }
+    /* whichToDo reads through the type-encoding-aware sized helper
+       (the pointer-sized readIntIvar would sweep in the bytes of
+       the windowLoaded int behind it).  windowLoaded is the last
+       ivar, so the pointer-sized read is exact on it, the Filter
+       way. */
+    check (readSizedIvar (module, "whichToDo") == 0, "whichToDo starts at DOSQUARE");
+    check (readIntIvar (module, "windowLoaded") == 0, "windowLoaded starts unset");
+
+    /* All fifteen outlets as fakes, plus the generator's one
+       hand-off partner: the app's ModuleController - the 1998
+       module never reads the document, it only hands the freshly
+       built sound off through brandNewSound:.  The six text
+       fields start at their gorm values, the matrices at their
+       16x1 zeroes, and the 1998 full-int windowLoaded flag is
+       pre-set the pointer-sized way (the Filter precedent), so
+       the panel methods skip the nib load (a real load needs a
+       display - the app-side half is the resoundmenu --perform
+       probe, where the gorm panels come up for real). */
+    FakeSinMatrix *harmonics = [[[FakeSinMatrix alloc] init] autorelease];
+    FakeSinMatrix *amplitudes = [[[FakeSinMatrix alloc] init] autorelease];
+    FakeSinMatrix *phases = [[[FakeSinMatrix alloc] init] autorelease];
+    FakeSinMatrix *textHarmonics = [[[FakeSinMatrix alloc] init] autorelease];
+    FakeSinMatrix *textAmplitudes = [[[FakeSinMatrix alloc] init] autorelease];
+    FakeSinMatrix *textPhases = [[[FakeSinMatrix alloc] init] autorelease];
+    FakeWaveField *sinLength =
+        [[[FakeWaveField alloc] initWithString: @"44100"] autorelease];
+    FakeWaveField *othersLength =
+        [[[FakeWaveField alloc] initWithString: @"44100"] autorelease];
+    FakeWaveField *othersSize =
+        [[[FakeWaveField alloc] initWithString: @"0"] autorelease];
+    FakeWaveField *othersAmplitude =
+        [[[FakeWaveField alloc] initWithString: @"0"] autorelease];
+    FakeWaveField *percentDoneSin =
+        [[[FakeWaveField alloc] initWithString: @"0"] autorelease];
+    FakeWaveField *percentDoneOthers =
+        [[[FakeWaveField alloc] initWithString: @"0"] autorelease];
+    FakeWavePopUp *popUp = [[[FakeWavePopUp alloc] init] autorelease];
+    FakeWavePanel *sinPanel = [[[FakeWavePanel alloc] init] autorelease];
+    FakeWavePanel *othersPanel = [[[FakeWavePanel alloc] init] autorelease];
+    FakeWaveController *controller = [[[FakeWaveController alloc] init] autorelease];
+
+    object_setIvar (module, ivar, controller);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinHarmonics"), harmonics);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinAmplitudes"), amplitudes);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinPhases"), phases);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinTextHarmonics"), textHarmonics);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinTextAmplitudes"), textAmplitudes);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinTextPhases"), textPhases);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinLength"), sinLength);
+    object_setIvar (module, class_getInstanceVariable ([module class], "othersLength"), othersLength);
+    object_setIvar (module, class_getInstanceVariable ([module class], "othersSize"), othersSize);
+    object_setIvar (module, class_getInstanceVariable ([module class], "othersAmplitude"), othersAmplitude);
+    object_setIvar (module, class_getInstanceVariable ([module class], "percentDoneSin"), percentDoneSin);
+    object_setIvar (module, class_getInstanceVariable ([module class], "percentDoneOthers"), percentDoneOthers);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinPopUpButton"), popUp);
+    object_setIvar (module, class_getInstanceVariable ([module class], "sinPanel"), sinPanel);
+    object_setIvar (module, class_getInstanceVariable ([module class], "othersPanel"), othersPanel);
+    object_setIvar (module, class_getInstanceVariable ([module class], "windowLoaded"),
+                    (id)(intptr_t)1);
+
+    /* The two panel methods with the flag pre-set (a real panel
+       load needs a display - the app-side half is the resoundmenu
+       --perform probe, where the gorm panels come up for real). */
+    id ret = [(WaveBuilderModule *)module loadSinPanel: nil];
+    check (ret == module, "loadSinPanel: returns self");
+    check ([popUp pullsDown] == YES, "loadSinPanel: flipped the pull-down to pulls-down");
+    check ([[popUp title] isEqualToString: @"Actions..."],
+           "loadSinPanel: re-set the pull-down title");
+    check ([sinPanel keyFrontCount] == 1, "loadSinPanel: ordered the sine panel key and front");
+    check ([othersPanel keyFrontCount] == 0, "loadSinPanel: left the others panel alone");
+    [(WaveBuilderModule *)module loadSinPanel: nil];
+    check ([sinPanel keyFrontCount] == 2, "loadSinPanel: is repeatable (the loaded flag stays set)");
+    ret = [(WaveBuilderModule *)module loadOthersPanel: nil];
+    check (ret == module, "loadOthersPanel: returns self");
+    check ([othersPanel keyFrontCount] == 1, "loadOthersPanel: ordered the others panel key and front");
+    check ([sinPanel keyFrontCount] == 2, "loadOthersPanel: left the sine panel alone");
+    check (readIntIvar (module, "windowLoaded") == 1, "the flag reads back as set");
+
+    /* The sine generator: the 1998 panel default - one active
+       harmonic (440, amplitude 1, phase 0) over the gorm's full
+       second - then two active harmonics (the percent counter
+       counts both, the second adds into the first's buffer in
+       the 1998 order), then a saturating amplitude (the 1998
+       SHRT_MAX / SHRT_MIN clamps), then the length-0 guard. */
+    static const float freq0[16] = { 440 };
+    static const float amp0[16] = { 1 };
+    static const float ph0[16] = { 0 };
+    testWaveGenerateSin (module, 44100, freq0, amp0, ph0);
+    static const float freq1[16] = { 440, 880 };
+    static const float amp1[16] = { 1, 0.5 };
+    static const float ph1[16] = { 0, 1.0 };
+    testWaveGenerateSin (module, 4410, freq1, amp1, ph1);
+    static const float amp2[16] = { 2.0 };
+    testWaveGenerateSin (module, 2000, freq0, amp2, ph0);
+    testWaveGenerateSin (module, 0, freq0, amp0, ph0);
+
+    /* The five "other waves" (the 1998 "Type" pull-down drives
+       the doX: setters that pick them): 1000 frames of a 440 Hz
+       size, unit amplitude - the 1998 wavelength is 100, and
+       each waveform runs through the mirrored arithmetic, the
+       noise through the re-seeded rand sequence. */
+    testWaveGenerateOthers (module, "square", 0, @selector(doSquare:),
+                            1000, "440", "1", wbSquare);
+    testWaveGenerateOthers (module, "triangle", 1, @selector(doTriangle:),
+                            1000, "440", "1", wbTriangle);
+    testWaveGenerateOthers (module, "noise", 2, @selector(doNoise:),
+                            1000, "440", "1", wbNoise);
+    testWaveGenerateOthers (module, "sawtooth", 3, @selector(doSawtooth:),
+                            1000, "440", "1", wbSawtooth);
+    testWaveGenerateOthers (module, "pulse", 4, @selector(doPulse:),
+                            1000, "440", "1", wbPulse);
+
+    /* The 1998 guard: length && frequency && amplitude - any
+       zero field skips the whole generation. */
+    testWaveGenerateOthers (module, "square", 0, @selector(doSquare:),
+                            0, "440", "1", wbSquare);
+    testWaveGenerateOthers (module, "square", 0, @selector(doSquare:),
+                            1000, "0", "1", wbSquare);
+    testWaveGenerateOthers (module, "square", 0, @selector(doSquare:),
+                            1000, "440", "0", wbSquare);
+
+    /* The note actions: each clears all six matrices (16 rows of
+       "0") and writes one harmonic - the frequency through %f,
+       the amplitude 1 through %d - into the value matrices and
+       their text twins; cosA: additionally sets the row-0 phase
+       to 3.1415/2.0 through %f.  Drive every one, and check the
+       strings the real controls would show. */
+    [(WaveBuilderModule *)module clear: nil];
+    int r;
+    int m;
+    static const char *sixNames[] = {
+        "sinHarmonics", "sinAmplitudes", "sinPhases",
+        "sinTextHarmonics", "sinTextAmplitudes", "sinTextPhases"
+    };
+    FakeSinMatrix *six[6] = { harmonics, amplitudes, phases,
+                              textHarmonics, textAmplitudes, textPhases };
+    for (m = 0; m < 6; m++)
+        for (r = 0; r < 16; r += 8)
+            {
+            char what[80];
+            snprintf (what, sizeof what, "clear: %s row %d", sixNames[m], r);
+            check ([[ [six[m] cellAtRow: r column: 0] stringValue]
+                     isEqualToString: @"0"], what);
+            }
+    /* GNUstep's @selector is a runtime expression, so the table
+       cannot be static - an automatic array holds it. */
+    const struct { SEL sel; float freq; } notes[] = {
+        { @selector(A:), 440 },
+        { @selector(As:), 466.16 },
+        { @selector(B:), 493.89 },
+        { @selector(C:), 523.24 },
+        { @selector(Cs:), 554.36 },
+        { @selector(D:), 587.32 },
+        { @selector(Ds:), 622.26 },
+        { @selector(E:), 659.26 },
+        { @selector(F:), 698.46 },
+        { @selector(Fs:), 739.98 },
+        { @selector(G:), 783.98 },
+        { @selector(Gs:), 830.62 }
+    };
+    int n;
+    for (n = 0; n < 12; n++)
+        {
+        [(WaveBuilderModule *)module performSelector: notes[n].sel
+                                       withObject: nil];
+        NSString *freqStr =
+            [NSString stringWithFormat: @"%f", notes[n].freq];
+        char what[80];
+        for (m = 0; m < 6; m++)
+            {
+            NSString *expect = (m == 0 || m == 3) ? freqStr
+                : (m == 1 || m == 4) ? @"1" : @"0";
+            snprintf (what, sizeof what, "note %d: %s row 0",
+                      n, sixNames[m]);
+            check ([[ [six[m] cellAtRow: 0 column: 0] stringValue]
+                     isEqualToString: expect], what);
+            }
+        snprintf (what, sizeof what, "note %d: the clear held on row 15", n);
+        check ([[ [harmonics cellAtRow: 15 column: 0] stringValue]
+                 isEqualToString: @"0"], what);
+        }
+    /* cosA: the preset that also sets the phase. */
+    [(WaveBuilderModule *)module cosA: nil];
+    for (m = 0; m < 6; m++)
+        {
+        NSString *expect = (m == 0 || m == 3) ? @"440.000000"
+            : (m == 1 || m == 4) ? @"1" : @"1.570750";
+        char what[80];
+        snprintf (what, sizeof what, "cosA: %s row 0", sixNames[m]);
+        check ([[ [six[m] cellAtRow: 0 column: 0] stringValue]
+                 isEqualToString: expect], what);
+        }
+}
+
 static void runZero (Class principal)
 {
     /* The menu tree the app's Modules menu is built from. */
@@ -3334,6 +4171,8 @@ int main (int argc, char **argv)
         runGate (principal);
     else if ([NSStringFromClass (principal) isEqualToString: @"FilterModule"])
         runFilter (principal);
+    else if ([NSStringFromClass (principal) isEqualToString: @"WaveBuilderModule"])
+        runWaveBuilder (principal);
     else
         check (NO, "principal class is none of the ported module classes");
 

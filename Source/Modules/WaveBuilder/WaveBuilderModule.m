@@ -20,7 +20,7 @@ IMPLIED WARRANTIES.
 #import "WaveBuilderModule.h"
 #import "ResoundNibs.h"
 #include <stdlib.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #include <math.h>
 #import <AppKit/AppKit.h>
 
@@ -60,6 +60,13 @@ float sawtooth (int position, int wavelength)
 
 float noise (int position, int wavelength)
 	{
+	/* 1998 fingerprint: RAND_MAX is 2^31-1, which does not fit a
+	   float, so the division below converts it to 2^31 and the
+	   noise range is scaled by 2^31 rather than the exact
+	   2147483647.  The 1998 machine did the same rounding, so the
+	   values are the 1998 values - preserved byte-identical, with
+	   modern clang pointing the implicit conversion out through
+	   -Wimplicit-const-int-float-conversion. */
 	return 2*((float)rand())/RAND_MAX-1;
 	}
 
@@ -173,21 +180,29 @@ float triangle (int position, int wavelength)
 	int totalnumber;
 	int numberdone=0;
 	int tempvalue;
-	int dataFormat, channelCount, sampleCount;
-	void* theData;
 	
 	if (length)
 		{
-		theNewSound=[[Sound alloc]init];
-	
-		[theNewSound setDataSize:  2*length		
-				dataFormat:   SND_FORMAT_LINEAR_16
-				samplingRate: SND_RATE_HIGH
-				channelCount: 1
-				infoSize:     [theNewSound infoSize]];
-				//sets proper data size only for 16-bit mono samples
+		/* 1998: theNewSound=[[Sound alloc] init];
+		   [theNewSound setDataSize: 2*length dataFormat:
+		   SND_FORMAT_LINEAR_16 samplingRate: SND_RATE_HIGH
+		   channelCount: 1 infoSize: [theNewSound infoSize]]; (the
+		   //sets proper data size only for 16-bit mono samples note -
+		   the 2*length bytes of the 1998 call size the buffer for
+		   length frames of 16-bit mono, the shape the rest of the
+		   method assumes; the infoSize: argument carried the fresh
+		   sound's empty info region, and the module never writes an
+		   info string, so the SndKit sound's nil info is the same
+		   presentation).  SndKit has no setDataSize:, so the sound is
+		   built directly with the documented initializer in that
+		   shape (the EchoChamber port made the same change). */
+		theNewSound=[[Snd alloc]
+			initWithFormat:   SND_FORMAT_LINEAR_16
+			channelCount: 1
+			frames:       length
+			samplingRate: SND_RATE_HIGH];
 		
-		data=(signed short*) [(Sound*)theNewSound data];
+		data=(signed short*) [(Snd*)theNewSound bytes];
 		
 		totalnumber=0;
 		for (x=0;x<16;x++)
@@ -210,6 +225,13 @@ float triangle (int position, int wavelength)
 				{
 				[percentDoneSin setIntValue: ++numberdone];
 				//[percentDoneSin display];
+				/* 1998: PSWait() pumped the SoundKit progress
+				   machinery between the counter updates.  GNUstep's
+				   AppKit (PSOperators.h, pulled in by
+				   <AppKit/AppKit.h>) supplies PSWait as a static
+				   inline no-op, so the calls below stay
+				   byte-identical and do nothing here; the percent
+				   counter still drives the panel's progress field. */
 				PSWait();
 				for (y=0;y<length;y++)
 					{
@@ -224,13 +246,14 @@ float triangle (int position, int wavelength)
 				}
 			}
 			
-		dataFormat=[theNewSound dataFormat];
-		channelCount=[theNewSound channelCount];
-		sampleCount=[theNewSound sampleCount];
-		theData=(void*)[(Sound*)theNewSound data];
-
-		SNDSwapHostToSound
-		((void*)theData, (void*)theData, sampleCount, channelCount, dataFormat);
+		/* The 1998 code read the sound's dataFormat/channelCount/
+		   sampleCount and swapped the fresh buffer to storage order
+		   here, before the hand-off below; the three locals existed
+		   only to feed the swap.  SndKit keeps sample data in host
+		   byte order, so the swap - and with it the locals - is gone
+		   (the Zero port made the same change; the sampleCount read
+		   renamed to SndKit's lengthInSampleFrames in the other ports
+		   was one of the locals, and goes with it). */
 	
 		[moduleController brandNewSound: theNewSound];
 		}
@@ -247,29 +270,39 @@ float triangle (int position, int wavelength)
 	float amplitude=32767*[othersAmplitude floatValue];
 	id theNewSound;
 	signed short* data;
-	int dataFormat, channelCount, sampleCount;
-	void* theData;
 	
 	if (length&&frequency&&amplitude)
 		{
 		wavelength=(int) (1/frequency*44100);
 		
-		theNewSound=[[Sound alloc]init];
-	
-		[theNewSound setDataSize:  2*length		
-				dataFormat:   SND_FORMAT_LINEAR_16
-				samplingRate: SND_RATE_HIGH
-				channelCount: 1
-				infoSize:     [theNewSound infoSize]];
-				//sets proper data size only for 16-bit mono samples
+		/* 1998: theNewSound=[[Sound alloc] init];
+		   [theNewSound setDataSize: 2*length dataFormat:
+		   SND_FORMAT_LINEAR_16 samplingRate: SND_RATE_HIGH
+		   channelCount: 1 infoSize: [theNewSound infoSize]]; (the
+		   same //sets proper data size only for 16-bit mono samples
+		   note - the 2*length bytes of the 1998 call size the buffer
+		   for length frames of 16-bit mono).  SndKit has no
+		   setDataSize:, so the sound is built directly with the
+		   documented initializer in that shape, as in generateSin:
+		   above. */
+		theNewSound=[[Snd alloc]
+			initWithFormat:   SND_FORMAT_LINEAR_16
+			channelCount: 1
+			frames:       length
+			samplingRate: SND_RATE_HIGH];
 		
-		data=(signed short*) [(Sound*)theNewSound data];
+		data=(signed short*) [(Snd*)theNewSound bytes];
 		
 		
 		[percentDoneOthers setIntValue:0];
 		PSWait();
 			for (y=0;y<length;y++)
 			{
+			/* 1998 fingerprint: for a panel length below 100,
+			   length/100 is 0 and this modulo divides by zero - a
+			   latent 1998 crash the app would have hit on any short
+			   "Other Waves" generation.  Preserved byte-identical,
+			   and the contract feeds lengths of 100 or more. */
 			if (!(y%(length/100)))
 				{
 				[percentDoneOthers setIntValue:1+[percentDoneOthers intValue]];
@@ -299,13 +332,11 @@ float triangle (int position, int wavelength)
 			
 		[percentDoneOthers setIntValue:100];
 
-		dataFormat=[theNewSound dataFormat];
-		channelCount=[theNewSound channelCount];
-		sampleCount=[theNewSound sampleCount];
-		theData=(void*)[(Sound*)theNewSound data];
-
-		SNDSwapHostToSound
-		((void*)theData, (void*)theData, sampleCount, channelCount, dataFormat);
+		/* The 1998 code read the sound's dataFormat/channelCount/
+		   sampleCount and swapped the fresh buffer to storage order
+		   here, before the hand-off below; SndKit keeps sample data
+		   in host byte order, so the swap is gone (see generateSin:
+		   above). */
 		[moduleController brandNewSound: theNewSound];
 		}
 	return self;

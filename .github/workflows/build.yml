@@ -318,14 +318,15 @@ jobs:
       - name: Build the modules (Phase 3)
         # The ported modules so far - Zero, the first Phase 3 unit,
         # Mix, the second, Envelope, the third, EchoChamber, the
-        # fourth, Gate, the fifth, and Filter, the sixth (Envelope,
-        # EchoChamber, Gate and Filter are the four with a
-        # control-panel nib: the bundles carry the gorms at their
-        # resource root, the way the app's own bundle carries its
-        # gorms): gnustep-make bundles (gnustep-make bundle.make
-        # rules, ADR 0020) producing Zero.rmod, Mix.rmod,
-        # Envelope.rmod, EchoChamber.rmod, Gate.rmod and
-        # Filter.rmod, installed into the
+        # fourth, Gate, the fifth, Filter, the sixth, and
+        # WaveBuilder, the seventh (Envelope, EchoChamber, Gate,
+        # Filter and WaveBuilder are the five with a control-panel
+        # nib: the bundles carry the gorms at their resource root,
+        # the way the app's own bundle carries its gorms):
+        # gnustep-make bundles (gnustep-make bundle.make rules, ADR
+        # 0020) producing Zero.rmod, Mix.rmod, Envelope.rmod,
+        # EchoChamber.rmod, Gate.rmod, Filter.rmod and
+        # WaveBuilder.rmod, installed into the
         # domain's library directory (lib/GNUstep/Resound with the
         # fhs filesystem layout) - the app's ModuleController searches
         # every library domain + /Resound (plus the app bundle), so
@@ -355,6 +356,9 @@ jobs:
           make -C Source/Modules/Filter -j"$(nproc)" -f GNUmakefile
           make -C Source/Modules/Filter -f GNUmakefile install
           find Source/Modules/Filter/Filter.rmod -maxdepth 3 | sort
+          make -C Source/Modules/WaveBuilder -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/WaveBuilder -f GNUmakefile install
+          find Source/Modules/WaveBuilder/WaveBuilder.rmod -maxdepth 3 | sort
           ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
 
       - name: Module load contract (Phase 3)
@@ -418,9 +422,26 @@ jobs:
         # the 1998 minval/maxval zero scans, the Max/Min clamp, the
         # <= 0 range quirk), and the setSound:/newSound:for:
         # hand-off of the freshly built (resized) sound checked.
+        # For WaveBuilder: the same principal-class and menu
+        # checks (one "Generate Sounds" submenu holding two
+        # leaves, "Sine Harmonics..." and "Other Waves...", each
+        # targeting the module), then loadSinPanel: /
+        # loadOthersPanel: with the panel outlets as fakes and the
+        # windowLoaded flag pre-set (skipping the nib load, which
+        # needs a display and runs in the app; the probe below
+        # drives it there for real), then generateSin: /
+        # generateOthers: - the sine and waveform generation, the
+        # first contract with no current sound at all - building a
+        # fresh 16-bit mono 44.1k sound from the panel values: the
+        # expected buffers computed with the module's own 1998
+        # arithmetic (the harmonic sines with the SHRT_MAX/SHRT_MIN
+        # clamps, the five waveform functions, the noise through
+        # the re-seeded rand() sequence), the percent counters,
+        # the fresh sound's shape, the note actions' string
+        # writes, and the brandNewSound: hand-off checked.
         # No pasteboard involved in the Envelope, EchoChamber,
-        # Gate or Filter cases.  The mix cases use the general
-        # pasteboard for real:
+        # Gate, Filter or WaveBuilder cases.  The mix cases use the
+        # general pasteboard for real:
         # GNUstep's client auto-launches a fresh gpbs when no
         # pasteboard server runs (filesystem name transport, no other
         # daemon needed), which is empty - the state the no-op case
@@ -440,6 +461,7 @@ jobs:
           "$TOOL" Source/Modules/EchoChamber/EchoChamber.rmod
           "$TOOL" Source/Modules/Gate/Gate.rmod
           "$TOOL" Source/Modules/Filter/Filter.rmod
+          "$TOOL" Source/Modules/WaveBuilder/WaveBuilder.rmod
 
       - name: Module load probe (Phase 3)
         # The app-side half of the module load, run for real (test/
@@ -469,7 +491,12 @@ jobs:
         # the fourth gorm module: the two Filter panels (titles
         # "Comb Filter" and "Echo Filter") must come up visible from
         # the bundle's gorm, the submenu's two leaves appearing in
-        # the after-launch menu dump.
+        # the after-launch menu dump.  --perform "Sine
+        # Harmonics..." and --perform "Other Waves..." run the same
+        # for the fifth gorm module: the two WaveBuilder panels
+        # (titles "Sine Wave Harmonics" and "Other Waves") must come
+        # up visible from the bundle's gorm, the "Generate Sounds"
+        # submenu appearing in the after-launch menu dump.
         # Non-fatal: a display environment can not be trusted the way
         # the build can be; the load contract above (headless) is the
         # hard gate.
@@ -521,6 +548,20 @@ jobs:
           test "$rc" -eq 0
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Echo Filter..."
           awk '/performing Echo Filter/{f=1} f' "$LOG" | grep -q "window: 'Echo Filter' visible=1"
+          LOG=$(mktemp)
+          rc=0
+          timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform "Sine Harmonics..." >"$LOG" 2>&1 || rc=$?
+          cat "$LOG"
+          test "$rc" -eq 0
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Generate Sounds"
+          awk '/performing Sine Harmonics/{f=1} f' "$LOG" | grep -q "window: 'Sine Wave Harmonics' visible=1"
+          LOG=$(mktemp)
+          rc=0
+          timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform "Other Waves..." >"$LOG" 2>&1 || rc=$?
+          cat "$LOG"
+          test "$rc" -eq 0
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Generate Sounds"
+          awk '/performing Other Waves/{f=1} f' "$LOG" | grep -q "window: 'Other Waves' visible=1"
 
       - name: NIB conversion format check
         # Every 1998 .nib in the tree has a converted .gorm twin

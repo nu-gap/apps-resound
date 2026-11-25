@@ -33,11 +33,22 @@
 #     showNoiseGatePanel: with the panel outlets as fakes and the
 #     nib_loaded flag pre-set, then gateIt: - the noise gate DSP -
 #     over the five 1998 data formats, mono and stereo, whole-sound
-#     and partial selections).
+#     and partial selections), FilterModule the Filter contract (the
+#     "Filter" submenu with the two leaves, LoadFilterPanel: /
+#     LoadEchoFilterPanel: with the WindowLoaded flag pre-set, then
+#     Apply: / ApplyEcho: - the comb and echo filter DSP - on the
+#     one sound shape the 1998 methods accept without their modal
+#     conversion prompt, mono 16-bit 44.1k), WaveBuilderModule the
+#     WaveBuilder contract (the "Generate Sounds" submenu with the
+#     two leaves, loadSinPanel: / loadOthersPanel: with the
+#     windowLoaded flag pre-set, then generateSin: / generateOthers:
+#     - the sine and waveform generation - building a fresh 16-bit
+#     mono 44.1k sound from the panel values, the brandNewSound:
+#     hand-off, and the note actions' string writes).
 #     Headless; the mix cases use the general pasteboard, which
 #     GNUstep's client auto-serves with a fresh gpbs when no server
-#     runs (the Envelope, EchoChamber and Gate cases touch no
-#     pasteboard at all).
+#     runs (the Envelope, EchoChamber, Gate, Filter and WaveBuilder
+#     cases touch no pasteboard at all).
 #
 # sndsmoke, resoundio and resoundmodule run headless (no audio
 # device, no display) and are fatal in CI; resoundnib --check is

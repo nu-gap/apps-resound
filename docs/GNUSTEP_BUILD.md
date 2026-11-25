@@ -1002,6 +1002,157 @@ app file), the bundle TU is the 14 header re-emissions above, and
 the contract TU stays at its 18 (the no-space mirror shapes warn
 nothing).
 
+**The WaveBuilder module unit (2026-11-25, seventh of the ten) —
+and the fifth with a control panel, and the first unit that
+*generates* sound: neither of its two methods reads the document's
+current sound at all.**
+
+- `Source/Modules/WaveBuilder/GNUmakefile` (new): the
+  Zero/Mix/EchoChamber/Gate/Filter template — the gnustep-make
+  bundle building `WaveBuilder.rmod` in-tree (`WaveBuilderModule`
+  as the principal class, `ModuleInfo.rtfd` **and the
+  `WaveBuilder.gorm` directory** as the bundle resources, the
+  SndKit chain linked per ADR 0020).  The gorm is at the *module
+  root* in the tree (no `English.lproj` wrapper; the 1998
+  `WaveBuilder.nib` folder sat at the bundle root), the same
+  placement as the other nib'd modules.  The 1998 reference nib
+  family stays in the tree uninstalled: `WaveBuilder.nib`,
+  `WaveBuilder.bad.nib` — the 930-stamped pre-`NS`-prefix typed
+  stream the reader rejects, the known-bad corpus file of
+  `docs/UPSTREAM_PATCHES.md` Gorm-0002 — `WaveBuilder.old.nib`
+  and `WaveBuilder.old.gorm`, plus the 1998 `Makefile*`,
+  `PB.project` and `PB.gdbinit` (as the earlier units).
+- `Source/Modules/WaveBuilder/WaveBuilderModule.{h,m}` (1998:
+  74/514 lines; ported: 74/545): the header is byte-identical to
+  1998.  The two panels — the "Sine Wave Harmonics" and "Other
+  Waves" windows — are pure builders: `generateSin:` and
+  `generateOthers:` build a fresh 16-bit mono 44.1k sound from
+  the panel values and hand it off through `brandNewSound:`; the
+  module never reads `currentSound` / `currentSoundView`, and no
+  pasteboard is involved.  The `.m` is the standard mapping set:
+  the import swap; the bare `[[Sound alloc] init]` +
+  `setDataSize: 2*length ...` pair (both methods) replaced by the
+  documented SndKit initializer in the same size — the 1998
+  `2*length` bytes size the buffer for `length` frames of 16-bit
+  mono, the shape the rest of the method assumes, and the 1998
+  call's `infoSize:` argument carried the fresh sound's empty
+  info region, which the module never writes, so SndKit's nil
+  info is the same presentation; `data` → `bytes`; both
+  `SNDSwapHostToSound` blocks and their four locals deleted (host
+  order, the Zero change); the `PSWait()` progress pumps stay
+  byte-identical — GNUstep's AppKit ships `PSWait` as a static
+  inline no-op.  `SND_RATE_HIGH` stays verbatim (it resolves
+  through `SndKit.h` → `SndFormat.h` →
+  `MKPerformSndMIDI/PerformSound.h` → `SndStruct.h`, so no
+  follow-up commit, unlike Filter/EchoChamber's written-out
+  44100.0).
+- Two documented, not-fixed 1998 fingerprints, kept
+  byte-identical: the `generateOthers:` percent modulo `y %
+  (length/100)`, which divides by zero for a panel length below
+  100 (a latent 1998 crash on any short "Other Waves"
+  generation); and the `noise()` return `2*((float)rand())/
+  RAND_MAX-1`, where `RAND_MAX` (2^31−1) does not fit a float and
+  converts to 2^31 — the same rounding on the 1998 machine, which
+  modern clang points out with
+  `-Wimplicit-const-int-float-conversion`.  The five C waveform
+  functions' operator-precedence shapes (the `%` binding tighter
+  than the `*` in the sawtooth / square / triangle range tests,
+  and the 1998 "okay, don't mock it; it works" note on the
+  triangle's last branch) are preserved as-is — they compute the
+  1998 values, and mirroring them is the expectation's job, not
+  the port's to improve.
+- The three stale per-module header copies synced to the ported
+  top-level files (as the earlier units); the `ModuleController.h`
+  copy keeps its 1998 license variant (it is not in this
+  module's import chain), and `ModuleInfo.rtfd` keeps the 1998
+  help text.
+- The bundle build is the 1998 headers and one fingerprint: 15
+  warnings — the 14 `-Wmissing-selector-name` re-emissions
+  (`ModuleSound.h` 10, `ModuleProtocol.h` 2, `ModuleMenuNode.h`
+  2, the same counts as Filter) plus the one
+  `-Wimplicit-const-int-float-conversion` from the `noise()`
+  `RAND_MAX` conversion above.
+
+**The gorm wiring (probed on the real installed bundle).**  A
+throwaway probe loaded the bundle, instantiated `WaveBuilderModule`
+the way the app does, ran `ResoundNibs loadNibNamed: "WaveBuilder"
+owner:` for real, and dumped the module's ivars: the gorm connects
+all fifteen declared outlets — `sinHarmonics` / `sinAmplitudes` /
+`sinPhases` and their three text twins to six 16×1 `NSMatrix`es,
+`sinLength` (44100) / `othersLength` (44100) / `othersSize` (0) /
+`othersAmplitude` (0) / `percentDoneSin` (0) / `percentDoneOthers`
+(0) to six `NSTextField`s, `sinPopUpButton` to the 15-item
+"Actions..." pull-down (loading with `pullsDown=0`; the 1998
+`loadSinPanel:` flips it at runtime), and `sinPanel` /
+`othersPanel` to the two panels (titles **"Sine Wave Harmonics"**
+and **"Other Waves"**).  The "Other Waves" panel's 5-item "Type"
+pull-down (item 0 "Square") drives the `doX:` selectors with the
+module as target (it has no outlet of its own), and the panel's
+two `NSSlider`s carry no value object the module reads (the probe
+threw on `minVal`) — the method takes its values from the text
+fields.  The `whichToDo` / `windowLoaded` flags are full `int`s,
+so a pointer-sized `object_setIvar` is exact on them (the Gate's
+one-byte flag was the unit family's only exception).
+
+**The `resoundmodule` WaveBuilder contract.**  As the earlier
+six, the tool dispatches on the principal class
+(`WaveBuilderModule` → the wave builder contract): the menu tree —
+one "Generate Sounds" submenu holding exactly the two leaves "Sine
+Harmonics..." / "Other Waves...", each targeting the module; the
+`moduleController` ivar plus the fifteen outlet ivars checked to
+exist and to start un-wired (all nil), `whichToDo` at `DOSQUARE`
+and `windowLoaded` unset.  `loadSinPanel:` / `loadOthersPanel:`
+with the flag pre-set (skipping the nib load, which needs a
+display — the app-side half is the probe below), asserting the
+1998 pull-down flip + title re-set, the `makeKeyAndOrderFront:`
+on the right fake panel, the wrong one left alone, and
+repeatability.  Then `generateSin:` on four shapes (one harmonic —
+the gorm default 440/1/0 — over the full second; two active
+harmonics; a saturating amplitude of 2.0; the length-0 guard) and
+`generateOthers:` on all five waveforms (the `doX:` selectors,
+1000 frames of a 440 Hz size, unit amplitude — the 1998
+wavelength 100) plus the three zero-field guards of the 1998
+`length && frequency && amplitude` if: the expected buffers
+mirrored operation for operation — the sine through the module's
+own double product, `SHRT_MAX`/`SHRT_MIN` clamps and
+signed-short store, the waveforms through byte-identical copies of
+the five C functions (the `noise` through `srand(1998)` → module
+run → `srand(1998)` → regenerate: the module consumes one
+`rand()` per frame, and the expectation runs in the same
+process) — with the fresh sound's shape pinned (16-bit mono, the
+44.1k of `SND_RATE_HIGH`), the percent counters checked (the sine
+one counts the active harmonics; the others one ends at 100), and
+the `brandNewSound:` hand-off recorded by the `ModuleController`
+double.  The note actions are checked against the strings the
+real controls would show: `clear:` zeroes all 16 rows of all six
+matrices, every one of the twelve letter keys writes its 1998
+frequency through `%f` (and amplitude 1 through `%d`) into the
+value matrices and their text twins, and `cosA:` additionally
+sets the row-0 phase to 3.1415/2.0 through `%f` (the "1.570750"
+the 1998 formatting prints).  222 checks, 0 failures.
+
+**The `resoundmenu --perform` probe (extended with the unit).**
+The after-launch Modules menu must show the "Generate Sounds"
+submenu with both leaves (alongside Zero / Mix In / Envelope /
+Echo Chamber... / Noise Gate... / Filter), and `--perform "Sine
+Harmonics..."` / `--perform "Other Waves..."` drive the real
+`loadSinPanel:` / `loadOthersPanel:` — the lazy gorm load
+included — asserting the two panels come up **visible with the
+gorm's own titles** "Sine Wave Harmonics" / "Other Waves".
+
+**Verification.**  In CI the `WaveBuilder.rmod` build + install
+is fatal; `resoundmodule` pins the bundle-side contract
+headlessly; the `resoundmenu` probe (non-fatal, under `xvfb`)
+asserts the after-launch submenu **and** runs the two
+`--perform`s, asserting both panel windows.  Locally the same
+three plus `resoundnib --check`, 0 failures (48 gorm folders from
+the repo root, 14 from `Resound.app/Resources`; the new
+bundle-side copy is the `WaveBuilder.rmod`'s).  The app TU total
+stays at the 455-warning baseline (the unit touches no app
+file); the bundle TU is the 15 above; the contract TU goes 18 →
+19 — the byte-identical `noise` mirror carries the same
+`RAND_MAX` conversion the module documents.
+
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with
 `NOT_COMPILING_WITH_MODULES` *commented out* (modules compiled in) and
