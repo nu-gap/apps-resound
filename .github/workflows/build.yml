@@ -318,15 +318,16 @@ jobs:
       - name: Build the modules (Phase 3)
         # The ported modules so far - Zero, the first Phase 3 unit,
         # Mix, the second, Envelope, the third, EchoChamber, the
-        # fourth, Gate, the fifth, Filter, the sixth, and
-        # WaveBuilder, the seventh (Envelope, EchoChamber, Gate,
-        # Filter and WaveBuilder are the five with a control-panel
-        # nib: the bundles carry the gorms at their resource root,
-        # the way the app's own bundle carries its gorms):
+        # fourth, Gate, the fifth, Filter, the sixth, WaveBuilder,
+        # the seventh, and FFT, the eighth (Envelope, EchoChamber,
+        # Gate, Filter, WaveBuilder and FFT are the six with a
+        # control-panel nib: the bundles carry the gorms at their
+        # resource root, the way the app's own bundle carries its
+        # gorms):
         # gnustep-make bundles (gnustep-make bundle.make rules, ADR
         # 0020) producing Zero.rmod, Mix.rmod, Envelope.rmod,
-        # EchoChamber.rmod, Gate.rmod, Filter.rmod and
-        # WaveBuilder.rmod, installed into the
+        # EchoChamber.rmod, Gate.rmod, Filter.rmod,
+        # WaveBuilder.rmod and FFT.rmod, installed into the
         # domain's library directory (lib/GNUstep/Resound with the
         # fhs filesystem layout) - the app's ModuleController searches
         # every library domain + /Resound (plus the app bundle), so
@@ -359,6 +360,9 @@ jobs:
           make -C Source/Modules/WaveBuilder -j"$(nproc)" -f GNUmakefile
           make -C Source/Modules/WaveBuilder -f GNUmakefile install
           find Source/Modules/WaveBuilder/WaveBuilder.rmod -maxdepth 3 | sort
+          make -C Source/Modules/FFT -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/FFT -f GNUmakefile install
+          find Source/Modules/FFT/FFT.rmod -maxdepth 3 | sort
           ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
 
       - name: Module load contract (Phase 3)
@@ -439,9 +443,25 @@ jobs:
         # the re-seeded rand() sequence), the percent counters,
         # the fresh sound's shape, the note actions' string
         # writes, and the brandNewSound: hand-off checked.
+        # For FFT: the same principal-class and menu checks (one
+        # "FFT..." leaf targeting the module's showFFTPanel:), then
+        # doFFT: - the FFT DSP - over the five 1998 data formats
+        # (all five - the 1998 guard only requires mono 44.1k),
+        # whole-sound and partial selections, both the decibel and
+        # the linear branch: a real in-memory Snd in a real
+        # SndView through the real bundle FFTController (the two
+        # graph views, the minimum-dB field and the decibel button
+        # as fakes), the expectation recomputing the same real
+        # performFFTFromSoundData: the controller calls (the
+        # Snd(ModuleSound) category + the 1998 fft.c core,
+        # compiled into the tool from the app's sources) plus the
+        # 1998 f1/f2/p1 split and the minimum-dB floor, then
+        # showFFTPanel: with the panel outlets as fakes and the
+        # nib_loaded flag pre-set, the decibel/linear toggle, and
+        # a full redraw.
         # No pasteboard involved in the Envelope, EchoChamber,
-        # Gate, Filter or WaveBuilder cases.  The mix cases use the
-        # general pasteboard for real:
+        # Gate, Filter, WaveBuilder or FFT cases.  The mix cases
+        # use the general pasteboard for real:
         # GNUstep's client auto-launches a fresh gpbs when no
         # pasteboard server runs (filesystem name transport, no other
         # daemon needed), which is empty - the state the no-op case
@@ -462,6 +482,7 @@ jobs:
           "$TOOL" Source/Modules/Gate/Gate.rmod
           "$TOOL" Source/Modules/Filter/Filter.rmod
           "$TOOL" Source/Modules/WaveBuilder/WaveBuilder.rmod
+          "$TOOL" Source/Modules/FFT/FFT.rmod
 
       - name: Module load probe (Phase 3)
         # The app-side half of the module load, run for real (test/
@@ -497,6 +518,10 @@ jobs:
         # (titles "Sine Wave Harmonics" and "Other Waves") must come
         # up visible from the bundle's gorm, the "Generate Sounds"
         # submenu appearing in the after-launch menu dump.
+        # --perform "FFT..." runs the same for the sixth gorm
+        # module: the FFT panel (title "FFT") must come up visible
+        # from the bundle's gorm, the "FFT..." leaf appearing in
+        # the after-launch menu dump.
         # Non-fatal: a display environment can not be trusted the way
         # the build can be; the load contract above (headless) is the
         # hard gate.
@@ -562,6 +587,13 @@ jobs:
           test "$rc" -eq 0
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Generate Sounds"
           awk '/performing Other Waves/{f=1} f' "$LOG" | grep -q "window: 'Other Waves' visible=1"
+          LOG=$(mktemp)
+          rc=0
+          timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform "FFT..." >"$LOG" 2>&1 || rc=$?
+          cat "$LOG"
+          test "$rc" -eq 0
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "FFT..."
+          awk '/performing FFT/{f=1} f' "$LOG" | grep -q "window: 'FFT' visible=1"
 
       - name: NIB conversion format check
         # Every 1998 .nib in the tree has a converted .gorm twin

@@ -19,7 +19,7 @@ IMPLIED WARRANTIES.
 #import "ResoundNibs.h"
 #import "FFTController.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #include <stdio.h>
 
 @implementation FFTModule

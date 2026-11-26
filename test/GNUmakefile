@@ -44,11 +44,19 @@
 #     windowLoaded flag pre-set, then generateSin: / generateOthers:
 #     - the sine and waveform generation - building a fresh 16-bit
 #     mono 44.1k sound from the panel values, the brandNewSound:
-#     hand-off, and the note actions' string writes).
+#     hand-off, and the note actions' string writes), FFTModule the
+#     FFT contract (the "FFT..." leaf, doFFT: - the FFT DSP - over
+#     the five 1998 data formats, whole-sound and partial
+#     selections, both the decibel and the linear branch, the real
+#     bundle FFTController on a real in-memory Snd and SndView, the
+#     two graph views, the minimum-dB field and the decibel button
+#     as fakes, then showFFTPanel: with the panel outlets as fakes
+#     and the nib_loaded flag pre-set, the decibel/linear toggle,
+#     and a full redraw).
 #     Headless; the mix cases use the general pasteboard, which
 #     GNUstep's client auto-serves with a fresh gpbs when no server
-#     runs (the Envelope, EchoChamber, Gate, Filter and WaveBuilder
-#     cases touch no pasteboard at all).
+#     runs (the Envelope, EchoChamber, Gate, Filter, WaveBuilder and
+#     FFT cases touch no pasteboard at all).
 #
 # sndsmoke, resoundio and resoundmodule run headless (no audio
 # device, no display) and are fatal in CI; resoundnib --check is
@@ -135,12 +143,21 @@ resoundnib_C_FILES = ../Source/fft.c
 # bundle references the ResoundNibs class for its lazy panel load,
 # and the app binary links it - the gate does the same so the
 # reference resolves in the gate process exactly as it does in the
-# app.  The shared ../Source include path serves the quoted imports,
+# app - and the app's Snd(ModuleSound) category
+# (../Source/ModuleSound.m plus the 1998 fft.c core): the FFT
+# bundle's controller calls the Snd class method
+# performFFTFromSoundData: (the app-side half of the 1998 FFT - the
+# bundle deliberately does not carry the category sources, as in
+# 1998), and the contract's expectation recomputes it in-process.
+# The shared ../Source include path serves the quoted imports,
 # as for resoundio.
 resoundmodule_OBJC_FILES = resoundmodule.m \
 	../Source/Module.m \
 	../Source/ModuleMenuNode.m \
-	../Source/ResoundNibs.m
+	../Source/ResoundNibs.m \
+	../Source/ModuleSound.m
+
+resoundmodule_C_FILES = ../Source/fft.c
 
 # The menu diagnostic compiles the full app the way the app does
 # (minus Resound_main.m), loads the main model, and posts

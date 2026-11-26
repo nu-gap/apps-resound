@@ -25,7 +25,7 @@ IMPLIED WARRANTIES.
 
 @implementation FFTController
 
-- drawFFT:(Sound*) this_sound:(SoundView*)
+- drawFFT:(Snd*) this_sound:(SndView*)
 			this_soundview: (int)start_sample:(int)number_samples
 	{
 	int x;
@@ -34,7 +34,13 @@ IMPLIED WARRANTIES.
 	char* samples;
 	
 	if ((this_sound==nil)
-		||start_sample+number_samples>[this_sound sampleCount]||!number_samples)
+		/* 1998: [this_sound sampleCount] - the 1998 SoundKit sample
+		   count is channel-independent (the SNDSwap* calls below
+		   take sampleCount and channelCount separately), so the
+		   port is the direct lengthInSampleFrames rename (the
+		   view-chain and Mix precedent). */
+		||start_sample+number_samples>
+			[this_sound lengthInSampleFrames]||!number_samples)
 		{
 		NSRunAlertPanel(@"FFT", 
 		@"There is no selected sound on which to perform this operation", 
@@ -52,7 +58,12 @@ IMPLIED WARRANTIES.
 			@"Convert this sound to mono, 16-bit linear, 44.1 KHz to perform this operation?",
 			@"Okay",@"Cancel",nil)==NSAlertDefaultReturn)
 			{
-			if ([this_soundview convertToFormat: SND_FORMAT_LINEAR_16 
+			if ([this_soundview convertToSampleFormat: SND_FORMAT_LINEAR_16 
+	// 1998: convertToFormat: SND_RATE_HIGH.  The 1998 SoundKit
+	// SoundView proper lacked the method; Resound's ModuleSoundView
+	// category supplied it, and the ported twin of that file
+	// declares it on SndView, so the receiver stays the view, as in
+	// 1998 and in the EchoChamber and Filter ports.
 							samplingRate:   SND_RATE_HIGH 
 							channelCount:   1]!= SND_ERR_NONE)
 				{
@@ -70,7 +81,7 @@ IMPLIED WARRANTIES.
 			@"Convert this sound to mono, 44.1 KHz to perform this operation?",
 			@"Okay",@"Cancel",nil)==NSAlertDefaultReturn)
 			{
-			if ([this_soundview convertToFormat: [this_sound dataFormat] 
+			if ([this_soundview convertToSampleFormat: [this_sound dataFormat] 
 							samplingRate:   SND_RATE_HIGH 
 							channelCount:   1]!= SND_ERR_NONE)
 				{
@@ -85,22 +96,22 @@ IMPLIED WARRANTIES.
 	
 	if ([this_sound needsCompacting]) [this_sound compactSamples];
 	
-	samples=[this_sound data];
+	samples=[this_sound bytes];
 	
-	SNDSwapSoundToHost
-		((void*)samples, (void*)samples, [this_sound sampleCount], 
-			[this_sound channelCount], [this_sound dataFormat]);
-		
-	n=[Sound nextPositivePowerOfTwo:number_samples];
+	/* The 1998 code swapped the buffer to host order here (the 1998
+	   SoundKit kept sample data big-endian) and back after the FFT
+	   (the SNDSwap* pair with the sampleCount/channelCount fetched
+	   around each swap).  SndKit keeps sample data in host byte
+	   order, so both swaps are gone (the Zero port made the same
+	   change; the Mix port documented the same pair). */
+	
+	n=[Snd nextPositivePowerOfTwo:number_samples];
 	f=(float*)malloc(sizeof(float)*n*2);
 
-	[Sound performFFTFromSoundData:samples:start_sample:number_samples:
+	[Snd performFFTFromSoundData:samples:start_sample:number_samples:
 		[this_sound dataFormat]:[this_sound channelCount] 
 		toFFTData:f:n];
 	
-	SNDSwapHostToSound
-		((void*)samples, (void*)samples, [this_sound sampleCount], 
-			[this_sound channelCount], [this_sound dataFormat]);	
 
 	if (f1) free(f1);
 	if (f2) free(f2);

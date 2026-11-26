@@ -23,7 +23,7 @@ IMPLIED WARRANTIES.
   
   ModuleSoundView is a category defining methods that module makers have
   available to them when manipulating sound views.  The only one of note is
-  convertToFormat;samplingRate:channelCount, which preserves selection.  
+  convertToSampleFormat;samplingRate:channelCount, which preserves selection.  
   
   ****************************************************************************/
 
@@ -33,14 +33,14 @@ IMPLIED WARRANTIES.
 @implementation SndView(ModuleSoundView)
 
 
-/**** convertToFormat:samplingRate:channelCount
+/**** convertToSampleFormat:samplingRate:channelCount
   Converts to a given format, sampling rate, and channel count, but attempts
   to preserve the selection.  Without this method, making a conversion results
   in incorrect selections.  A most useful method.
   */
 
 
-- (int)	convertToFormat:(int)newFormat
+- (int)	convertToSampleFormat:(int)newFormat
  samplingRate:(double)newRate
  channelCount:(int)newChannelCount
  

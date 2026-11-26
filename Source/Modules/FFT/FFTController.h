@@ -16,7 +16,7 @@ IMPLIED WARRANTIES.
 
 */
 #import <Foundation/Foundation.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import "DiscreteGraphView.h"
 
 
@@ -33,7 +33,7 @@ IMPLIED WARRANTIES.
 	int n;
 }
 
-- drawFFT:(Sound*) this_sound:(SoundView*)
+- drawFFT:(Snd*) this_sound:(SndView*)
 			this_soundview: (int)start_sample:(int)number_samples;
 - setDelegates:x:y;
 - init;

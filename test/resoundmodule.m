@@ -6,9 +6,10 @@ The Phase 3 load contracts for the ported modules - so far the Zero
 module (zeroSound:), the Mix module (mix:), the Envelope module
 (applyEnvelope:), the EchoChamber module (begin:/performEcho:),
 the Gate module (showNoiseGatePanel:/gateIt:), the Filter module
-(LoadFilterPanel:/Apply:/ApplyEcho:) and the WaveBuilder module
-(loadSinPanel:/generateSin:/generateOthers:) - the first seven
-units from the module tree (see docs/GNUSTEP_BUILD.md).
+(LoadFilterPanel:/Apply:/ApplyEcho:), the WaveBuilder module
+(loadSinPanel:/generateSin:/generateOthers:) and the FFT module
+(showFFTPanel:/doFFT: with the bundle's real FFTController) - the
+first eight units from the module tree (see docs/GNUSTEP_BUILD.md).
 
 What it does (headless: no display, no audio device):
 
@@ -21,7 +22,7 @@ What it does (headless: no display, no audio device):
      mix contract, EnvelopeModule the envelope contract,
      EchoChamber the echo contract, GateModule the gate contract,
      FilterModule the filter contract, WaveBuilderModule the wave
-     builder contract.
+     builder contract, FFTModule the FFT contract.
 
   2. Instantiates the module (the same alloc/init the app runs) and
      checks the menu tree the 1998 init builds: exactly one leaf -
@@ -39,7 +40,8 @@ What it does (headless: no display, no audio device):
      EchoChamber value outlets and windowLoaded flag, the Gate
      panel outlets and nib_loaded flag, the Filter panel outlets
      and WindowLoaded flag, the WaveBuilder panel outlets and
-     windowLoaded flag), all checked to exist and to start in
+     windowLoaded flag, the FFT panel outlets and nib_loaded
+     flag), all checked to exist and to start in
      the un-wired state.
 
   3. Drives the module's DSP on real in-memory Snds, mono and stereo,
@@ -103,6 +105,23 @@ What it does (headless: no display, no audio device):
            ModuleController double recording the brandNewSound:
            hand-off, and the note actions' string writes checked
            against the 1998 %f / %d formatting.
+          - showFFTPanel: with the panel outlets as fakes and the
+            one-byte nib_loaded flag pre-set (skipping the nib
+            load, which needs a display and runs in the app; the
+            resoundmenu --perform probe drives it there for real),
+            then doFFT: - the FFT DSP - on the one sound shape the
+            1998 method accepts without its modal conversion
+            prompt - mono, 44.1k - over the five 1998 data formats
+            and whole-sound and partial selections, the real
+            bundle FFTController driven on a real in-memory Snd and
+            a real SndView, the two graph views, the minimum-dB
+            field and the decibel button as fakes, and the
+            controller's
+            f1/f2/p1 buffers and the graph setTo:/setReals:/
+            display calls checked against the same real Snd
+            performFFTFromSoundData: the module calls (compiled
+            into this tool from the app's Source/ModuleSound.m
+            plus the 1998 fft.c core).
 
 The controller is injected by setting the module's private
 moduleController ivar directly (object_setIvar): the app's own wiring
@@ -125,11 +144,19 @@ gorm values, its pull-down, its two panel windows - whose
 windowLoaded flag is a full int the same pointer-sized set is
 exact on; and the generator's hand-off partner, the app's
 ModuleController, stands in as the double that records the
-brandNewSound: the 1998 module finishes with.  The Gate's
-nib_loaded flag is a one-byte BOOL - the 1998 header declares it
+brandNewSound: the 1998 module finishes with.  So are the FFT
+module's four outlets - its panel window, the two axis fields and
+the real bundle FFTController - whose four own outlets (the two
+graph views, the minimum-dB field and the decibel button) the
+contract fills with fakes the same way; the fftController ivar
+takes the real class from the loaded bundle, so the contract drives
+the 1998 controller itself, the module's double answering
+currentSound / currentSoundView with a real in-memory Snd and a
+real SndView.  The Gate's and the FFT module's nib_loaded flag is a
+one-byte BOOL - the 1998 header declares it
 ahead of the four outlet pointers - so a pointer-sized
-object_setIvar on it would write into the outlets' bytes; the
-gate contract reads and writes it through the type-encoding-aware
+object_setIvar on it would write into the outlets' bytes; those
+contracts read and write it through the type-encoding-aware
 sized ivar helpers instead.
 
 The mix: controller double answers the 1998 newWindow call with the
@@ -151,6 +178,7 @@ Exit status: 0 when every check passes, 1 otherwise.
 #import <SndKit/SndKit.h>
 #import <objc/runtime.h>
 #import <limits.h>
+#import <float.h>
 #import <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -255,6 +283,33 @@ Exit status: 0 when every check passes, 1 otherwise.
 - doPulse:sender;
 - doTriangle:sender;
 - doSawtooth:sender;
+@end
+
+/* The 1998 FFT header keeps the original drawFFT: / setDelegates:
+   shapes: a type abutting the next colon (drawFFT:(Snd*)
+   this_sound:) and bare names between the colons (setDelegates:
+   x:y).  Each of those tokens reads as the parameter name rather
+   than the selector part - the -Wmissing-selector-name warnings
+   they cost this TU are measured in the unit's build log - so the
+   selectors are the leading part plus one empty component per
+   argument: drawFFT::: and setDelegates:: - the same four- and
+   two-argument calls the 1998 module generates.  showFFTPanel: and
+   doFFT: are the plain shapes the 1998 menu leaf fires, and
+   toggleLinearAndDecibel: / redrawGraphs: the plain shapes the
+   gorm's button fires on the controller. */
+@interface FFTModule : Module
+- init;
+- showFFTPanel:sender;
+- doFFT:sender;
+@end
+
+@interface FFTController : NSObject
+- drawFFT:(Snd*) this_sound:(SndView*)
+		this_soundview: (int)start_sample:(int)number_samples;
+- setDelegates:x:y;
+- init;
+- toggleLinearAndDecibel:sender;
+- redrawGraphs:sender;
 @end
 
 static int failures = 0;
@@ -1681,6 +1736,267 @@ freshly built sound, which this records.
 - (int) newSoundCount
     {
     return _handOffs;
+    }
+@end
+
+/*
+A stand-in for one of the FFT panel's two graph views
+(the gorm wires the controller's freqview and phasview to two
+DiscreteGraphViews).  It records the three graph calls the 1998
+controller makes after the FFT - the setTo: range/format setup,
+the setReals: data hand-off (the buffer copied, not the pointer
+aliased, so the controller's realloc on the next drawFFT: cannot
+dangle it) and the display - and the setDelegates: cursor pair.
+The 1998 DiscreteGraphView declares setTo: with a type abutting
+each next colon, so the selector is setTo::::: (one empty
+component per argument); the fake reproduces that exact shape,
+and its -Wmissing-selector-name warnings with it.
+*/
+#define DISCRETEGRAPHVIEW_FORMAT_MINMAX 0
+#define DISCRETEGRAPHVIEW_FORMAT_HISTOGRAM 1
+#define DISCRETEGRAPHVIEW_FORMAT_CENTERED_ON_ZERO 3
+
+@interface FakeFftGraph : NSObject
+{
+    float _toMax;
+    float _toMin;
+    BOOL _stretchToMax;
+    BOOL _stretchToMin;
+    int _xScale;
+    int _format;
+    int _setToCount;
+    float *_reals;
+    int _realsSize;
+    int _realsCount;
+    int _displayCount;
+    id _cursorX;
+    id _cursorY;
+    int _cursorCount;
+}
+- setTo:(float)maxVal:(float)minVal:(BOOL)stretchToMax:(BOOL)stretchToMin:
+    (int)xScale:(int)format;
+- setReals:(float*)r size:(int)s;
+- (void)display;
+- useCursor:x_d:y_d;
+- (float) toMax;
+- (float) toMin;
+- (BOOL) stretchToMax;
+- (BOOL) stretchToMin;
+- (int) xScale;
+- (int) format;
+- (int) setToCount;
+- (float *) reals;
+- (int) realsSize;
+- (int) realsCount;
+- (int) displayCount;
+- (id) cursorX;
+- (id) cursorY;
+- (int) cursorCount;
+@end
+
+@implementation FakeFftGraph
+- (void) dealloc
+    {
+    free (_reals);
+    [_cursorX release];
+    [_cursorY release];
+    [super dealloc];
+    }
+- setTo:(float)maxVal:(float)minVal:(BOOL)stretchToMax:(BOOL)stretchToMin:
+    (int)xScale:(int)format
+    {
+    _toMax = maxVal;
+    _toMin = minVal;
+    _stretchToMax = stretchToMax;
+    _stretchToMin = stretchToMin;
+    _xScale = xScale;
+    _format = format;
+    _setToCount++;
+    return self;
+    }
+- setReals:(float*)r size:(int)s
+    {
+    free (_reals);
+    _reals = (float*)malloc (sizeof (float) * s);
+    memcpy (_reals, r, sizeof (float) * s);
+    _realsSize = s;
+    _realsCount++;
+    return self;
+    }
+- (void) display
+    {
+    _displayCount++;
+    }
+- useCursor:x_d:y_d
+    {
+    if (_cursorX != x_d)
+        {
+        [_cursorX release];
+        _cursorX = [x_d retain];
+        }
+    if (_cursorY != y_d)
+        {
+        [_cursorY release];
+        _cursorY = [y_d retain];
+        }
+    _cursorCount++;
+    return self;
+    }
+- (float) toMax { return _toMax; }
+- (float) toMin { return _toMin; }
+- (BOOL) stretchToMax { return _stretchToMax; }
+- (BOOL) stretchToMin { return _stretchToMin; }
+- (int) xScale { return _xScale; }
+- (int) format { return _format; }
+- (int) setToCount { return _setToCount; }
+- (float *) reals { return _reals; }
+- (int) realsSize { return _realsSize; }
+- (int) realsCount { return _realsCount; }
+- (int) displayCount { return _displayCount; }
+- (id) cursorX { return _cursorX; }
+- (id) cursorY { return _cursorY; }
+- (int) cursorCount { return _cursorCount; }
+@end
+
+/*
+A stand-in for the FFT panel's minimum-dB field: the gorm types
+it as a text field, whose cell answers setFloatValue: /
+floatValue: in float (the 1998 controller writes the computed
+floor and reads it back for the decibel range).  It records both.
+(Both in float, as the other value fakes: the AppKit cells'
+setFloatValue: is float-typed, and an id receiver would trip
+-Wobjc-multiple-method-names on a double twin.)
+*/
+@interface FakeFftField : NSObject
+{
+    float _value;
+    int _setValueCount;
+}
+- (void) setFloatValue: (float)value;
+- (float) floatValue;
+- (int) setValueCount;
+@end
+
+@implementation FakeFftField
+- (void) setFloatValue: (float)value
+    {
+    _value = value;
+    _setValueCount++;
+    }
+- (float) floatValue
+    {
+    return _value;
+    }
+- (int) setValueCount
+    {
+    return _setValueCount;
+    }
+@end
+
+/*
+A stand-in for the FFT panel's decibel button (the gorm types it
+as a button cell): the controller reads its intValue to flip the
+linear/decibel mode, and the gorm's initial value is 1.
+*/
+@interface FakeFftButton : NSObject
+{
+    int _value;
+}
+- initWithValue: (int)value;
+- (void) setIntValue: (int)value;
+- (int) intValue;
+@end
+
+@implementation FakeFftButton
+- initWithValue: (int)value
+    {
+    if (self = [super init])
+        _value = value;
+    return self;
+    }
+- (void) setIntValue: (int)value
+    {
+    _value = value;
+    }
+- (int) intValue
+    {
+    return _value;
+    }
+@end
+
+/*
+A stand-in for the FFT panel window and its two axis fields: the
+1998 showFFTPanel: orders the panel key and front and hands the
+two axis fields to the controller's setDelegates: (which forwards
+them to the frequency graph's cursor).  The panel records the
+order-front; the axis fields are bare identities.
+*/
+@interface FakeFftPanel : NSObject
+{
+    int _keyFront;
+}
+- (void) makeKeyAndOrderFront: (id)sender;
+- (int) keyFrontCount;
+@end
+
+@implementation FakeFftPanel
+- (void) makeKeyAndOrderFront: (id)sender
+    {
+    _keyFront++;
+    }
+- (int) keyFrontCount
+    {
+    return _keyFront;
+    }
+@end
+
+@interface FakeFftAxis : NSObject
+@end
+
+@implementation FakeFftAxis
+@end
+
+/*
+A stand-in for the app's ModuleController for the FFT contract:
+the 1998 doFFT: reads currentSound / currentSoundView, so this
+answers both - with the real in-memory Snd and the real SndView
+the case builds - and nothing else is recorded (the module's only
+other dependency is the fftController ivar, which the contract
+sets to the bundle's real FFTController).
+*/
+@interface FakeFftController : NSObject
+{
+    Snd *_sound;
+    id _soundView;
+}
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView;
+- (id) currentSound;
+- (id) currentSoundView;
+@end
+
+@implementation FakeFftController
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _soundView = [soundView retain];
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [_soundView release];
+    [super dealloc];
+    }
+- (id) currentSound
+    {
+    return _sound;
+    }
+- (id) currentSoundView
+    {
+    return _soundView;
     }
 @end
 
@@ -4004,6 +4320,337 @@ static void runWaveBuilder (Class principal)
         }
 }
 
+/*
+A fresh real FFTController from the loaded bundle, its four
+outlet ivars (the two graph views, the minimum-dB field and the
+decibel button) filled with fakes the same way the gorm wires
+them, and its islinear set to the branch under test (the
+alloc-zeroed default is 0, the decibel path; 1 is the linear
+path).  Returns the controller.
+*/
+static FFTController *freshFftController (BOOL linear)
+{
+    Class c = NSClassFromString (@"FFTController");
+    FFTController *ctl = [[[c alloc] init] autorelease];
+    check (ctl != nil, "a real FFTController instantiates");
+    if (ctl == nil)
+        return nil;
+    Ivar iv;
+    iv = class_getInstanceVariable ([ctl class], "freqview");
+    object_setIvar (ctl, iv, [[[FakeFftGraph alloc] init] autorelease]);
+    iv = class_getInstanceVariable ([ctl class], "phasview");
+    object_setIvar (ctl, iv, [[[FakeFftGraph alloc] init] autorelease]);
+    iv = class_getInstanceVariable ([ctl class], "minimumdbfield");
+    object_setIvar (ctl, iv, [[[FakeFftField alloc] init] autorelease]);
+    iv = class_getInstanceVariable ([ctl class], "decibelButton");
+    object_setIvar (ctl, iv,
+        [[[FakeFftButton alloc] initWithValue: 1] autorelease]);
+    writeSizedIvar (ctl, "islinear", linear ? 1 : 0);
+    return ctl;
+}
+
+/*
+The doFFT: contract on one case: a real in-memory Snd of the
+case's format (mono, 44.1k - the one shape the 1998 method
+accepts without its modal conversion prompt) in a real SndView
+with the case's selection, through the module's doFFT: to a
+fresh real FFTController.  The expectation recomputes the same
+real Snd performFFTFromSoundData: the controller calls (the
+1998 Snd(ModuleSound) category, compiled into this tool from
+the app's Source/ModuleSound.m plus the 1998 fft.c core), then
+the 1998 f1/f2/p1 split and the minimum-dB floor, and checks
+the controller's buffers, the minimum-dB field and the graph
+setTo: / setReals: / display calls against it.
+*/
+static void testFftDrawFFT (id module, SndSampleFormat fmt, int frames,
+                            int selStart, int selLen, BOOL linear)
+{
+    const char *name =
+        [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== doFFT: %s mono 44.1k, %d frames, selection (%d,%d), %s\n",
+            name, frames, selStart, selLen, linear ? "linear" : "decibel");
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                               channelCount: 1
+                                   frames: frames
+                             samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == (unsigned long)frames
+             && [snd channelCount] == 1, "the source Snd is mono 44.1k");
+    if (snd == nil)
+        return;
+    fillPattern (snd, 0);
+
+    SndView *view = [[[SndView alloc]
+        initWithFrame: NSMakeRect (0, 0, 320, 200)] autorelease];
+    [view setSound: snd];
+    [view setSelection: selStart size: selLen];
+
+    FFTController *ctl = freshFftController (linear);
+    if (ctl == nil)
+        return;
+    FakeFftController *mc = [[[FakeFftController alloc]
+        initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module,
+        class_getInstanceVariable ([module class], "moduleController"), mc);
+    object_setIvar (module,
+        class_getInstanceVariable ([module class], "fftController"), ctl);
+
+    /* The expectation: the same real performFFTFromSoundData: the
+       controller calls, then the 1998 split (f1 the amplitude of
+       the positive half, f2 the dB-mapped copy, p1 the phase of
+       that half) and the minimum-dB floor. */
+    int n = [Snd nextPositivePowerOfTwo: selLen];
+    check (n >= selLen && (n & (n - 1)) == 0,
+           "the fft length is a power of two");
+    float *f = (float*)malloc (sizeof (float) * n * 2);
+    check ([Snd performFFTFromSoundData:[snd bytes]:selStart:selLen:
+            [snd dataFormat]:[snd channelCount]
+            toFFTData:f:n] == 1, "the expectation FFT ran");
+    int half = n / 2;
+    float *f1e = (float*)malloc (sizeof (float) * half);
+    float *f2e = (float*)malloc (sizeof (float) * half);
+    float *p1e = (float*)malloc (sizeof (float) * half);
+    float minDb = 0.00001;
+    int x;
+    for (x = 0; x < half; x++)
+        {
+        f1e[x] = f[x*2+n];
+        f2e[x] = 20 * log (f[x*2+n] < 0 ? -(FLT_MAX)
+                          : (f[x*2+n] > 1 ? 1 : f[x*2+n]));
+        p1e[x] = f[x*2+n+1];
+        if (f2e[x] < minDb)
+            minDb = f2e[x];
+        }
+    free (f);
+
+    id ret = [(FFTModule *)module doFFT: nil];
+    check (ret == module, "doFFT: returns self");
+
+    check (readSizedIvar (ctl, "n") == n,
+           "the n ivar is the next power of two");
+    float *f1 = (float*)object_getIvar (ctl,
+        class_getInstanceVariable ([ctl class], "f1"));
+    float *f2 = (float*)object_getIvar (ctl,
+        class_getInstanceVariable ([ctl class], "f2"));
+    float *p1 = (float*)object_getIvar (ctl,
+        class_getInstanceVariable ([ctl class], "p1"));
+    check (f1 != nil && memcmp (f1, f1e, sizeof (float)*half) == 0,
+           "f1 matches the 1998 linear split");
+    check (f2 != nil && memcmp (f2, f2e, sizeof (float)*half) == 0,
+           "f2 matches the 1998 dB mapping");
+    check (p1 != nil && memcmp (p1, p1e, sizeof (float)*half) == 0,
+           "p1 matches the 1998 phase split");
+
+    FakeFftField *db = readObjIvar (ctl, "minimumdbfield");
+    check ([db setValueCount] == 1, "the minimum-dB field was set");
+    check ([db floatValue] == (double)minDb,
+           "the minimum-dB field holds the floor");
+
+    FakeFftGraph *freq = readObjIvar (ctl, "freqview");
+    FakeFftGraph *phas = readObjIvar (ctl, "phasview");
+    check ([freq setToCount] == 1 && [freq realsCount] == 1
+             && [freq displayCount] == 1,
+           "the frequency graph was set and drawn");
+    check ([phas setToCount] == 1 && [phas realsCount] == 1
+             && [phas displayCount] == 1,
+           "the phase graph was set and drawn");
+    /* The phase graph's range is branch-independent. */
+    check ([phas toMax] == (float)3.141592653589793
+             && [phas toMin] == (float)(-3.141592653589793)
+             && [phas stretchToMax] == NO && [phas stretchToMin] == NO
+             && [phas xScale] == 22050
+             && [phas format] == DISCRETEGRAPHVIEW_FORMAT_CENTERED_ON_ZERO,
+           "the phase graph range is +/-pi centered on zero");
+    check ([phas realsSize] == half
+             && memcmp ([phas reals], p1e, sizeof (float)*half) == 0,
+           "the phase graph plots p1");
+    /* The frequency graph's range follows the branch, its data the
+       matching buffer. */
+    if (linear)
+        {
+        check ([freq toMax] == 1.0f && [freq toMin] == 0.0f
+                 && [freq stretchToMax] == YES
+                 && [freq stretchToMin] == NO
+                 && [freq xScale] == 22050
+                 && [freq format] == DISCRETEGRAPHVIEW_FORMAT_HISTOGRAM,
+               "the linear frequency range is 0..1 stretched");
+        }
+    else
+        {
+        float expectMin = minDb < 0 ? minDb : (float)30;
+        check ([freq toMax] == 0.0f && [freq toMin] == expectMin
+                 && [freq stretchToMax] == YES
+                 && [freq stretchToMin] == NO
+                 && [freq xScale] == 22050
+                 && [freq format] == DISCRETEGRAPHVIEW_FORMAT_HISTOGRAM,
+               "the decibel frequency range is the minimum-dB floor");
+        }
+    check ([freq realsSize] == half
+             && memcmp ([freq reals], linear ? f1e : f2e,
+                        sizeof (float)*half) == 0,
+           "the frequency graph plots the branch's buffer");
+    free (f1e);
+    free (f2e);
+    free (p1e);
+}
+
+static void runFFT (Class principal)
+{
+    /* The menu tree the app's Modules menu is built from: one
+       leaf, the 1998 three-dot name, targeting the module. */
+    id module = [[principal alloc] init];
+    check (module != nil, "module instantiation");
+    id root = [module getModuleMenuNode];
+    check (root != nil, "root menu node");
+    check (root != nil && [root numSubmenus] == 1,
+           "root has exactly one submenu");
+    id leaf = root != nil ? [root getSubmenu: 0] : nil;
+    check (leaf != nil && [leaf isLeafNode], "leaf node");
+    check (leaf != nil
+             && [[leaf getNameAsString] isEqualToString: @"FFT..."],
+           "leaf is named FFT...");
+    check (leaf != nil
+             && [NSStringFromSelector ([leaf getMessage])
+                 isEqualToString: @"showFFTPanel:"],
+           "leaf targets showFFTPanel:");
+    check (leaf != nil && [leaf getReceiver] == module,
+           "leaf targets the module");
+
+    /* The module's four outlet ivars and the one-byte nib_loaded
+       flag: all exist and start un-wired (the gorm wires them
+       when the real panel loads - the resoundmenu --perform
+       probe). */
+    Ivar mcIvar = class_getInstanceVariable ([module class],
+                                             "moduleController");
+    check (mcIvar != NULL, "moduleController ivar (for the DSP cases)");
+    static const char *outletNames[] = {
+        "fftPanel", "fftController", "x", "y"
+    };
+    int o;
+    for (o = 0; o < 4; o++)
+        {
+        char what[80];
+        snprintf (what, sizeof what, "%s ivar exists", outletNames[o]);
+        check (class_getInstanceVariable ([module class], outletNames[o])
+               != NULL, what);
+        snprintf (what, sizeof what, "%s ivar starts nil", outletNames[o]);
+        check (readObjIvar (module, outletNames[o]) == nil, what);
+        }
+    check (readSizedIvar (module, "nib_loaded") == 0,
+           "nib_loaded starts unset");
+
+    /* The doFFT: matrix: the five 1998 data formats the 1998
+       method accepts (all five - the guard only requires mono
+       44.1k), whole-sound and partial selections, and both the
+       decibel (the alloc-zeroed islinear default) and the linear
+       branch. */
+    int c;
+    for (c = 0; c < 5; c++)
+        {
+        testFftDrawFFT (module, (SndSampleFormat)dspFormats[c],
+                        512, 0, 512, NO);
+        testFftDrawFFT (module, (SndSampleFormat)dspFormats[c],
+                        512, 64, 256, NO);
+        }
+    testFftDrawFFT (module, SND_FORMAT_LINEAR_16, 512, 0, 512, YES);
+    testFftDrawFFT (module, SND_FORMAT_LINEAR_16, 512, 64, 256, YES);
+
+    /* The panel: the showFFTPanel: contract with the outlets as
+       fakes and the one-byte nib_loaded flag pre-set to 1
+       (skipping the nib load, which needs a display and runs in
+       the app; the resoundmenu --perform probe drives it there
+       for real).  The 1998 method hands the two axis fields to
+       the controller's setDelegates: (which forwards them to the
+       frequency graph's cursor) and orders the panel key and
+       front. */
+    FakeFftGraph *freq = [[[FakeFftGraph alloc] init] autorelease];
+    FakeFftField *db = [[[FakeFftField alloc] init] autorelease];
+    FakeFftButton *button =
+        [[[FakeFftButton alloc] initWithValue: 1] autorelease];
+    FakeFftPanel *panel = [[[FakeFftPanel alloc] init] autorelease];
+    FakeFftAxis *xaxis = [[[FakeFftAxis alloc] init] autorelease];
+    FakeFftAxis *yaxis = [[[FakeFftAxis alloc] init] autorelease];
+    object_setIvar (module,
+        class_getInstanceVariable ([module class], "fftPanel"), panel);
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "x"), xaxis);
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "y"), yaxis);
+    writeSizedIvar (module, "nib_loaded", 1);
+
+    /* A fresh real controller (no drawFFT yet) receives the
+       panel's fakes; the module's fftController outlet points at
+       it. */
+    FFTController *ctl = freshFftController (NO);
+    if (ctl == nil)
+        return;
+    object_setIvar (ctl, class_getInstanceVariable ([ctl class],
+                                                    "freqview"), freq);
+    object_setIvar (ctl, class_getInstanceVariable ([ctl class],
+                                                    "minimumdbfield"), db);
+    object_setIvar (ctl, class_getInstanceVariable ([ctl class],
+                                                    "decibelButton"), button);
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "fftController"), ctl);
+
+    id ret = [(FFTModule *)module showFFTPanel: nil];
+    check (ret == module, "showFFTPanel: returns self");
+    check ([panel keyFrontCount] == 1,
+           "showFFTPanel: ordered the panel key and front");
+    check ([freq cursorCount] == 1 && [freq cursorX] == xaxis
+             && [freq cursorY] == yaxis,
+           "showFFTPanel: handed the axis fields to the graph cursor");
+    check (readSizedIvar (module, "nib_loaded") == 1,
+           "nib_loaded stays set (no reload)");
+    [(FFTModule *)module showFFTPanel: nil];
+    check ([panel keyFrontCount] == 2, "showFFTPanel: is repeatable");
+    check ([freq cursorCount] == 2,
+           "showFFTPanel: re-hands the delegates each time");
+
+    /* The toggle: the 1998 button reads its intValue and flips
+       islinear, then redraws.  With no drawFFT yet the f1/f2
+       ivars are NULL, so redrawGraphs: is a no-op (the 1998
+       guard) - the graphs stay untouched, and the islinear flip
+       is the only effect. */
+    check ([freq setToCount] == 0, "no graphs drawn before any doFFT:");
+    [(FFTController *)ctl toggleLinearAndDecibel: nil];
+    check (readSizedIvar (ctl, "islinear") == 0,
+           "toggle with the button at 1 lands on decibel (islinear 0)");
+    check ([freq setToCount] == 0,
+           "toggle without a drawn FFT redraws nothing");
+    [button setIntValue: 0];
+    [(FFTController *)ctl toggleLinearAndDecibel: nil];
+    check (readSizedIvar (ctl, "islinear") == 1,
+           "toggle with the button at 0 lands on linear (islinear 1)");
+    check ([freq setToCount] == 0, "the redraw still sees no buffers");
+
+    /* A full redraw with a drawn FFT: run doFFT: once to fill the
+       buffers, then redraw and check the branch follows islinear. */
+    Snd *snd = [[[Snd alloc]
+        initWithFormat: SND_FORMAT_LINEAR_16 channelCount: 1 frames: 128
+        samplingRate: 44100.0f] autorelease];
+    if (snd == nil)
+        return;
+    fillPattern (snd, 0);
+    SndView *view = [[[SndView alloc]
+        initWithFrame: NSMakeRect (0, 0, 320, 200)] autorelease];
+    [view setSound: snd];
+    [view setSelection: 0 size: 128];
+    FakeFftController *mc = [[[FakeFftController alloc]
+        initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+    [(FFTModule *)module doFFT: nil];
+    check ([freq setToCount] == 1 && [freq realsCount] == 1,
+           "doFFT: drew the graphs (the current islinear branch)");
+
+    int setBefore = [freq setToCount];
+    [(FFTController *)ctl redrawGraphs: nil];
+    check ([freq setToCount] == setBefore + 1,
+           "redrawGraphs: re-drew the frequency graph");
+    check ([freq toMax] == 1.0f,
+           "redrawGraphs: used the linear range (islinear 1)");
+}
+
 static void runZero (Class principal)
 {
     /* The menu tree the app's Modules menu is built from. */
@@ -4173,6 +4820,8 @@ int main (int argc, char **argv)
         runFilter (principal);
     else if ([NSStringFromClass (principal) isEqualToString: @"WaveBuilderModule"])
         runWaveBuilder (principal);
+    else if ([NSStringFromClass (principal) isEqualToString: @"FFTModule"])
+        runFFT (principal);
     else
         check (NO, "principal class is none of the ported module classes");
 

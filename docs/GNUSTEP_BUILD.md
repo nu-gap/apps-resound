@@ -1153,6 +1153,194 @@ file); the bundle TU is the 15 above; the contract TU goes 18 →
 19 — the byte-identical `noise` mirror carries the same
 `RAND_MAX` conversion the module documents.
 
+**The FFT module unit (2026-11-26, eighth of the ten) — and the
+sixth with a control panel, and the first with a graph view: the
+controller computes the spectrum of the current selection and
+draws it in two `DiscreteGraphView`s — the family's only custom
+views — with the family's first cursor image the code actually
+loads from the bundle.**
+
+- `Source/Modules/FFT/GNUmakefile` (new): the
+  Zero/Mix/EchoChamber/Gate/Filter/WaveBuilder template — the
+  gnustep-make bundle building `FFT.rmod` in-tree (`FFTModule` as
+  the principal class, `ModuleInfo.rtfd` **and the `FFT.gorm`
+  directory** and `FFTCursor.tiff` as the bundle resources, the
+  SndKit chain linked per ADR 0020).  The gorm is at the *module
+  root* in the tree (no `English.lproj` wrapper; the 1998
+  `FFT.nib` folder sat at the bundle root), the same placement as
+  the other root-nib modules.  `FFTCursor.tiff` is the family's
+  first *used* image resource: `DiscreteGraphView` loads it from
+  the bundle at init (`pathForImageResource:`) — the Filter's
+  `FourSounds.tiff` is a bundle resource the code never reads.
+  The 1998 reference family stays in the tree uninstalled:
+  `FFT.nib`, plus the 1998 `Makefile*` and `PB.project` (as the
+  earlier units).
+- `Source/Modules/FFT/FFTModule.{h,m}` (1998: 35/57 lines;
+  ported: 35/58): the header is byte-identical to 1998.  The `.m`
+  is the three-line mapping set: the import swap, the added
+  `ResoundNibs.h` import, and `[NSBundle loadNibNamed:@"FFT"
+  owner:self]` → `[ResoundNibs loadNibNamed: @"FFT" owner:self]`
+  (the nib-era lazy panel load, as with the other gorm modules).
+  The two methods stay 1998-faithful: `showFFTPanel:` (the lazy
+  load, then the 1998 abutting `setDelegates:x:y` on the
+  controller, and `makeKeyAndOrderFront:` on the panel) and
+  `doFFT:` (current sound + view + the `getSelection:` pair to
+  the controller's 1998 abutting `drawFFT:::`); both return
+  self.
+- `Source/Modules/FFT/FFTController.{h,m}` (1998: 42/201 lines;
+  ported: 42/212): the header renames the two `drawFFT:::`
+  parameter types (`Sound*`/`SoundView*` → `Snd*`/`SndView*`;
+  the abutting 1998 shapes are otherwise byte-identical).  The
+  `.m`: the import swap, then the standard mapping set —
+  `sampleCount` → `lengthInSampleFrames` (1998-note comment: the
+  1998 `sampleCount` is channel-independent, so the direct
+  rename, the view-chain and Mix precedent), both
+  `convertToFormat:` → `convertToSampleFormat:` (1998-note
+  comment: the 1998 `SoundView` proper lacked the method;
+  Resound's `ModuleSoundView` category supplied it, and the
+  ported twin declares it on `SndView`), `data` → `bytes`, both
+  `SNDSwap*` blocks deleted (host order, the Zero change), and
+  the two `[Sound …]` class calls → `[Snd …]`
+  (`nextPositivePowerOfTwo:` / `performFFTFromSoundData:` — the
+  `Snd(ModuleSound)` category the app links; the bundle
+  deliberately does not carry the category sources, as in 1998).
+  `SND_RATE_HIGH` stays verbatim (it resolves through
+  `SndKit.h` → `SndFormat.h` → `MKPerformSndMIDI/PerformSound.h`
+  → `SndStruct.h`, the WaveBuilder precedent).  The DSP core —
+  the FFT call, the `f1`/`f2`/`p1` split (the amplitude of the
+  positive half, the dB-mapped copy, the phase of that half),
+  the minimum-dB floor, the two graph `setTo:`/`setReals:`
+  setups and the minimum-dB field write — is byte-identical to
+  1998.
+- `Source/Modules/FFT/DiscreteGraphView.{h,m}` (1998: 74/331
+  lines): **byte-identical** to 1998 — the family's only custom
+  views, and pure AppKit (no legacy SoundKit API; the `PS*`
+  drawing calls resolve through AppKit), so nothing to map.  The
+  cursor image loads from the bundle at init
+  (`pathForImageResource:@"FFTCursor"`, a 1998 `printf` on a
+  miss).
+- The three stale per-module header copies synced to the ported
+  top-level files (as the earlier units: the import swap plus
+  the `Snd(ModuleSound)` / `SndView(ModuleSoundView)` category
+  renames; `ModuleSoundView.h` additionally the
+  `convertToSampleFormat:` rename and the `NSString*` info pair
+  the leftovers unit landed); the `ModuleController.h` copy
+  keeps its 1998 license variant (it is not in this module's
+  import chain), and `ModuleInfo.rtfd` keeps the 1998 help text.
+- The top-level `Source/ModuleSoundView.m` (the unit's only
+  app-TU change): the leftovers unit renamed the header
+  declaration and the four 1998 callers to
+  `convertToSampleFormat:`, but the implementation kept the 1998
+  name — a latent unrecognised-selector crash on any module
+  conversion.  The implementation, its doc comment and the file
+  banner now carry the ported name; the body is byte-identical.
+- The bundle build is the 1998 headers and one 1998 call: 63
+  warnings.  `FFTModule.m` 26 — the 24
+  `-Wmissing-selector-name` re-emissions (`ModuleSound.h` 10,
+  `ModuleProtocol.h` 2, `ModuleMenuNode.h` 2,
+  `DiscreteGraphView.h` 6, `FFTController.h` 4 — the inherited
+  1998 idioms, the same per-header counts as the other
+  modules) plus the two `-Wpointer-sign` of the 1998 `int`
+  selection locals against SndKit's `unsigned int*` `SndView
+  getSelection:` (the 1998 app-side twin declares `int*`; the
+  values are non-negative and the types ABI-identical, so the
+  1998 shape is kept and the pair documented).  `FFTController.m`
+  24 — all `-Wmissing-selector-name` (the same header
+  re-emissions minus the protocol/menu headers, plus the four of
+  its own abutting `drawFFT:::` / `setDelegates:x:y`
+  declaration).  `DiscreteGraphView.m` 13 — its header's six
+  plus the six of its own abutting `setTo:` / `useCursor::`
+  implementation, plus the one `-Wunused-but-set-variable` on
+  the 1998 `isInside`.
+
+**The gorm wiring (probed on the real installed bundle).**  A
+throwaway probe loaded the bundle, instantiated `FFTModule` the
+way the app does, ran `ResoundNibs loadNibNamed: "FFT" owner:`
+for real, and dumped the module's ivars: the gorm connects all
+four declared outlets — `fftPanel` to the `NSPanel` (title
+**"FFT"**), `fftController` to the archive's fully-wired one of
+its two `FFTController`s, `x` / `y` to the panel's two axis
+`NSTextField`s — and the controller's four in turn: `freqview` /
+`phasview` to the panel's two `DiscreteGraphView`s,
+`minimumdbfield` to a (empty) `NSTextField`, `decibelButton` to
+an `NSButtonCell` (state 1 — the decibel path the `islinear` 0
+default also takes).  Four windows come up after the load, and
+`nib_loaded` stays 0 — the flag is set only by
+`showFFTPanel:`, which the probe never runs (the `resoundmenu
+--perform` probe drives it for real).
+
+**The `resoundmodule` FFT contract.**  As the earlier seven, the
+tool dispatches on the principal class (`FFTModule` → the FFT
+contract): the menu tree — one "FFT..." leaf targeting the
+module's `showFFTPanel:`; the four module outlet ivars plus the
+one-byte `nib_loaded` flag checked to exist and to start
+un-wired (all nil, the flag 0).  Then the `doFFT:` matrix: the
+five 1998 data formats (all five — the 1998 guard only requires
+mono 44.1k), whole-sound and partial selections (a 512-frame
+sound, the full selection and a 64/256 window), decibel (the
+alloc-zeroed `islinear` 0 default) for all ten cases and the
+linear branch on the 16-bit pair.  Each case: a real in-memory
+`Snd` (mono 44.1k) in a real `SndView` with the case's
+selection, through the module's `doFFT:` to a fresh real bundle
+`FFTController` whose four outlet ivars are fakes (two graph
+stand-ins, the minimum-dB field, the decibel button); the
+expectation recomputes the same real `Snd
+performFFTFromSoundData:` the controller calls — the 1998
+`Snd(ModuleSound)` category plus the `fft()` core, compiled into
+this tool from the app's `Source/ModuleSound.m` + `Source/fft.c`
+(the bundle deliberately does not carry the category sources,
+1998-faithful) — then the 1998 `f1`/`f2`/`p1` split and the
+minimum-dB floor, and checks the controller's `n` (the next
+power of two), its three buffers byte-for-byte, the minimum-dB
+field, and the two graphs' `setTo:`/`setReals:`/display calls
+(the frequency range 0..1 stretched for linear, and for decibel
+the minimum-dB floor — the 1998 `DEFAULT_MINIMUM_DB` 30 when it
+is non-negative; the phase range ±π centered on zero,
+branch-independent).  Then `showFFTPanel:` with the panel
+outlets as fakes and the `nib_loaded` flag pre-set to 1
+(skipping the nib load, which needs a display — the app-side
+half is the probe below): the controller's 1998 abutting
+`setDelegates::` receives the two axis fields, which it forwards
+to the frequency graph's 1998 abutting `useCursor::`, the panel
+is ordered key and front (repeatable), the flag stays 1.  Then
+the toggle both ways (button 1 → `islinear` 0, button 0 →
+`islinear` 1; with no drawn FFT the redraw is the 1998
+NULL-buffer no-op, the graphs untouched), and a full
+`redrawGraphs:` after a real `doFFT:` (the range follows the
+branch, the linear 0..1 re-issue checked).  239 checks, 0
+failures.
+
+**The `resoundmenu --perform` probe (extended with the unit).**
+The after-launch Modules menu must show the "FFT..." leaf
+(alongside Zero / Mix In / Envelope / Echo Chamber... / Noise
+Gate... / Filter / Generate Sounds), and `--perform "FFT..."`
+drives the real `showFFTPanel:` — the lazy gorm load included —
+asserting the panel comes up **visible with the gorm's own
+title** "FFT".
+
+**Verification.**  In CI the `FFT.rmod` build + install is
+fatal; `resoundmodule` pins the bundle-side contract headlessly
+(the tool now compiles the app's `Snd(ModuleSound)` category +
+the 1998 `fft.c` core into itself for the expectation); the
+`resoundmenu` probe (non-fatal, under `xvfb`) asserts the
+after-launch leaf **and** runs the `--perform`, asserting the
+panel window.  Locally the same three plus `resoundnib
+--check` at **63** gorm folders, 0 failures (49 from the repo
+root, 14 from `Resound.app/Resources`; the new copies are the
+in-tree module-root `FFT.gorm` and the built `FFT.rmod`'s) and
+the real-app launch with all eight modules installed (it stays
+up, zero `objc-load` errors — the probe above).  The app TU
+total stays at the 455-warning baseline (the unit's only app
+file is the `ModuleSoundView.m` rename above, which adds no
+warnings); the bundle TU is the 63 above; the contract TU goes
+19 → 35 — the 16 new are all `-Wmissing-selector-name` on the
+1998 abutting tokens (the `FFTController` mirror's
+`drawFFT:::` / `setDelegates:x:y` declaration, the
+`FakeFftGraph`'s `setTo:` / `useCursor::` declaration +
+implementation pair — the last parameter of each abutting
+declaration does not warn, matching the module header's own
+behaviour).
+
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with
 `NOT_COMPILING_WITH_MODULES` *commented out* (modules compiled in) and
