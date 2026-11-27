@@ -53,7 +53,7 @@ IMPLIED WARRANTIES.
 			signed short tempsnd; int x; char* d=(char*)data;\
 			signed short hi_clip=SHRT_MAX; signed short low_clip=SHRT_MIN;\
 			for (x=firstSample*channelCount;x<(firstSample+sampleLength)*channelCount;x++)\
-				{ tempsnd=SNDiMulaw(d[x]); tempsnd=(signed short)(operation); d[x]=SNDMulaw(tempsnd); }\
+				{ tempsnd=SndMuLawToLinear((unsigned char)d[x]); tempsnd=(signed short)(operation); d[x]=SndLinearToMuLaw(tempsnd); }\
 			tempsnd=hi_clip; tempsnd=low_clip; } break;\
 		case SND_FORMAT_LINEAR_8: 			\
 			{\
@@ -99,7 +99,7 @@ IMPLIED WARRANTIES.
 #import "MathModule.h"
 #import "ResoundNibs.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <limits.h>
 #import <math.h>
 #import "ModuleSoundView.h" 
@@ -164,15 +164,19 @@ IMPLIED WARRANTIES.
 	
 - absIt:sender
 	{
-	Sound* current=[moduleController currentSound];
+	Snd* current=[moduleController currentSound];
 
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	/* 1998: [current sampleCount] - the 1998 SoundKit sample count
+	   is channel-independent, so the port is the direct
+	   lengthInSampleFrames rename (the view-chain and Mix
+	   precedent). */
+	int sampleCount=[current lengthInSampleFrames];
 	
 	void* data;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==nil)
 		{
@@ -186,10 +190,11 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];
 		
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* 1998: SNDSwapSoundToHost (...) - SndKit keeps sample data in
+	   host byte order, so the swap pair around each DSP is gone
+	   (the Zero change; the Mix port documented the same pair). */
 
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -197,8 +202,7 @@ IMPLIED WARRANTIES.
 		
 	MATH_INDEPENDENT(fabs((double)tempsnd))	
 	
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound (...) - host order, see absIt:.) */
 	[moduleController soundChanged];
 	return self;
 	}
@@ -206,15 +210,15 @@ IMPLIED WARRANTIES.
 
 - invertIt:sender
 	{
-	Sound* current=[moduleController currentSound];
+	Snd* current=[moduleController currentSound];
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 	
 	void* data;
 
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 		
 	if (current==nil)
 		{
@@ -228,10 +232,9 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];
 
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see absIt:.) */
 
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -239,8 +242,7 @@ IMPLIED WARRANTIES.
 		
 	MATH_INDEPENDENT((-tempsnd))	
 	
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see absIt:.) */
 	[moduleController soundChanged];
 	return self;
 	}
@@ -248,16 +250,16 @@ IMPLIED WARRANTIES.
 
 - multiplyIt:sender
 	{
-	Sound* current=[moduleController currentSound];
+	Snd* current=[moduleController currentSound];
 	float slider=[percentChangeField floatValue];
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 	
 	void* data;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==nil)
 		{
@@ -271,10 +273,9 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];
 
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see absIt:.) */
 
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -282,8 +283,7 @@ IMPLIED WARRANTIES.
 			
 	MATH_INDEPENDENT(tempsnd*slider/100 > hi_clip ? hi_clip : (tempsnd*slider/100 < low_clip ? low_clip : tempsnd*slider/100))
 	
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see absIt:.) */
 	[moduleController soundChanged];
 	return self;
 	}
@@ -291,16 +291,16 @@ IMPLIED WARRANTIES.
 
 - shiftIt:sender
 	{
-	Sound* current=[moduleController currentSound];
+	Snd* current=[moduleController currentSound];
 	float slider=[shiftSliderValue floatValue];
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 	
 	void* data;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==nil)
 		{
@@ -314,10 +314,9 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];
 		
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see absIt:.) */
 
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -325,8 +324,7 @@ IMPLIED WARRANTIES.
 		
 	MATH_INDEPENDENT(tempsnd+(slider*hi_clip) > hi_clip ? hi_clip : (tempsnd+(slider*hi_clip) < low_clip ? low_clip : tempsnd+(slider*hi_clip)))
 
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see absIt:.) */
 	[moduleController soundChanged];
 	return self;
 	}
@@ -356,15 +354,15 @@ IMPLIED WARRANTIES.
 
 - maximize:sender
 	{
-	Sound* current=[moduleController currentSound];
+	Snd* current=[moduleController currentSound];
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 	
 	void* data;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==nil)
 		{
@@ -378,10 +376,9 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];
 		
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see absIt:.) */
 
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -395,9 +392,9 @@ IMPLIED WARRANTIES.
 			signed short hi_clip=SHRT_MAX; signed short max=0; 
 			for (x=firstSample*channelCount;x<(firstSample+sampleLength)*channelCount;x++)
 				{ 
-				tempsnd=SNDiMulaw(d[x]); 	
+				tempsnd=SndMuLawToLinear((unsigned char)d[x]); 	
 				if (max<abs(tempsnd)) max=(float)abs(tempsnd); 
-				/* d[x]=SNDMulaw(tempsnd); */ 
+				/* d[x]=SndLinearToMuLaw(tempsnd); */ 
 				}
 			[percentChangeField setFloatValue: ((float)hi_clip)/((float)max)*100.0];
 			[percentChangeScroller setFloatValue:[percentChangeField floatValue]];
@@ -445,8 +442,7 @@ IMPLIED WARRANTIES.
 		}
 
 	
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see absIt:.) */
 	return self;
 	}	
 	
@@ -455,15 +451,15 @@ IMPLIED WARRANTIES.
 
 - reverseIt:sender
 	{
-	Sound* current=[moduleController currentSound];
+	Snd* current=[moduleController currentSound];
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 
 	void* data;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==nil)
 		{
@@ -477,10 +473,9 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];
 
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see absIt:.) */
 	
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -595,8 +590,7 @@ IMPLIED WARRANTIES.
 				@"Okay",nil,nil);
 		}
 
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see absIt:.) */
 	[moduleController soundChanged];
 	return self;
 	}

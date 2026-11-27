@@ -1341,6 +1341,162 @@ implementation pair — the last parameter of each abutting
 declaration does not warn, matching the module header's own
 behaviour).
 
+**The Math module unit (2026-11-27, ninth of the ten) —
+and the seventh with a control panel (two of them, the
+"Change Amplitude" and the "Vertical Shift" panel): the
+example transform module - volume scaling, vertical
+shift, inversion, absolute value and reversal, the
+family's only module with six DSP methods, and the only
+one with a method (`maximize:`) that writes to the
+panel instead of the buffer.**
+
+- `Source/Modules/Math/GNUmakefile` (new): the
+  Zero/Mix/EchoChamber/Gate/Filter/WaveBuilder/FFT
+  template - the gnustep-make bundle building
+  `Math.rmod` in-tree (`MathModule` as the principal
+  class, `ModuleInfo.rtfd` **and the `Math.gorm`
+  directory** as the bundle resources, the SndKit chain
+  linked per ADR 0020).  The gorm is at the *module
+  root* in the tree (no `English.lproj` wrapper; the
+  1998 `Math.nib` folder sat at the bundle root), the
+  same placement as the other root-nib modules.  The
+  1998 reference family stays in the tree uninstalled:
+  `Math.nib`, plus the 1998 `Makefile*` and
+  `PB.project` (as the earlier units).
+- `Source/Modules/Math/MathModule.{h,m}` (1998: 53/608
+  lines; ported: 53/603): the header is byte-identical
+  to 1998.  The `.m` is the 43-hunk mapping set: the
+  import swap, the added `ResoundNibs.h` import, both
+  `[NSBundle loadNibNamed:@"Math" owner:self]` →
+  `[ResoundNibs loadNibNamed: @"Math" owner:self]`
+  (the nib-era lazy panel load, as with the other gorm
+  modules), 6× `Sound*` → `Snd*`, 6× `sampleCount` →
+  `lengthInSampleFrames` (1998-note comment: the 1998
+  count is channel-independent, so the direct rename,
+  the view-chain and Mix precedent), 6× `int
+  firstSample/sampleLength` → `unsigned int` (SndKit's
+  `SndView getSelection:`), 6× `data` → `bytes`, the
+  12 `SNDSwap*` call lines → 12 comment lines (host
+  order, the Zero change; the Mix port documented the
+  same pair), and the mu-law pair of the
+  `MATH_INDEPENDENT` macro arm and the `maximize:` arm
+  → `SndMuLawToLinear` / `SndLinearToMuLaw` (no
+  `LINCLIP` - the decoded `short` meets the same ops as
+  Envelope and Gate, which only shrink or re-clip in
+  the linear domain).  The DSP core - the macro's five
+  per-format arms (including the 1998 dead
+  `tempsnd=hi_clip; tempsnd=low_clip;` pair), the menu
+  tree, the six transform bodies, the panel writes - is
+  byte-identical to 1998.
+- The three stale per-module header copies synced to
+  the ported top-level files (as the earlier units:
+  the import swap, the `Snd(ModuleSound)` /
+  `SndView(ModuleSoundView)` category renames, the
+  `convertToSampleFormat:` rename and the `NSString*`
+  info pair the leftovers unit landed;
+  `ModuleController.h` keeps its 1998 license variant,
+  it is not in this module's import chain), and
+  `ModuleInfo.rtfd` keeps the 1998 help text.
+- The bundle build is the 1998 headers and one 1998
+  call: 16 warnings.  14 are
+  `-Wmissing-selector-name` re-emissions (the inherited
+  1998 idioms: `ModuleSound.h` 10, `ModuleMenuNode.h`
+  2, `ModuleProtocol.h` 2 - the same per-header counts
+  as the other modules) and 2 are `-Wabsolute-value`
+  on the 1998 `char` max scan of the `maximize:`
+  LINEAR_8 arm - this toolchain's `char` is unsigned,
+  so the `abs()` has no effect (a 1998
+  platform-dependent fingerprint, the same category as
+  Gate's 8-bit threshold; the 1998 shape is kept, and
+  the contract's mirror carries the identical types, so
+  the expectation classifies the same on any
+  platform).
+
+**The gorm wiring (read from the bundle's gorm archive;
+the runtime half is the probe below).**  The archive
+carries the two panel windows - "Change Amplitude"
+(`ChangeAmplitudeModulePanel`) and "Vertical Shift"
+(`VerticalShiftWindow`) - the "Percent Change" text
+field at its number-formatted 100 default, the percent
+slider and the shift slider, connected to the module's
+five outlets (`multiplyPanel`, `percentChangeScroller`,
+`percentChangeField`, `shiftPanel`, `shiftSliderValue`);
+the panel buttons to `multiplyIt:` (Apply), `halve:`,
+`double:` and `maximize:` plus the standard
+`takeFloatValueFrom:` / `takeIntValueFrom:` value
+readers; `NSOwner` to the module (the `MathModule`
+class description lists the ten actions and the five
+outlets).
+
+**The `resoundmodule` Math contract.**  As the earlier
+eight, the tool dispatches on the principal class
+(`MathModule` → the math contract): the menu tree -
+the "Amplitude" submenu holding the four leaves in the
+1998 addSubmenu order ("Change Amplitude...",
+"Vertical Shift...", "Invert", "AbsoluteValue",
+targeting `showMultiplyPanel:`, `showShiftPanel:`,
+`invertIt:`, `absIt:`) plus the top-level "Reverse"
+leaf (`reverseIt:`), every target the module; the five
+outlet ivars plus the one-byte `nib_loaded` flag
+checked to exist and to start un-wired.  Then
+`showMultiplyPanel:` / `showShiftPanel:` with the
+panels as fakes and `nib_loaded` pre-set to 1 (each
+orders only its own panel key and front, repeatable,
+the flag stays 1), `halve:` / `double:` (the field and
+scroller to 50 / 200 through the two value pairs), and
+the DSP matrix on real in-memory Snds (200 frames, the
+standard pattern) through the duck-typed controller:
+`absIt:` / `invertIt:` over the five 1998 formats,
+mono and stereo, whole-sound plus a partial 50-frame
+window and the 1998 zero-length fall-through;
+`multiplyIt:` over the five formats at the 50 / 100 /
+200 slider values (100 the gorm default - exact
+identity), stereo at the identity; `shiftIt:` at the
+-1 / 0.5 / 1 slider values; `maximize:` (the field to
+the format's hi-clip over the max, the scroller to the
+field, the buffer untouched, no `soundChanged`);
+`reverseIt:` (the whole-selection reversal plus the
+stereo pair swap, mono and stereo).  Each case
+recomputes the ported `MATH_INDEPENDENT` arm, the
+`maximize:` scan, and the 1998 reversal on a copy of
+the buffer with the module's own types and operation
+order - including the mu-law decode through SndKit's
+pair and the 1998 char fingerprint - and checks the
+full buffer byte-for-byte (which also proves the
+unselected bytes stay untouched), the stop /
+soundChanged counts, and the preserved shape.  569
+checks, 0 failures.
+
+**The `resoundmenu --perform` probe (extended with the
+unit).**  The after-launch Modules menu must show the
+"Amplitude" submenu with the "Change Amplitude..." and
+"Vertical Shift..." leaves (alongside the other eight
+modules' entries), and `--perform "Change Amplitude..."`
+drives the real `showMultiplyPanel:` - the lazy gorm
+load included - asserting the panel comes up **visible
+with the gorm's own title** "Change Amplitude".
+
+**Verification.**  In CI the `Math.rmod` build +
+install is fatal; `resoundmodule` pins the bundle-side
+contract headlessly; the `resoundmenu` probe
+(non-fatal, under `xvfb`) asserts the after-launch
+submenu **and** runs the `--perform`, asserting the
+panel window.  Locally the same three plus
+`resoundnib --check` at **64** gorm folders, 0
+failures (50 from the repo root, 14 from
+`Resound.app/Resources`; the new copy is the built
+`Math.rmod`'s - the in-tree module-root `Math.gorm`
+landed with the nib unit) and the real-app launch with
+all nine modules installed (the probe above; the
+Module Info menu lists Math alongside the other
+eight).  The app TU total stays at the 455-warning
+baseline (the unit touches no app file); the bundle TU
+is the 16 above; the contract TU goes 35 → 37 - the 2
+new are the `-Wabsolute-value` pair on the mirrored
+1998 `char` max scan (the same fingerprint the module
+carries, mirrored on purpose, the way the gate
+contract mirrors its 8-bit threshold).
+
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with
 `NOT_COMPILING_WITH_MODULES` *commented out* (modules compiled in) and

@@ -7,9 +7,11 @@ module (zeroSound:), the Mix module (mix:), the Envelope module
 (applyEnvelope:), the EchoChamber module (begin:/performEcho:),
 the Gate module (showNoiseGatePanel:/gateIt:), the Filter module
 (LoadFilterPanel:/Apply:/ApplyEcho:), the WaveBuilder module
-(loadSinPanel:/generateSin:/generateOthers:) and the FFT module
-(showFFTPanel:/doFFT: with the bundle's real FFTController) - the
-first eight units from the module tree (see docs/GNUSTEP_BUILD.md).
+(loadSinPanel:/generateSin:/generateOthers:), the FFT module
+(showFFTPanel:/doFFT: with the bundle's real FFTController) and
+the Math module (absIt:/invertIt:/multiplyIt:/shiftIt:/maximize: /
+reverseIt: and the two lazy panel loads) - the first nine units
+from the module tree (see docs/GNUSTEP_BUILD.md).
 
 What it does (headless: no display, no audio device):
 
@@ -22,7 +24,8 @@ What it does (headless: no display, no audio device):
      mix contract, EnvelopeModule the envelope contract,
      EchoChamber the echo contract, GateModule the gate contract,
      FilterModule the filter contract, WaveBuilderModule the wave
-     builder contract, FFTModule the FFT contract.
+     builder contract, FFTModule the FFT contract, MathModule the
+     math contract.
 
   2. Instantiates the module (the same alloc/init the app runs) and
      checks the menu tree the 1998 init builds: exactly one leaf -
@@ -310,6 +313,25 @@ Exit status: 0 when every check passes, 1 otherwise.
 - init;
 - toggleLinearAndDecibel:sender;
 - redrawGraphs:sender;
+@end
+
+/* The 1998 Math header is the plain one: every method with the
+   space after the colon, so the selectors are the part after the
+   space - reverseIt:, invertIt:, absIt:, shiftIt:, multiplyIt:,
+   showShiftPanel:, showMultiplyPanel:, halve:, double:, maximize:
+   - and the mirror carries them byte-faithful (no warnings). */
+@interface MathModule : Module
+- init;
+- reverseIt:sender;
+- invertIt:sender;
+- absIt:sender;
+- shiftIt:sender;
+- multiplyIt:sender;
+- showShiftPanel:sender;
+- showMultiplyPanel:sender;
+- halve:sender;
+- double:sender;
+- maximize:sender;
 @end
 
 static int failures = 0;
@@ -1997,6 +2019,272 @@ sets to the bundle's real FFTController).
 - (id) currentSoundView
     {
     return _soundView;
+    }
+@end
+
+/*
+The Math contract's stand-ins for the two lazy gorm panels and the
+module's panel controls:
+
+  - FakeMathPanel counts makeKeyAndOrderFront: calls - the one
+    AppKit message showMultiplyPanel: / showShiftPanel: send to the
+    panel after the (skipped) nib load.
+  - FakeMathField mirrors the gorm's percent text field: the module
+    reads it with floatValue: (multiplyIt:) and writes it with
+    setIntValue: (halve: / double:) and setFloatValue:
+    (maximize:) - the two value pairs the 1998 NSTextField
+    provides, and the last written of the two wins on read.
+  - FakeMathScroller mirrors the gorm's percent slider (the same
+    value pairs; the module only writes it).
+  - FakeMathSlider mirrors the gorm's shift slider (the module only
+    reads its floatValue: in shiftIt:).
+
+The field and the scroller start at the gorm's value (100, the
+number formatter's default).
+*/
+@interface FakeMathPanel : NSObject
+{
+    int _keyFront;
+}
+- (void) makeKeyAndOrderFront: (id)sender;
+- (int) keyFrontCount;
+@end
+
+@implementation FakeMathPanel
+- (void) makeKeyAndOrderFront: (id)sender
+    {
+    _keyFront++;
+    }
+- (int) keyFrontCount
+    {
+    return _keyFront;
+    }
+@end
+
+@interface FakeMathField : NSObject
+{
+    float _float;
+    int _int;
+}
+- (id) initWithFloatValue: (float)value;
+- (float) floatValue;
+- (void) setFloatValue: (float)value;
+- (int) intValue;
+- (void) setIntValue: (int)value;
+@end
+
+@implementation FakeMathField
+- (id) initWithFloatValue: (float)value
+    {
+    if (self = [super init])
+        {
+        _float = value;
+        _int = (int)value;
+        }
+    return self;
+    }
+- (float) floatValue
+    {
+    return _float;
+    }
+- (void) setFloatValue: (float)value
+    {
+    _float = value;
+    _int = (int)value;
+    }
+- (int) intValue
+    {
+    return _int;
+    }
+- (void) setIntValue: (int)value
+    {
+    _int = value;
+    _float = (float)value;
+    }
+@end
+
+@interface FakeMathScroller : NSObject
+{
+    float _float;
+    int _int;
+}
+- (id) initWithFloatValue: (float)value;
+- (float) floatValue;
+- (void) setFloatValue: (float)value;
+- (int) intValue;
+- (void) setIntValue: (int)value;
+@end
+
+@implementation FakeMathScroller
+- (id) initWithFloatValue: (float)value
+    {
+    if (self = [super init])
+        {
+        _float = value;
+        _int = (int)value;
+        }
+    return self;
+    }
+- (float) floatValue
+    {
+    return _float;
+    }
+- (void) setFloatValue: (float)value
+    {
+    _float = value;
+    _int = (int)value;
+    }
+- (int) intValue
+    {
+    return _int;
+    }
+- (void) setIntValue: (int)value
+    {
+    _int = value;
+    _float = (float)value;
+    }
+@end
+
+@interface FakeMathSlider : NSObject
+{
+    float _float;
+}
+- (id) initWithFloatValue: (float)value;
+- (float) floatValue;
+- (void) setFloatValue: (float)value;
+@end
+
+@implementation FakeMathSlider
+- (id) initWithFloatValue: (float)value
+    {
+    if (self = [super init])
+        _float = value;
+    return self;
+    }
+- (float) floatValue
+    {
+    return _float;
+    }
+- (void) setFloatValue: (float)value
+    {
+    _float = value;
+    }
+@end
+
+/*
+A stand-in for the app's current sound view for the Math contract:
+the 1998 flow touches only getSelection:size: (a zero length
+falls through to the whole sound in the module) and
+checkForCurrentDataOnPasteboard (the app's ModuleSoundView
+category clears a stale pasteboard; a no-op here), so a plain
+NSObject with the family's fake-view shape is exact.
+*/
+@interface FakeMathView : NSObject
+{
+    Snd *_sound;
+    unsigned int _first;
+    unsigned int _len;
+}
+- (id) initWithSound: (Snd *)sound;
+- (void) setSelection: (unsigned int)first size: (unsigned int)len;
+- (void) getSelection: (unsigned int *)firstSample size: (unsigned int *)sampleLength;
+- (void) checkForCurrentDataOnPasteboard;
+@end
+
+@implementation FakeMathView
+- (id) initWithSound: (Snd *)sound
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _first = 0;
+        _len = (unsigned int)[_sound lengthInSampleFrames];
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [super dealloc];
+    }
+- (void) setSelection: (unsigned int)first size: (unsigned int)len
+    {
+    _first = first;
+    _len = len;
+    }
+- (void) getSelection: (unsigned int *)firstSample size: (unsigned int *)sampleLength
+    {
+    *firstSample = _first;
+    *sampleLength = _len;
+    }
+- (void) checkForCurrentDataOnPasteboard
+    {
+    /* The app's ModuleSoundView category clears a stale pasteboard; a no-op here. */
+    }
+@end
+
+/*
+A stand-in for the app's ModuleController for the Math contract:
+the six DSP actions read currentSound / currentSoundView and
+record the two side effects (stop, soundChanged).
+*/
+@interface FakeMathController : NSObject
+{
+    Snd *_sound;
+    id _soundView;
+    int _stopped;
+    int _soundChanged;
+}
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView;
+- (id) currentSound;
+- (id) currentSoundView;
+- (void) stop;
+- (void) soundChanged;
+- (int) stopCount;
+- (int) soundChangedCount;
+@end
+
+@implementation FakeMathController
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _soundView = [soundView retain];
+        _stopped = 0;
+        _soundChanged = 0;
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [_soundView release];
+    [super dealloc];
+    }
+- (id) currentSound
+    {
+    return _sound;
+    }
+- (id) currentSoundView
+    {
+    return _soundView;
+    }
+- (void) stop
+    {
+    _stopped++;
+    }
+- (void) soundChanged
+    {
+    _soundChanged++;
+    }
+- (int) stopCount
+    {
+    return _stopped;
+    }
+- (int) soundChangedCount
+    {
+    return _soundChanged;
     }
 @end
 
@@ -4784,6 +5072,979 @@ static void runEnvelope (Class principal)
                       NO, 0, 400001, 1, 1, 400001);
 }
 
+/*
+The Math module's per-element transforms, mirrored from the ported
+MATH_INDEPENDENT arms - the same per-format temporaries (the signed
+short of the mu-law decode, the char of the 8-bit, the short of the
+16-bit, the float, the double), the same operation, the same
+assignment, the same loop bounds - so the expected buffer is exactly
+what the 1998-faithful module code computes on the same input.  The
+mu-law arm decodes through SndKit's SndMuLawToLinear /
+SndLinearToMuLaw pair (the ported rename of the 1998 SND*
+conversion pair); the multiply arm below is the 1998 slider percent
+with the per-format hi/low clip pair, the shift arm the 1998 slider
+times the format's hi-clip, maximize: the 1998 max scan to the
+percent field, and reverse the 1998 whole-selection reversal plus
+the stereo pair swap.
+*/
+static void mathExpectAbs (void *buf, unsigned int first, unsigned int len,
+                           int ch, SndSampleFormat fmt)
+{
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = SndMuLawToLinear ((unsigned char)d[x]);
+                tempsnd = (signed short)fabs ((double)tempsnd);
+                d[x] = SndLinearToMuLaw (tempsnd);
+                }
+            } break;
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                char tempsnd = d[x];
+                tempsnd = (char)fabs ((double)tempsnd);
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = d[x];
+                tempsnd = (signed short)fabs ((double)tempsnd);
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                float tempsnd = d[x];
+                tempsnd = (float)fabs ((double)tempsnd);
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                double tempsnd = d[x];
+                tempsnd = (double)fabs ((double)tempsnd);
+                d[x] = tempsnd;
+                }
+            } break;
+        default:
+            break;
+        }
+}
+
+static void mathExpectInvert (void *buf, unsigned int first, unsigned int len,
+                              int ch, SndSampleFormat fmt)
+{
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = SndMuLawToLinear ((unsigned char)d[x]);
+                tempsnd = (signed short)(-tempsnd);
+                d[x] = SndLinearToMuLaw (tempsnd);
+                }
+            } break;
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                char tempsnd = d[x];
+                tempsnd = (char)(-tempsnd);
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = d[x];
+                tempsnd = (signed short)(-tempsnd);
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                float tempsnd = d[x];
+                tempsnd = (float)(-tempsnd);
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                double tempsnd = d[x];
+                tempsnd = (double)(-tempsnd);
+                d[x] = tempsnd;
+                }
+            } break;
+        default:
+            break;
+        }
+}
+
+static void mathExpectMultiply (void *buf, unsigned int first, unsigned int len,
+                                int ch, SndSampleFormat fmt, float slider)
+{
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = SndMuLawToLinear ((unsigned char)d[x]);
+                signed short hi_clip = SHRT_MAX;
+                signed short low_clip = SHRT_MIN;
+                tempsnd = (signed short)(tempsnd*slider/100 > hi_clip ? hi_clip :
+                    (tempsnd*slider/100 < low_clip ? low_clip : tempsnd*slider/100));
+                d[x] = SndLinearToMuLaw (tempsnd);
+                }
+            } break;
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                char tempsnd = d[x];
+                char hi_clip = CHAR_MAX;
+                char low_clip = CHAR_MIN;
+                tempsnd = (char)(tempsnd*slider/100 > hi_clip ? hi_clip :
+                    (tempsnd*slider/100 < low_clip ? low_clip : tempsnd*slider/100));
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = d[x];
+                signed short hi_clip = SHRT_MAX;
+                signed short low_clip = SHRT_MIN;
+                tempsnd = (signed short)(tempsnd*slider/100 > hi_clip ? hi_clip :
+                    (tempsnd*slider/100 < low_clip ? low_clip : tempsnd*slider/100));
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                float tempsnd = d[x];
+                float hi_clip = 1.0;
+                float low_clip = -(1.0);
+                tempsnd = (float)(tempsnd*slider/100 > hi_clip ? hi_clip :
+                    (tempsnd*slider/100 < low_clip ? low_clip : tempsnd*slider/100));
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                double tempsnd = d[x];
+                double hi_clip = 1.0;
+                double low_clip = -(1.0);
+                tempsnd = (double)(tempsnd*slider/100 > hi_clip ? hi_clip :
+                    (tempsnd*slider/100 < low_clip ? low_clip : tempsnd*slider/100));
+                d[x] = tempsnd;
+                }
+            } break;
+        default:
+            break;
+        }
+}
+
+static void mathExpectShift (void *buf, unsigned int first, unsigned int len,
+                             int ch, SndSampleFormat fmt, float slider)
+{
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = SndMuLawToLinear ((unsigned char)d[x]);
+                signed short hi_clip = SHRT_MAX;
+                signed short low_clip = SHRT_MIN;
+                tempsnd = (signed short)(tempsnd+(slider*hi_clip) > hi_clip ? hi_clip :
+                    (tempsnd+(slider*hi_clip) < low_clip ? low_clip :
+                     tempsnd+(slider*hi_clip)));
+                d[x] = SndLinearToMuLaw (tempsnd);
+                }
+            } break;
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                char tempsnd = d[x];
+                char hi_clip = CHAR_MAX;
+                char low_clip = CHAR_MIN;
+                tempsnd = (char)(tempsnd+(slider*hi_clip) > hi_clip ? hi_clip :
+                    (tempsnd+(slider*hi_clip) < low_clip ? low_clip :
+                     tempsnd+(slider*hi_clip)));
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = d[x];
+                signed short hi_clip = SHRT_MAX;
+                signed short low_clip = SHRT_MIN;
+                tempsnd = (signed short)(tempsnd+(slider*hi_clip) > hi_clip ? hi_clip :
+                    (tempsnd+(slider*hi_clip) < low_clip ? low_clip :
+                     tempsnd+(slider*hi_clip)));
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                float tempsnd = d[x];
+                float hi_clip = 1.0;
+                float low_clip = -(1.0);
+                tempsnd = (float)(tempsnd+(slider*hi_clip) > hi_clip ? hi_clip :
+                    (tempsnd+(slider*hi_clip) < low_clip ? low_clip :
+                     tempsnd+(slider*hi_clip)));
+                d[x] = tempsnd;
+                }
+            } break;
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                double tempsnd = d[x];
+                double hi_clip = 1.0;
+                double low_clip = -(1.0);
+                tempsnd = (double)(tempsnd+(slider*hi_clip) > hi_clip ? hi_clip :
+                    (tempsnd+(slider*hi_clip) < low_clip ? low_clip :
+                     tempsnd+(slider*hi_clip)));
+                d[x] = tempsnd;
+                }
+            } break;
+        default:
+            break;
+        }
+}
+
+/* The 1998 max scan per format arm, the same as the module's
+   maximize: - the same temporaries (including the 1998 char
+   fingerprint of the 8-bit arm), the same comparison, and the same
+   field expression the module sends to setFloatValue:. */
+static float mathExpectMaximize (void *buf, unsigned int first, unsigned int len,
+                                 int ch, SndSampleFormat fmt)
+{
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            signed short hi_clip = SHRT_MAX;
+            signed short max = 0;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                signed short tempsnd = SndMuLawToLinear ((unsigned char)d[x]);
+                if (max < abs (tempsnd)) max = (float)abs (tempsnd);
+                }
+            return ((float)hi_clip) / ((float)max) * 100.0;
+            }
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            char hi_clip = CHAR_MAX;
+            char max = 0;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                if (max < abs (d[x])) max = (float)abs (d[x]);
+                }
+            return ((float)hi_clip) / ((float)max) * 100.0;
+            }
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)buf;
+            int x;
+            signed short hi_clip = SHRT_MAX;
+            signed short max = 0;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                if (max < abs (d[x])) max = (float)abs (d[x]);
+                }
+            return ((float)hi_clip) / ((float)max) * 100.0;
+            }
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)buf;
+            int x;
+            float hi_clip = 1.0;
+            float max = 0;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                if (max < fabs (d[x])) max = fabs (d[x]);
+                }
+            return ((float)hi_clip) / ((float)max) * 100.0;
+            }
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)buf;
+            int x;
+            double hi_clip = 1.0;
+            double max = 0;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                {
+                if (max < fabs (d[x])) max = fabs (d[x]);
+                }
+            return ((float)hi_clip) / ((float)max) * 100.0;
+            }
+        default:
+            return 0.0f;
+        }
+}
+
+/* The 1998 whole-selection reversal, arm for arm - the same
+   half-loop with the 1998 index arithmetic, then the same stereo
+   pair swap for a two-channel sound. */
+static void mathExpectReverse (void *buf, unsigned int first, unsigned int len,
+                               int ch, SndSampleFormat fmt)
+{
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            char trader = 0;
+            for (x = first * ch; x < (first + len / 2) * ch; x++)
+                {
+                trader = d[x];
+                d[x] = d[(first + len) * ch - x - 1 + first * ch];
+                d[(first + len) * ch - x - 1 + first * ch] = trader;
+                }
+            if (ch == 2)
+                for (x = first * ch; x < (first + len) * ch; x += 2)
+                    {
+                    trader = d[x];
+                    d[x] = d[x + 1];
+                    d[x + 1] = trader;
+                    }
+            } break;
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)buf;
+            int x;
+            signed short trader = 0;
+            for (x = first * ch; x < (first + len / 2) * ch; x++)
+                {
+                trader = d[x];
+                d[x] = d[(first + len) * ch - x - 1 + first * ch];
+                d[(first + len) * ch - x - 1 + first * ch] = trader;
+                }
+            if (ch == 2)
+                for (x = first * ch; x < (first + len) * ch; x += 2)
+                    {
+                    trader = d[x];
+                    d[x] = d[x + 1];
+                    d[x + 1] = trader;
+                    }
+            } break;
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)buf;
+            int x;
+            float trader = 0;
+            for (x = first * ch; x < (first + len / 2) * ch; x++)
+                {
+                trader = d[x];
+                d[x] = d[(first + len) * ch - x - 1 + first * ch];
+                d[(first + len) * ch - x - 1 + first * ch] = trader;
+                }
+            if (ch == 2)
+                for (x = first * ch; x < (first + len) * ch; x += 2)
+                    {
+                    trader = d[x];
+                    d[x] = d[x + 1];
+                    d[x + 1] = trader;
+                    }
+            } break;
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)buf;
+            int x;
+            double trader = 0;
+            for (x = first * ch; x < (first + len / 2) * ch; x++)
+                {
+                trader = d[x];
+                d[x] = d[(first + len) * ch - x - 1 + first * ch];
+                d[(first + len) * ch - x - 1 + first * ch] = trader;
+                }
+            if (ch == 2)
+                for (x = first * ch; x < (first + len) * ch; x += 2)
+                    {
+                    trader = d[x];
+                    d[x] = d[x + 1];
+                    d[x + 1] = trader;
+                    }
+            } break;
+        default:
+            break;
+        }
+}
+
+static void testMathAbs (id module, Ivar mcIvar, SndSampleFormat fmt, int ch,
+                         unsigned int first, unsigned int len)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== math: absIt: %s, %d channel(s), selection (%u,%u)\n",
+            name, ch, first, len);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: ch
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeMathView *view = [[[FakeMathView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeMathController *mc =
+        [[[FakeMathController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+
+    /* The module's 1998 fall-through: a zero-length selection
+       becomes the whole sound. */
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = [(MathModule *)module absIt: nil];
+
+    check (ret == module, "absIt: returns self");
+    check ([mc stopCount] == 1, "absIt: stopped the playback");
+    check ([mc soundChangedCount] == 1, "absIt: reported the sound changed");
+    check ([snd dataFormat] == fmt && [snd channelCount] == ch
+       && [snd lengthInSampleFrames] == 200,
+            "the sound keeps its format, channels and length");
+
+    unsigned char *expected = malloc ((size_t)size);
+    memcpy (expected, before, (size_t)size);
+    mathExpectAbs (expected, effFirst, effLen, ch, fmt);
+    check (memcmp ([snd bytes], expected, (size_t)size) == 0,
+            "the buffer matches the 1998 DSP arithmetic");
+    free (before);
+    free (expected);
+}
+
+static void testMathInvert (id module, Ivar mcIvar, SndSampleFormat fmt, int ch,
+                            unsigned int first, unsigned int len)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== math: invertIt: %s, %d channel(s), selection (%u,%u)\n",
+            name, ch, first, len);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: ch
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeMathView *view = [[[FakeMathView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeMathController *mc =
+        [[[FakeMathController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = [(MathModule *)module invertIt: nil];
+
+    check (ret == module, "invertIt: returns self");
+    check ([mc stopCount] == 1, "invertIt: stopped the playback");
+    check ([mc soundChangedCount] == 1, "invertIt: reported the sound changed");
+    check ([snd dataFormat] == fmt && [snd channelCount] == ch
+       && [snd lengthInSampleFrames] == 200,
+            "the sound keeps its format, channels and length");
+
+    unsigned char *expected = malloc ((size_t)size);
+    memcpy (expected, before, (size_t)size);
+    mathExpectInvert (expected, effFirst, effLen, ch, fmt);
+    check (memcmp ([snd bytes], expected, (size_t)size) == 0,
+            "the buffer matches the 1998 DSP arithmetic");
+    free (before);
+    free (expected);
+}
+
+static void testMathMultiply (id module, Ivar mcIvar, SndSampleFormat fmt, int ch,
+                              unsigned int first, unsigned int len, float slider)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== math: multiplyIt: %s, %d channel(s), selection (%u,%u), slider %g\n",
+            name, ch, first, len, (double)slider);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: ch
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeMathView *view = [[[FakeMathView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeMathController *mc =
+        [[[FakeMathController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+    FakeMathField *field = [[[FakeMathField alloc] initWithFloatValue: slider] autorelease];
+    FakeMathScroller *scroller =
+        [[[FakeMathScroller alloc] initWithFloatValue: slider] autorelease];
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "percentChangeField"), field);
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "percentChangeScroller"), scroller);
+
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = [(MathModule *)module multiplyIt: nil];
+
+    check (ret == module, "multiplyIt: returns self");
+    check ([mc stopCount] == 1, "multiplyIt: stopped the playback");
+    check ([mc soundChangedCount] == 1, "multiplyIt: reported the sound changed");
+    check ([snd dataFormat] == fmt && [snd channelCount] == ch
+       && [snd lengthInSampleFrames] == 200,
+            "the sound keeps its format, channels and length");
+
+    unsigned char *expected = malloc ((size_t)size);
+    memcpy (expected, before, (size_t)size);
+    mathExpectMultiply (expected, effFirst, effLen, ch, fmt, slider);
+    check (memcmp ([snd bytes], expected, (size_t)size) == 0,
+            "the buffer matches the 1998 DSP arithmetic");
+    free (before);
+    free (expected);
+}
+
+static void testMathShift (id module, Ivar mcIvar, SndSampleFormat fmt, int ch,
+                           unsigned int first, unsigned int len, float slider)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== math: shiftIt: %s, %d channel(s), selection (%u,%u), slider %g\n",
+            name, ch, first, len, (double)slider);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: ch
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeMathView *view = [[[FakeMathView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeMathController *mc =
+        [[[FakeMathController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+    FakeMathSlider *sliderFake =
+        [[[FakeMathSlider alloc] initWithFloatValue: slider] autorelease];
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "shiftSliderValue"), sliderFake);
+
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = [(MathModule *)module shiftIt: nil];
+
+    check (ret == module, "shiftIt: returns self");
+    check ([mc stopCount] == 1, "shiftIt: stopped the playback");
+    check ([mc soundChangedCount] == 1, "shiftIt: reported the sound changed");
+    check ([snd dataFormat] == fmt && [snd channelCount] == ch
+       && [snd lengthInSampleFrames] == 200,
+            "the sound keeps its format, channels and length");
+
+    unsigned char *expected = malloc ((size_t)size);
+    memcpy (expected, before, (size_t)size);
+    mathExpectShift (expected, effFirst, effLen, ch, fmt, slider);
+    check (memcmp ([snd bytes], expected, (size_t)size) == 0,
+            "the buffer matches the 1998 DSP arithmetic");
+    free (before);
+    free (expected);
+}
+
+static void testMathMaximize (id module, Ivar mcIvar, SndSampleFormat fmt, int ch,
+                              unsigned int first, unsigned int len)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== math: maximize: %s, %d channel(s), selection (%u,%u)\n",
+            name, ch, first, len);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: ch
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeMathView *view = [[[FakeMathView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeMathController *mc =
+        [[[FakeMathController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+    FakeMathField *field = [[[FakeMathField alloc] initWithFloatValue: 100.0f] autorelease];
+    FakeMathScroller *scroller =
+        [[[FakeMathScroller alloc] initWithFloatValue: 100.0f] autorelease];
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "percentChangeField"), field);
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "percentChangeScroller"), scroller);
+
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = [(MathModule *)module maximize: nil];
+
+    check (ret == module, "maximize: returns self");
+    check ([mc stopCount] == 1, "maximize: stopped the playback");
+    check ([mc soundChangedCount] == 0, "maximize: leaves the sound alone");
+    check ([field floatValue] ==
+             mathExpectMaximize ([snd bytes], effFirst, effLen, ch, fmt),
+            "maximize: set the field to the format's hi-clip over the max");
+    check ([scroller floatValue] == [field floatValue],
+            "maximize: matched the scroller to the field");
+    check (memcmp ([snd bytes], before, (size_t)size) == 0,
+            "maximize: the buffer is untouched");
+    free (before);
+}
+
+static void testMathReverse (id module, Ivar mcIvar, SndSampleFormat fmt, int ch,
+                             unsigned int first, unsigned int len)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== math: reverseIt: %s, %d channel(s), selection (%u,%u)\n",
+            name, ch, first, len);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: ch
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeMathView *view = [[[FakeMathView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeMathController *mc =
+        [[[FakeMathController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = [(MathModule *)module reverseIt: nil];
+
+    check (ret == module, "reverseIt: returns self");
+    check ([mc stopCount] == 1, "reverseIt: stopped the playback");
+    check ([mc soundChangedCount] == 1, "reverseIt: reported the sound changed");
+    check ([snd dataFormat] == fmt && [snd channelCount] == ch
+       && [snd lengthInSampleFrames] == 200,
+            "the sound keeps its format, channels and length");
+
+    unsigned char *expected = malloc ((size_t)size);
+    memcpy (expected, before, (size_t)size);
+    mathExpectReverse (expected, effFirst, effLen, ch, fmt);
+    check (memcmp ([snd bytes], expected, (size_t)size) == 0,
+            "the buffer matches the 1998 reversal (and the stereo swap)");
+    free (before);
+    free (expected);
+}
+
+static void runMath (Class principal)
+{
+    /* The menu tree the app's Modules menu is built from: the 1998
+       init builds an "Amplitude" submenu - the volume and the
+       vertical-shift panel loaders first, then the invert and the
+       abs transform (the 1998 addSubmenu order: volume, shift,
+       invert, abs) - plus a top-level "Reverse" leaf, every target
+       the module itself. */
+    id module = [[principal alloc] init];
+    check (module != nil, "module instantiation");
+    id root = [module getModuleMenuNode];
+    check (root != nil, "root menu node");
+    check (root != nil && [root numSubmenus] == 2,
+           "root has exactly two children");
+    id amp = root != nil ? [root getSubmenu: 0] : nil;
+    check (amp != nil && ![amp isLeafNode]
+             && [[amp getNameAsString] isEqualToString: @"Amplitude"],
+           "the first child is the Amplitude submenu");
+    check (amp != nil && [amp numSubmenus] == 4,
+           "Amplitude holds exactly four leaves");
+    static const char *leafNames[] = {
+        "Change Amplitude...", "Vertical Shift...", "Invert",
+        "AbsoluteValue"
+    };
+    static const char *leafTargets[] = {
+        "showMultiplyPanel:", "showShiftPanel:", "invertIt:", "absIt:"
+    };
+    int i;
+    for (i = 0; i < 4; i++)
+        {
+        char what[80];
+        id leaf = amp != nil ? [amp getSubmenu: i] : nil;
+        check (leaf != nil && [leaf isLeafNode], "leaf node");
+        snprintf (what, sizeof what, "Amplitude leaf %d is named %s", i, leafNames[i]);
+        check (leaf != nil
+                 && [[leaf getNameAsString]
+                       isEqualToString: [NSString stringWithUTF8String: leafNames[i]]],
+                what);
+        snprintf (what, sizeof what, "Amplitude leaf %d targets %s", i, leafTargets[i]);
+        check (leaf != nil
+                 && [NSStringFromSelector ([leaf getMessage])
+                       isEqualToString: [NSString stringWithUTF8String: leafTargets[i]]],
+                what);
+        check (leaf != nil && [leaf getReceiver] == module,
+               "Amplitude leaf targets the module");
+        }
+    id rev = root != nil ? [root getSubmenu: 1] : nil;
+    check (rev != nil && [rev isLeafNode]
+             && [[rev getNameAsString] isEqualToString: @"Reverse"],
+           "the second child is the Reverse leaf");
+    check (rev != nil
+             && [NSStringFromSelector ([rev getMessage]) isEqualToString: @"reverseIt:"],
+           "Reverse targets reverseIt:");
+    check (rev != nil && [rev getReceiver] == module, "Reverse targets the module");
+
+    /* The module's five outlet ivars and the one-byte nib_loaded
+       flag: all exist and start un-wired (the gorm wires them when
+       the real panel loads - the resoundmenu --perform probe). */
+    Ivar mcIvar = class_getInstanceVariable ([module class], "moduleController");
+    check (mcIvar != NULL, "moduleController ivar (for the DSP cases)");
+    static const char *outletNames[] = {
+        "multiplyPanel", "percentChangeScroller", "percentChangeField",
+        "shiftPanel", "shiftSliderValue"
+    };
+    int o;
+    for (o = 0; o < 5; o++)
+        {
+        char what[80];
+        snprintf (what, sizeof what, "%s ivar exists", outletNames[o]);
+        check (class_getInstanceVariable ([module class], outletNames[o]) != NULL, what);
+        snprintf (what, sizeof what, "%s ivar starts nil", outletNames[o]);
+        check (readObjIvar (module, outletNames[o]) == nil, what);
+        }
+    check (readSizedIvar (module, "nib_loaded") == 0, "nib_loaded starts unset");
+
+    /* The two lazy panel loads with the outlets pre-set to fakes
+       (a real panel load needs a display - the app-side half is the
+       resoundmenu --perform probe, where the gorm panel comes up):
+       each then just orders its own panel key and front, the
+       one-byte flag stays set. */
+    FakeMathPanel *multiplyPanel = [[[FakeMathPanel alloc] init] autorelease];
+    FakeMathPanel *shiftPanel = [[[FakeMathPanel alloc] init] autorelease];
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "multiplyPanel"), multiplyPanel);
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "shiftPanel"), shiftPanel);
+    writeSizedIvar (module, "nib_loaded", 1);
+
+    id ret = [(MathModule *)module showMultiplyPanel: nil];
+    check (ret == module, "showMultiplyPanel: returns self");
+    check ([multiplyPanel keyFrontCount] == 1,
+           "showMultiplyPanel: ordered the multiply panel key and front");
+    check ([shiftPanel keyFrontCount] == 0,
+           "showMultiplyPanel: leaves the shift panel alone");
+    check (readSizedIvar (module, "nib_loaded") == 1,
+           "nib_loaded stays set (no reload)");
+    [(MathModule *)module showMultiplyPanel: nil];
+    check ([multiplyPanel keyFrontCount] == 2, "showMultiplyPanel: is repeatable");
+
+    ret = [(MathModule *)module showShiftPanel: nil];
+    check (ret == module, "showShiftPanel: returns self");
+    check ([shiftPanel keyFrontCount] == 1,
+           "showShiftPanel: ordered the shift panel key and front");
+    check ([multiplyPanel keyFrontCount] == 2,
+           "showShiftPanel: leaves the multiply panel alone");
+    [(MathModule *)module showShiftPanel: nil];
+    check ([shiftPanel keyFrontCount] == 2, "showShiftPanel: is repeatable");
+
+    /* The two percent presets: the 1998 methods only write the
+       field and the scroller (the gorm's Apply button then runs
+       multiplyIt:), so the fakes' values are the whole effect. */
+    FakeMathField *field = [[[FakeMathField alloc] initWithFloatValue: 100.0f] autorelease];
+    FakeMathScroller *scroller =
+        [[[FakeMathScroller alloc] initWithFloatValue: 100.0f] autorelease];
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "percentChangeField"), field);
+    object_setIvar (module, class_getInstanceVariable ([module class],
+                                                       "percentChangeScroller"), scroller);
+    ret = [(MathModule *)module halve: nil];
+    check (ret == module, "halve: returns self");
+    check ([field intValue] == 50 && [field floatValue] == 50.0f,
+           "halve: set the field to 50");
+    check ([scroller intValue] == 50 && [scroller floatValue] == 50.0f,
+           "halve: set the scroller to 50");
+    ret = [(MathModule *)module double: nil];
+    check (ret == module, "double: returns self");
+    check ([field intValue] == 200 && [field floatValue] == 200.0f,
+           "double: set the field to 200");
+    check ([scroller intValue] == 200 && [scroller floatValue] == 200.0f,
+           "double: set the scroller to 200");
+
+    /* The DSP matrix: the six actions on real in-memory Snds,
+       whole-sound and partial selections, mono and stereo, over
+       the five 1998 data formats, through the duck-typed
+       controller (the fakes answer the two view methods and record
+       the two side effects).  Each case checks the return, the
+       stop / soundChanged counts, the preserved shape, and the
+       buffer against the mirrored 1998 arithmetic (the full-buffer
+       compare also proves the unselected bytes stay untouched). */
+    int c;
+    int ch;
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testMathAbs (module, mcIvar, (SndSampleFormat)dspFormats[c], ch,
+                         0, 200);
+    /* the selection plumbing: a partial 50-frame window, and the
+       1998 zero-length fall-through (the whole sound) */
+    testMathAbs (module, mcIvar, SND_FORMAT_LINEAR_16, 1, 10, 50);
+    testMathAbs (module, mcIvar, SND_FORMAT_LINEAR_16, 1, 0, 0);
+
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testMathInvert (module, mcIvar, (SndSampleFormat)dspFormats[c], ch,
+                            0, 200);
+
+    /* The slider values the 1998 panel offers: 50 (halve), 100
+       (the gorm default - exact identity), 200 (double, the clip
+       pair earns its keep); the stereo pass at the identity
+       covers the interleaved loop. */
+    static const float multSliders[] = { 50.0f, 100.0f, 200.0f };
+    int s;
+    for (c = 0; c < 5; c++)
+        for (s = 0; s < 3; s++)
+            testMathMultiply (module, mcIvar, (SndSampleFormat)dspFormats[c], 1,
+                              0, 200, multSliders[s]);
+    for (c = 0; c < 5; c++)
+        testMathMultiply (module, mcIvar, (SndSampleFormat)dspFormats[c], 2,
+                          0, 200, 100.0f);
+
+    /* The vertical-shift slider: -1 (one clip step down), 0.5,
+       1 (one clip step up). */
+    static const float shiftSliders[] = { -1.0f, 0.5f, 1.0f };
+    for (c = 0; c < 5; c++)
+        for (s = 0; s < 3; s++)
+            testMathShift (module, mcIvar, (SndSampleFormat)dspFormats[c], 1,
+                           0, 200, shiftSliders[s]);
+    for (c = 0; c < 5; c++)
+        testMathShift (module, mcIvar, (SndSampleFormat)dspFormats[c], 2,
+                       0, 200, 0.5f);
+
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testMathMaximize (module, mcIvar, (SndSampleFormat)dspFormats[c], ch,
+                              0, 200);
+    testMathMaximize (module, mcIvar, SND_FORMAT_LINEAR_16, 1, 10, 50);
+
+    for (c = 0; c < 5; c++)
+        for (ch = 1; ch <= 2; ch++)
+            testMathReverse (module, mcIvar, (SndSampleFormat)dspFormats[c], ch,
+                             0, 200);
+    testMathReverse (module, mcIvar, SND_FORMAT_LINEAR_16, 1, 10, 50);
+}
+
 int main (int argc, char **argv)
 {
     NSString *rmod = argc > 1
@@ -4822,6 +6083,8 @@ int main (int argc, char **argv)
         runWaveBuilder (principal);
     else if ([NSStringFromClass (principal) isEqualToString: @"FFTModule"])
         runFFT (principal);
+    else if ([NSStringFromClass (principal) isEqualToString: @"MathModule"])
+        runMath (principal);
     else
         check (NO, "principal class is none of the ported module classes");
 

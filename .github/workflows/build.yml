@@ -319,21 +319,21 @@ jobs:
         # The ported modules so far - Zero, the first Phase 3 unit,
         # Mix, the second, Envelope, the third, EchoChamber, the
         # fourth, Gate, the fifth, Filter, the sixth, WaveBuilder,
-        # the seventh, and FFT, the eighth (Envelope, EchoChamber,
-        # Gate, Filter, WaveBuilder and FFT are the six with a
-        # control-panel nib: the bundles carry the gorms at their
-        # resource root, the way the app's own bundle carries its
-        # gorms):
+        # the seventh, FFT, the eighth, and Math, the ninth (Envelope,
+        # EchoChamber, Gate, Filter, WaveBuilder, FFT and Math are
+        # the seven with a control-panel nib: the bundles carry the
+        # gorms at their resource root, the way the app's own bundle
+        # carries its gorms):
         # gnustep-make bundles (gnustep-make bundle.make rules, ADR
         # 0020) producing Zero.rmod, Mix.rmod, Envelope.rmod,
         # EchoChamber.rmod, Gate.rmod, Filter.rmod,
-        # WaveBuilder.rmod and FFT.rmod, installed into the
-        # domain's library directory (lib/GNUstep/Resound with the
-        # fhs filesystem layout) - the app's ModuleController searches
-        # every library domain + /Resound (plus the app bundle), so
-        # the installed modules are found when the app starts: the
-        # launch check and the capture below then run with the
-        # "Modules" menu live.  Fatal, like the app build.
+        # WaveBuilder.rmod, FFT.rmod and Math.rmod, installed into
+        # the domain's library directory (lib/GNUstep/Resound with
+        # the fhs filesystem layout) - the app's ModuleController
+        # searches every library domain + /Resound (plus the app
+        # bundle), so the installed modules are found when the app
+        # starts: the launch check and the capture below then run
+        # with the "Modules" menu live.  Fatal, like the app build.
         run: |
           set -ex
           export GNUSTEP_CONFIG_FILE="$GNUSTEP_PREFIX/etc/GNUstep/GNUstep.conf"
@@ -363,6 +363,9 @@ jobs:
           make -C Source/Modules/FFT -j"$(nproc)" -f GNUmakefile
           make -C Source/Modules/FFT -f GNUmakefile install
           find Source/Modules/FFT/FFT.rmod -maxdepth 3 | sort
+          make -C Source/Modules/Math -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/Math -f GNUmakefile install
+          find Source/Modules/Math/Math.rmod -maxdepth 3 | sort
           ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
 
       - name: Module load contract (Phase 3)
@@ -459,8 +462,26 @@ jobs:
         # showFFTPanel: with the panel outlets as fakes and the
         # nib_loaded flag pre-set, the decibel/linear toggle, and
         # a full redraw.
+        # For Math: the same principal-class and menu checks (the
+        # "Amplitude" submenu holding four leaves - "Change
+        # Amplitude...", "Vertical Shift...", "Invert" and
+        # "AbsoluteValue" - plus the top-level "Reverse" leaf, every
+        # leaf targeting the module), then showMultiplyPanel: /
+        # showShiftPanel: with the two panels as fakes and the
+        # nib_loaded flag pre-set (skipping the nib load, which needs
+        # a display and runs in the app; the probe below drives it
+        # there for real), halve: / double: through the percent
+        # field and scroller fakes, and the six transforms -
+        # absIt: / invertIt: / multiplyIt: / shiftIt: / maximize: /
+        # reverseIt: - on real in-memory Snds over the five 1998
+        # data formats, mono and stereo, whole-sound and partial
+        # selections, the expected buffers recomputed with the
+        # module's own 1998 DSP arithmetic (the same per-format
+        # temporaries, clip pairs and loop bounds; the mu-law arm
+        # decoding through SndKit's pair; maximize: the 1998 max
+        # scan to the percent field, the buffer untouched).
         # No pasteboard involved in the Envelope, EchoChamber,
-        # Gate, Filter, WaveBuilder or FFT cases.  The mix cases
+        # Gate, Filter, WaveBuilder, FFT or Math cases.  The mix cases
         # use the general pasteboard for real:
         # GNUstep's client auto-launches a fresh gpbs when no
         # pasteboard server runs (filesystem name transport, no other
@@ -483,6 +504,7 @@ jobs:
           "$TOOL" Source/Modules/Filter/Filter.rmod
           "$TOOL" Source/Modules/WaveBuilder/WaveBuilder.rmod
           "$TOOL" Source/Modules/FFT/FFT.rmod
+          "$TOOL" Source/Modules/Math/Math.rmod
 
       - name: Module load probe (Phase 3)
         # The app-side half of the module load, run for real (test/
@@ -521,7 +543,11 @@ jobs:
         # --perform "FFT..." runs the same for the sixth gorm
         # module: the FFT panel (title "FFT") must come up visible
         # from the bundle's gorm, the "FFT..." leaf appearing in
-        # the after-launch menu dump.
+        # the after-launch menu dump.  --perform "Change
+        # Amplitude..." runs the same for the seventh gorm module:
+        # the multiply panel (title "Change Amplitude") must come up
+        # visible from the bundle's gorm, the "Amplitude" submenu
+        # appearing in the after-launch menu dump.
         # Non-fatal: a display environment can not be trusted the way
         # the build can be; the load contract above (headless) is the
         # hard gate.
@@ -594,6 +620,13 @@ jobs:
           test "$rc" -eq 0
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "FFT..."
           awk '/performing FFT/{f=1} f' "$LOG" | grep -q "window: 'FFT' visible=1"
+          LOG=$(mktemp)
+          rc=0
+          timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform "Change Amplitude..." >"$LOG" 2>&1 || rc=$?
+          cat "$LOG"
+          test "$rc" -eq 0
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Change Amplitude..."
+          awk '/performing Change/{f=1} f' "$LOG" | grep -q "window: 'Change Amplitude' visible=1"
 
       - name: NIB conversion format check
         # Every 1998 .nib in the tree has a converted .gorm twin
