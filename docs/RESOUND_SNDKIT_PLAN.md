@@ -15,11 +15,11 @@ Rationale (evidence gathered during evaluation):
 1. **SndKit is the designated open-source successor of the NeXT SoundKit.** The MusicKit README states: *"The SndKit was written to be a complete open source implementation of NeXT's SoundKit."*
 2. **The OO design mirrors the SoundKit design Resound was written against.** Resound is built on `Sound` + `SoundView` (state object holding an `SNDSoundStruct`, view holding a `Sound`, playback/recording status, selection/play-marks, delegates). SndKit's `Snd` + `SndView` + `SndFormat` + `SndPerformance` + `SndAudioFader` + `SndAudioProcessorChain` map onto this design almost 1:1 in spirit, i.e. the port is an *API migration* of the same architecture, not a rewrite onto an unrelated framework.
 3. **Many C-level compatibility symbols were deliberately kept** in SndKit: `SndSoundError(int)`, the `SND_ERR_*` error enum, `SndSwapBigEndianSoundToHost`/`SndSwapHostToBigEndianSound`, `SndMuLawToLinear`/`SndLinearToMuLaw`, `SndChangeSampleType`, `SndChangeSampleRate`, `SndSampleWidth`, `SndFrameSize`, `SndDataSize`, `SndFormat`, `SndFormatOfSNDStreamBuffer`, `SndFormatDescription`, etc.
-4. **SndKit already targets the required platform matrix** (per MusicKit supported-platforms table): OpenStep 4.2, GNUstep (Linux via portaudio), MacOS X-Server V1.0–1.2, MacOS X (CoreAudio), Windows. The MacOS X / X Server 1.2 support was done by Leigh Smith and is first-class for that era; the GNUstep support is via `MKPerformSndMIDI_portaudio`.
+4. **SndKit already targets the required platform matrix**: GNUstep (Linux via portaudio), MacOS X, Windows. The lowest supported MacOS X is **10.4** — the project's own release announcement states "MacOS 10.4 through to 10.6 and GNUstep … Versions of MacOS below 10.4 are no longer officially supported" (V5.6.2, 2009-12-05, `sourceforge.net/p/musickit/mailman/message/24116217`) — so the Rhapsody / Mac OS X Server 1.2 era is **out of scope** for the SndKit-based port (its CoreAudio backend did not exist there; the 1998 app's Rhapsody build stays the historical reference). The GNUstep support is via `MKPerformSndMIDI_portaudio`.
 5. **Capabilities needed by Resound already exist in SndKit:** sound file I/O (`initFromSoundfile:`, `readSoundfile:startFrame:frameCount:`, `writeSoundfile:fileFormat:dataFormat:`, `+soundFileExtensions`, `+isPathForSoundFile:`, `+defaultFileExtension`, `soundFormatOfFilename:`), sample-format/rate/channel conversion (`convertToSampleFormat:samplingRate:channelCount:`, `SndChangeSampleType`, `SndChangeSampleRate`), mu-law, FFT-oriented DSP helpers, metering (`SndMeter`), playback/recording (`Snd`, `SndPerformance`, `SndStreamRecorder`, `SndStreamPlayer`, `SndStreamMixer`, `SndStreamInput`, `SndAudioProcessorRecorder`, `SndAudioProcessorReverb`, …), volume/balance/mute (`SndAudioFader`, `+[Snd isMuted]`, `+setMute:`).
 6. **SndKit retains deprecated SoundKit-compatibility methods** (e.g. `play:beginSample:sampleCount:`, `playInFuture:beginSample:sampleCount:`, `stop:`, `pause:`, `resume:`, `record:`, `isPlayable`, …), indicating an intentional compatibility layer toward the old SoundKit API.
 
-**Conclusion:** replacing the defunct NeXT/Rhapsody `SoundKit.framework` with `SndKit.framework` is technically feasible and is the recommended direction for a future GNUstep / MacOS X / modern macOS version of Resound.
+**Conclusion:** replacing the defunct NeXT/Rhapsody `SoundKit.framework` with `SndKit.framework` is technically feasible and is the recommended direction for a future GNUstep / MacOS X / modern macOS version of Resound.  The MacOS X floor is 10.4 (the SndKit project no longer supports the Rhapsody / Mac OS X Server 1.2 era, `sourceforge.net/p/musickit/mailman/message/24116217`); the 1998 build remains the historical reference there.
 
 ---
 
@@ -77,7 +77,7 @@ Rationale (evidence gathered during evaluation):
 ### Phase 0 — Prerequisites & decisions (before touching code)
 
 - [x] **Confirm SndKit source/version** (2026-11-03): `github.com/leighsmith/MusicKit` master, **pinned as the `third_party/MusicKit` git submodule** at tip `9683c76a` (2026-02-22, an actively maintained GNUstep-fixes tip). Built in the sandbox (aarch64) and in CI against the port's GNUstep stack: the chain Resound needs is `MKPerformSndMIDI (portaudio backend) → SndKit` — `MKDSP_Native`/`MusicKit` are the unused synthesizer half. Two port fixes: `vDSP.c` arch guard (`patches/MusicKit-0001-vdsp-arch-guard.diff`, x86-only SSE file) and the `libportmidi-dev` system package (headers for the unused MIDI half). Verified end-to-end: frameworks build + install, and a headless `.wav → .au` file-I/O round trip passes (`test/sndsmoke`, fatal in CI). See `docs/GNUSTEP_BUILD.md` § SndKit.
-- [ ] **DECISION (user, 2026-11-02):** Future versions of Resound shall use the **most recent git version of SndKit** (github.com/leighsmith/MusicKit master) — for the Mac OS X Server 1.2 / Rhapsody target, the GNUstep target, and the modern macOS future version.
+- [x] **DECISION (user, 2026-11-02, platform floor corrected 2026-11-28):** Future versions of Resound shall use the **most recent git version of SndKit** (github.com/leighsmith/MusicKit master) — for the GNUstep target and the modern macOS future version; the MacOS X floor is **10.4** (the project's own release announcement, `sourceforge.net/p/musickit/mailman/message/24116217`: "MacOS 10.4 through to 10.6 and GNUstep … Versions of MacOS below 10.4 are no longer officially supported"), so the 1998 Rhapsody / Mac OS X Server 1.2 era is out of scope for the SndKit-based port — the 1998 SoundKit build remains the historical reference. Implemented by the pinned submodule in the source item above.
 - [ ] **License compatibility review**: MusicKit / SndKit / libsndfile / portaudio / lame terms vs Resound's existing mixed licensing (Sean Luke, MiscKit, Jerome Genest `FileType.subproj` readers — non-profit restriction). Document decisions before redistribution.
 - [ ] **Decide scope of file-format handling**: rely on SndKit/libsndfile readers (`.wav`, `.aiff`, `.au`, …) vs keep Jerome Genest's legacy readers in `Source/FileType.subproj` (GPL/non-profit constraints).
 - [ ] **DECISION (user, 2026-11-02):** Use the **native readers of SndKit/libsndfile** (`.wav`, `.aiff`, `.au`, …) for sound file reading; **do not** keep Jerome Genest's legacy readers in `Source/FileType.subproj`. Replace the legacy readers when the time comes (licensing: GPL/non-profit constraints).
@@ -217,7 +217,7 @@ Yes, the NIB migration was considered only in passing and warranted a dedicated 
 ### Phase 5 — Validation and target platforms
 
 - [ ] **GNUstep/Linux**: build SndKit + `MKPerformSndMIDI_portaudio` backend; build Resound against it; verify playback/recording, modules, file I/O.
-- [ ] **MacOS X / MacOS X Server 1.2**: build SndKit + `MKPerformSndMIDI_MacOSX` (CoreAudio/CoreMIDI) backend; verify against the historical X Server 1.2 target.
+- [ ] **MacOS X (10.4 floor)**: build SndKit + `MKPerformSndMIDI_MacOSX` (CoreAudio/CoreMIDI) backend; verify on the lowest supported version, 10.4 (the project no longer supports below it — `sourceforge.net/p/musickit/mailman/message/24116217`; the historical Rhapsody / X Server 1.2 target is out of scope for the SndKit port, the 1998 SoundKit build is the historical reference there).
 - [ ] **Modern macOS**: assess CoreAudio API drift / Apple Silicon / GNUstep-on-Apple-Silicon status; plan migration.
 - [ ] Regression tests: open/save round-trips (`.snd`/`.au`, `.wav`, `.aiff`), FFT module, EchoChamber/Filter/Gate/Math/Mix/WaveBuilder/Zero/Envelope/Channel modules, recording (CODEC mic, linear16), playback, volume/mute, metering.
 
@@ -269,7 +269,7 @@ Proceed with **SndKit as the replacement for the defunct NeXT SoundKit** in Reso
 
 **Pros:**
 - Open-source successor with ongoing maintenance (MusicKit/SndKit project).
-- Portable across GNUstep (portaudio backend, Linux), MacOS X / X Server 1.2 (CoreAudio), MacOS X, Windows; modern macOS is the eventual target.
+- Portable across GNUstep (portaudio backend, Linux), MacOS X (10.4+ floor, CoreAudio), Windows; modern macOS is the eventual target.
 - High OO-design compatibility with the old SoundKit design; C-compatibility layer retained (`SndSoundError`, `SND_ERR_*`, `SndSwap*`, `SndMuLaw*`, `SND_FORMAT_*`, `writeSoundfile:fileFormat:dataFormat:`, `convertToSampleFormat:…`).
 - Effects can hook into `SndAudioProcessorChain` / `SndAudioUnitProcessor` (incl. AudioUnits) — architecturally superior for future DSP.
 
@@ -281,7 +281,7 @@ Proceed with **SndKit as the replacement for the defunct NeXT SoundKit** in Reso
 
 ### Assessment
 
-For the stated goal — a future version that runs on **GNUstep**, **Mac OS X Server 1.2**, and **modern macOS** — **Option B (full move to SndKit) is the recommended direction**.
+For the stated goal — a future version that runs on **GNUstep**, **Mac OS X** (10.4 floor per the MusicKit announcement; the Rhapsody / X Server 1.2 era is out of scope for the SndKit port, the 1998 SoundKit build remains its historical reference), and **modern macOS** — **Option B (full move to SndKit) is the recommended direction**.
 
 - Option A would freeze development at Rhapsody and forfeit the future-version goal.
 - Option B subsumes Option A functionally, while the original SoundKit implementation remains preserved in `original-archive/` and upstream history.
