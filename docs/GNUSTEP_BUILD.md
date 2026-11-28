@@ -1497,6 +1497,154 @@ new are the `-Wabsolute-value` pair on the mirrored
 carries, mirrored on purpose, the way the gate
 contract mirrors its 8-bit threshold).
 
+**The Channel module unit (2026-11-28, tenth of the ten) -
+the last of the ten 1998 modules; the third without a
+control panel (its five actions operate directly on the
+current sound - the 1998 flow has no window at all).**
+
+- `Source/Modules/Channel/GNUmakefile` (new): the
+  panel-less template (as Zero and Mix) - the
+  gnustep-make bundle building `Channel.rmod` in-tree
+  (`ChannelModule` as the principal class,
+  `ModuleInfo.rtfd` as the only bundle resource - no
+  gorm, no panel nib; the module imports its own
+  per-module header copies, so no `-I../../`), the
+  SndKit chain linked per ADR 0020.  The 1998
+  reference family stays in the tree uninstalled: the
+  `ResoundModules/Channel.rmod` big-endian bundle,
+  plus the 1998 `Makefile*` and `PB.project` (as the
+  earlier units).
+- `Source/Modules/Channel/ChannelModule.{h,m}` (1998:
+  32/702 lines; ported: 32/716): the header is
+  byte-identical to 1998.  The `.m` is the mapping
+  set: the import swap, 9x `Sound*` -> `Snd*` + 4x
+  `SoundView*` -> `SndView*`, 5x `sampleCount` ->
+  `lengthInSampleFrames` (1998-note comment: the 1998
+  count is channel-independent, the view-chain
+  precedent), 5x `int` -> `unsigned int` on
+  `firstSample`/`sampleLength` (SndKit's `SndView
+  getSelection:` hands out unsigned), 9x `data` ->
+  `bytes`, the 18 `SNDSwap*` call lines -> 18 comment
+  lines (host order, the Zero change; the Mix/Math
+  ports documented the same pairs), the 2x
+  `SNDMulaw(0)` -> `SndLinearToMuLaw(0)` of the
+  add-blank-channel arms (the 1998 "it's probably
+  127" note kept), and the 4x `[[Sound alloc] init]`
+  + `setDataSize:...` -> `[[Snd alloc]
+  initWithFormat:channelCount:frames:samplingRate:]`
+  (the 1998 `infoSize:` half gone - Snd's info is an
+  `NSString`, the WaveBuilder precedent; the 11-line
+  1998 comment stands in).  The `NSRunAlertPanel`
+  guards exist in GNUstep and stay verbatim.  The
+  DSP bodies, the menu tree and the selection
+  fall-through are byte-identical to 1998.
+- The three stale per-module header copies synced to
+  the ported top-level files (as the earlier units;
+  `ModuleController.h` keeps its 1998 license variant,
+  it is not in this module's import chain) - and
+  `ModuleInfo.rtfd` keeps the 1998 help text.
+- The bundle build is the 1998 headers and two 1998
+  idiom classes: 58 warnings.  14 are
+  `-Wmissing-selector-name` re-emissions (the
+  inherited 1998 idioms: `ModuleSound.h` 10,
+  `ModuleMenuNode.h` 2, `ModuleProtocol.h` 2 - the
+  same per-header counts as the other modules); 36
+  are `-Wunused-but-set-variable` on the 1998 dead
+  `tempsnd = hi_clip; tempsnd = low_clip;` clip pairs
+  and the never-read `data8/16` / `newdata8/16`
+  channel pointer casts; and 8 are `-Wpointer-sign`
+  on the `data8 = (char*)data` assignments (this
+  toolchain's `char` is unsigned - a 1998
+  platform-dependent fingerprint, the same category
+  as Gate's 8-bit threshold; the 1998 shape is kept).
+
+**The 1998 `swap:` quirk (kept, the unit's one
+non-obvious behaviour).**  The five arms share one
+function-level `char trader`, and every arm's loop
+runs `x++` over the selection:
+`{ trader = d[x]; d[x] = d[x+1]; d[x+1] = trader; }`.
+Read as C, that is not an adjacent pair swap - it is
+a one-element left shift of the selection (each
+element is copied forward directly by `d[x] = d[x+1]`,
+and the selection's first value trails through the
+trader to the element just past the selection's end).
+Two fingerprints follow, both kept as 1998
+behaviour: for a *whole*-sound selection the loop
+reads and writes one element past the buffer end
+(the last in-range sample becomes whatever the heap
+kept there, and the first sample leaks one element
+into the heap - the 1998 code did exactly this in
+the shipped app); and for the wider formats the
+values round-trip through the `char` trader, so the
+last written element of a selection comes back
+truncated to that byte and re-extended to the
+element width.  An earlier porting session read the
+shifted output as a toolchain or CPU anomaly (the
+`-O0` assembly is the adjacent swap 1998 wrote); it
+is simply the C semantics of that loop - the shift
+reproduces at `-O0`..`-O3` on both clang and gcc on
+a minimal standalone copy, so nothing in the port
+changes because of it.
+
+**The `resoundmodule` Channel contract.**  As the
+earlier nine, the tool dispatches on the principal
+class (`ChannelModule` -> the channel contract): the
+menu tree - the one "Channel" child holding the five
+leaves in the 1998 order ("Add a Blank Left
+Channel", "Add a Blank Right Channel", "Delete the
+Left Channel", "Delete the Right Channel", "Swap
+Channels", targeting `addLeft:`, `addRight:`,
+`stripLeft:`, `stripRight:` and `swap:`) - every
+target the module, no outlets (the module has
+none).  The view and controller are the unit's fakes
+(`FakeChannelView` carrying the selection,
+`FakeChannelController` counting `stop` /
+`soundChanged` / `newSound:for:`).  Then the DSP
+matrix on real in-memory Snds (200 frames, the
+standard pattern): `swap:` over the five 1998
+formats, whole-sound plus a partial (10,50) window
+and the 1998 zero-length fall-through; `stripLeft:`
+/ `stripRight:` and `addLeft:` / `addRight:` over
+the five formats, whole plus partial - each through
+the duck-typed fake controller, each case
+recomputing the 1998 loop on a copy of the buffer
+with the module's own types and operation order -
+including the `char` trader round-trip, which the
+mirror carries verbatim - and checking the buffer
+byte-for-byte (which also proves the unselected
+bytes stay untouched), the stop / soundChanged /
+newSound:for: counts, and the preserved shape.  One
+caveat: for a whole-sound selection the 1998 loop's
+last in-range element is the one-element-past-end
+heap read, which differs between the Snd buffer and
+the mirror's `malloc`'d copy, so the byte-for-byte
+check excludes exactly that element.  546 checks, 0
+failures.
+
+**The `resoundmenu` probe (extended with the
+unit).**  The after-launch Modules menu must show
+the "Channel" submenu with its five leaves
+(alongside the other nine modules' entries).  No
+`--perform`: all five actions hit the 1998 modal
+"No Sound" `NSRunAlertPanel` without a document,
+which the headless probe cannot dismiss.
+
+**Verification.**  In CI the `Channel.rmod` build +
+install is fatal; `resoundmodule` pins the
+bundle-side contract headlessly; the `resoundmenu`
+probe (non-fatal, under `xvfb`) asserts the
+after-launch "Channel" submenu.  Locally the same
+three plus `resoundnib --check` at **64** gorm
+folders, 0 failures (the unit adds no gorm - the
+count is unchanged), the ten-contract regression
+(all green), and the real-app launch with all ten
+modules installed (the probe above; the Module Info
+menu lists Channel alongside the other nine).  The
+app TU total stays at the 455-warning baseline (the
+unit touches no app file); the bundle TU is the 58
+above; the contract TU stays at 37 (the mirrored
+`char` trader adds no new warning class).
+
 **The 1998 no-modules switch (the "modules never loaded" root
 cause).**  The 1998 release shipped `FileController.m` with
 `NOT_COMPILING_WITH_MODULES` *commented out* (modules compiled in) and

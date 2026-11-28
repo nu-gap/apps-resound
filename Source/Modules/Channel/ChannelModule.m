@@ -17,7 +17,7 @@ IMPLIED WARRANTIES.
 */
 #import "ChannelModule.h"
 #import <AppKit/AppKit.h>
-#import <SoundKit/SoundKit.h>
+#import <SndKit/SndKit.h>
 #import <limits.h>
 #import <math.h>
 #import "ModuleSoundView.h" 
@@ -57,17 +57,17 @@ IMPLIED WARRANTIES.
 -swap:sender
 	{
 	/* Swap channels */
-	Sound* current=[moduleController currentSound];
+	Snd* current=[moduleController currentSound];
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 	char trader;
 
 	void* data;
 	
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==NULL)
 		{
@@ -89,11 +89,14 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
 
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
-	
+	/* 1998: SNDSwapSoundToHost
+	   ((void*)data, (void*)data, sampleCount, channelCount, format);
+	   - SndKit keeps sample data in host byte order, so the swap pair
+	   around each DSP is gone (the Zero change; the Mix, Math and the
+	   other ports documented the same pair). */
+
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
 	if (!sampleLength) {firstSample=0;sampleLength=sampleCount;}	
@@ -141,8 +144,7 @@ IMPLIED WARRANTIES.
 				@"Okay",NULL,NULL);
 		}
 	
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
 	[moduleController soundChanged];
 	return self;
 	}
@@ -154,13 +156,13 @@ IMPLIED WARRANTIES.
 - stripLeft:sender
 	{
 	/* Strips left channel */
-	Sound* current=[moduleController currentSound];
-	SoundView* currentSoundView=[moduleController currentSoundView];
-	Sound* newSound;
+	Snd* current=[moduleController currentSound];
+	SndView* currentSoundView=[moduleController currentSoundView];
+	Snd* newSound;
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 
 	void* data;
 	unsigned char* data8;
@@ -169,7 +171,7 @@ IMPLIED WARRANTIES.
 	unsigned char* newdata8;
 	signed short* newdata16;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==NULL)
 		{
@@ -191,27 +193,32 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
 
-	newSound=[[[Sound alloc] init] autorelease];
-	
-	[newSound setDataSize:
-				[current sampleSizePerChannel]*[current sampleCount]
-			dataFormat:   format
-			samplingRate: [current samplingRate]
-			channelCount: 1
-			infoSize:     [current infoSize]];
+	/* 1998: newSound=[[[Sound alloc] init] autorelease];
+	   [newSound setDataSize: [current sampleSizePerChannel]*[current
+	   sampleCount] dataFormat: format samplingRate: [current
+	   samplingRate] channelCount: 1 infoSize: [current infoSize]];
+	   (the 1998 infoSize: argument sized a fresh, zero-filled info
+	   region - the module never writes an info string, so the SndKit
+	   sound's nil info is the same presentation: the app's view maps
+	   a nil info to the empty string).  SndKit has no setDataSize:,
+	   so the sound is built directly with the documented initializer
+	   in that shape (the WaveBuilder port made the same change). */
+	newSound=[[Snd alloc]
+		initWithFormat:   format
+		channelCount: 1
+		frames:       sampleCount
+		samplingRate: [current samplingRate]];
 
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 	data8=(char*)data;
 	data16=(signed short*)data;
-	newdata=(void*)[newSound data];
+	newdata=(void*)[newSound bytes];
 	newdata8=(char*)newdata;
 	newdata16=(signed short*)newdata;
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see swap:.) */
 	
-	SNDSwapSoundToHost
-		((void*)newdata, (void*)newdata, [newSound sampleCount], [newSound channelCount], [newSound dataFormat]);
+	/* (1998: SNDSwapSoundToHost - host order, see swap:.) */
 	
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -260,10 +267,8 @@ IMPLIED WARRANTIES.
 				@"Okay",NULL,NULL);
 		}
 		
-	SNDSwapHostToSound
-		((void*)newdata, (void*)newdata, [newSound sampleCount], [newSound channelCount], [newSound dataFormat]);
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
 	[currentSoundView setSound:newSound];
 	[moduleController newSound:newSound for:currentSoundView];
 	return self;
@@ -274,13 +279,13 @@ IMPLIED WARRANTIES.
 - stripRight:sender
 	{
 	/* Strips right channel */
-	Sound* current=[moduleController currentSound];
-	SoundView* currentSoundView=[moduleController currentSoundView];
-	Sound* newSound;
+	Snd* current=[moduleController currentSound];
+	SndView* currentSoundView=[moduleController currentSoundView];
+	Snd* newSound;
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 
 	void* data;
 	unsigned char* data8;
@@ -289,7 +294,7 @@ IMPLIED WARRANTIES.
 	unsigned char* newdata8;
 	signed short* newdata16;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==NULL)
 		{
@@ -311,27 +316,32 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
 
-	newSound=[[[Sound alloc] init] autorelease];
-	
-	[newSound setDataSize:
-				[current sampleSizePerChannel]*[current sampleCount]
-			dataFormat:   format
-			samplingRate: [current samplingRate]
-			channelCount: 1
-			infoSize:     [current infoSize]];
+	/* 1998: newSound=[[[Sound alloc] init] autorelease];
+	   [newSound setDataSize: [current sampleSizePerChannel]*[current
+	   sampleCount] dataFormat: format samplingRate: [current
+	   samplingRate] channelCount: 1 infoSize: [current infoSize]];
+	   (the 1998 infoSize: argument sized a fresh, zero-filled info
+	   region - the module never writes an info string, so the SndKit
+	   sound's nil info is the same presentation: the app's view maps
+	   a nil info to the empty string).  SndKit has no setDataSize:,
+	   so the sound is built directly with the documented initializer
+	   in that shape (the WaveBuilder port made the same change). */
+	newSound=[[Snd alloc]
+		initWithFormat:   format
+		channelCount: 1
+		frames:       sampleCount
+		samplingRate: [current samplingRate]];
 
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 	data8=(char*)data;
 	data16=(signed short*)data;
-	newdata=(void*)[newSound data];
+	newdata=(void*)[newSound bytes];
 	newdata8=(char*)newdata;
 	newdata16=(signed short*)newdata;
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see swap:.) */
 	
-	SNDSwapSoundToHost
-		((void*)newdata, (void*)newdata, [newSound sampleCount], [newSound channelCount], [newSound dataFormat]);
+	/* (1998: SNDSwapSoundToHost - host order, see swap:.) */
 	
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -401,11 +411,9 @@ IMPLIED WARRANTIES.
 */
 
 
-	SNDSwapHostToSound
-		((void*)newdata, (void*)newdata, [newSound sampleCount], [newSound channelCount], [newSound dataFormat]);
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
 
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
 	[currentSoundView setSound:newSound];
 	[moduleController newSound:newSound for:currentSoundView];
 	return self;
@@ -421,13 +429,13 @@ IMPLIED WARRANTIES.
 - addLeft:sender
 	{
 	/* Adds left channel */
-	Sound* current=[moduleController currentSound];
-	SoundView* currentSoundView=[moduleController currentSoundView];
-	Sound* newSound;
+	Snd* current=[moduleController currentSound];
+	SndView* currentSoundView=[moduleController currentSoundView];
+	Snd* newSound;
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 
 	void* data;
 	unsigned char* data8;
@@ -436,7 +444,7 @@ IMPLIED WARRANTIES.
 	unsigned char* newdata8;
 	signed short* newdata16;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==NULL)
 		{
@@ -458,27 +466,32 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
 
-	newSound=[[[Sound alloc] init] autorelease];
-	
-	[newSound setDataSize:
-				[current sampleSizePerChannel]*[current sampleCount]*2
-			dataFormat:   format
-			samplingRate: [current samplingRate]
-			channelCount: 2
-			infoSize:     [current infoSize]];
+	/* 1998: newSound=[[[Sound alloc] init] autorelease];
+	   [newSound setDataSize: [current sampleSizePerChannel]*[current
+	   sampleCount]*2 dataFormat: format samplingRate: [current
+	   samplingRate] channelCount: 2 infoSize: [current infoSize]];
+	   (the 1998 infoSize: argument sized a fresh, zero-filled info
+	   region - the module never writes an info string, so the SndKit
+	   sound's nil info is the same presentation: the app's view maps
+	   a nil info to the empty string).  SndKit has no setDataSize:,
+	   so the sound is built directly with the documented initializer
+	   in that shape (the WaveBuilder port made the same change). */
+	newSound=[[Snd alloc]
+		initWithFormat:   format
+		channelCount: 2
+		frames:       sampleCount
+		samplingRate: [current samplingRate]];
 
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 	data8=(char*)data;
 	data16=(signed short*)data;
-	newdata=(void*)[newSound data];
+	newdata=(void*)[newSound bytes];
 	newdata8=(char*)newdata;
 	newdata16=(signed short*)newdata;
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see swap:.) */
 	
-	SNDSwapSoundToHost
-		((void*)newdata, (void*)newdata, [newSound sampleCount], [newSound channelCount], [newSound dataFormat]);
+	/* (1998: SNDSwapSoundToHost - host order, see swap:.) */
 
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -488,7 +501,7 @@ IMPLIED WARRANTIES.
 		{
 		case SND_FORMAT_MULAW_8: 
 			{
-                        unsigned char mulawzero=SNDMulaw(0);  // it's probably 127
+                        unsigned char mulawzero=SndLinearToMuLaw(0);  // it's probably 127
 			int x; char* d=(char*)data; char* nd=(char*)newdata; int y=0;
 			for (x=firstSample*channelCount;x<(firstSample+sampleLength)*channelCount;x++)
                         { nd[y]=mulawzero; nd[y+1]=d[x]; y+=2; }
@@ -543,11 +556,9 @@ IMPLIED WARRANTIES.
 		}
 */
 
-	SNDSwapHostToSound
-		((void*)newdata, (void*)newdata, [newSound sampleCount], [newSound channelCount], [newSound dataFormat]);
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
 
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
 
 	[currentSoundView setSound:newSound];
 	[moduleController newSound:newSound for:currentSoundView];
@@ -561,13 +572,13 @@ IMPLIED WARRANTIES.
 - addRight:sender
 	{
 	/* Adds right channel */
-	Sound* current=[moduleController currentSound];
-	SoundView* currentSoundView=[moduleController currentSoundView];
-	Sound* newSound;
+	Snd* current=[moduleController currentSound];
+	SndView* currentSoundView=[moduleController currentSoundView];
+	Snd* newSound;
 	
 	int format=[current dataFormat];
 	int channelCount=[current channelCount];
-	int sampleCount=[current sampleCount];
+	int sampleCount=[current lengthInSampleFrames];
 
 	void* data;
 	unsigned char* data8;
@@ -576,7 +587,7 @@ IMPLIED WARRANTIES.
 	unsigned char* newdata8;
 	signed short* newdata16;
 	
-	int firstSample, sampleLength;
+	unsigned int firstSample, sampleLength;
 	
 	if (current==NULL)
 		{
@@ -598,27 +609,32 @@ IMPLIED WARRANTIES.
 	[current compactSamples];
         [[moduleController currentSoundView] checkForCurrentDataOnPasteboard];		
 
-	newSound=[[[Sound alloc] init] autorelease];
-	
-	[newSound setDataSize:
-				[current sampleSizePerChannel]*[current sampleCount]*2
-			dataFormat:   format
-			samplingRate: [current samplingRate]
-			channelCount: 2
-			infoSize:     [current infoSize]];
+	/* 1998: newSound=[[[Sound alloc] init] autorelease];
+	   [newSound setDataSize: [current sampleSizePerChannel]*[current
+	   sampleCount]*2 dataFormat: format samplingRate: [current
+	   samplingRate] channelCount: 2 infoSize: [current infoSize]];
+	   (the 1998 infoSize: argument sized a fresh, zero-filled info
+	   region - the module never writes an info string, so the SndKit
+	   sound's nil info is the same presentation: the app's view maps
+	   a nil info to the empty string).  SndKit has no setDataSize:,
+	   so the sound is built directly with the documented initializer
+	   in that shape (the WaveBuilder port made the same change). */
+	newSound=[[Snd alloc]
+		initWithFormat:   format
+		channelCount: 2
+		frames:       sampleCount
+		samplingRate: [current samplingRate]];
 
-	data=(void*)[current data];
+	data=(void*)[current bytes];
 	data8=(char*)data;
 	data16=(signed short*)data;
-	newdata=(void*)[newSound data];
+	newdata=(void*)[newSound bytes];
 	newdata8=(char*)newdata;
 	newdata16=(signed short*)newdata;
 
-	SNDSwapSoundToHost
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapSoundToHost - host order, see swap:.) */
 	
-	SNDSwapSoundToHost
-		((void*)newdata, (void*)newdata, [newSound sampleCount], [newSound channelCount], [newSound dataFormat]);
+	/* (1998: SNDSwapSoundToHost - host order, see swap:.) */
 
 	[[moduleController currentSoundView] 
 		getSelection: &firstSample size: &sampleLength];
@@ -628,7 +644,7 @@ IMPLIED WARRANTIES.
 		{
 		case SND_FORMAT_MULAW_8: 
 			{
-                        unsigned char mulawzero=SNDMulaw(0);  // it's probably 127
+                        unsigned char mulawzero=SndLinearToMuLaw(0);  // it's probably 127
                        	int x; char* d=(char*)data; char* nd=(char*)newdata; int y=0;
 			for (x=firstSample*channelCount;x<(firstSample+sampleLength)*channelCount;x++)
                         { nd[y+1]=mulawzero; nd[y]=d[x]; y+=2; }
@@ -684,11 +700,9 @@ IMPLIED WARRANTIES.
 			{newdata16[y+1]=0; newdata16[y]=data16[x]; y+=2;}
 		}
 */
-	SNDSwapHostToSound
-		((void*)newdata, (void*)newdata, [newSound sampleCount], [newSound channelCount], [newSound dataFormat]);
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
 
-	SNDSwapHostToSound
-		((void*)data, (void*)data, sampleCount, channelCount, format);
+	/* (1998: SNDSwapHostToSound - host order, see swap:.) */
 
 	[currentSoundView setSound:newSound];
 	[moduleController newSound:newSound for:currentSoundView];

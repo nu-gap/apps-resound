@@ -319,15 +319,18 @@ jobs:
         # The ported modules so far - Zero, the first Phase 3 unit,
         # Mix, the second, Envelope, the third, EchoChamber, the
         # fourth, Gate, the fifth, Filter, the sixth, WaveBuilder,
-        # the seventh, FFT, the eighth, and Math, the ninth (Envelope,
-        # EchoChamber, Gate, Filter, WaveBuilder, FFT and Math are
-        # the seven with a control-panel nib: the bundles carry the
+        # the seventh, FFT, the eighth, Math, the ninth, and
+        # Channel, the tenth - all ten of the 1998 modules
+        # (Envelope, EchoChamber, Gate, Filter, WaveBuilder, FFT
+        # and Math are the seven with a control-panel nib: the
+        # bundles carry the
         # gorms at their resource root, the way the app's own bundle
         # carries its gorms):
         # gnustep-make bundles (gnustep-make bundle.make rules, ADR
         # 0020) producing Zero.rmod, Mix.rmod, Envelope.rmod,
         # EchoChamber.rmod, Gate.rmod, Filter.rmod,
-        # WaveBuilder.rmod, FFT.rmod and Math.rmod, installed into
+        # WaveBuilder.rmod, FFT.rmod, Math.rmod and Channel.rmod,
+        # installed into
         # the domain's library directory (lib/GNUstep/Resound with
         # the fhs filesystem layout) - the app's ModuleController
         # searches every library domain + /Resound (plus the app
@@ -366,6 +369,9 @@ jobs:
           make -C Source/Modules/Math -j"$(nproc)" -f GNUmakefile
           make -C Source/Modules/Math -f GNUmakefile install
           find Source/Modules/Math/Math.rmod -maxdepth 3 | sort
+          make -C Source/Modules/Channel -j"$(nproc)" -f GNUmakefile
+          make -C Source/Modules/Channel -f GNUmakefile install
+          find Source/Modules/Channel/Channel.rmod -maxdepth 3 | sort
           ls -la "$GNUSTEP_PREFIX/lib/GNUstep/Resound"
 
       - name: Module load contract (Phase 3)
@@ -480,8 +486,24 @@ jobs:
         # temporaries, clip pairs and loop bounds; the mu-law arm
         # decoding through SndKit's pair; maximize: the 1998 max
         # scan to the percent field, the buffer untouched).
-        # No pasteboard involved in the Envelope, EchoChamber,
-        # Gate, Filter, WaveBuilder, FFT or Math cases.  The mix cases
+        # For Channel: the same principal-class and menu checks
+        # (the one "Channel" child holding the five leaves in the
+        # 1998 order - "Add a Blank Left Channel", "Add a Blank
+        # Right Channel", "Delete the Left Channel", "Delete the
+        # Right Channel", "Swap Channels" - every leaf targeting
+        # the module; the module has no panel outlets), then the
+        # five actions - addLeft: / addRight: / stripLeft: /
+        # stripRight: / swap: - on real in-memory Snds over the
+        # five 1998 data formats, whole-sound plus a partial
+        # selection and the 1998 zero-length fall-through: the
+        # expected buffers recomputed with the 1998 loops' own
+        # types and operation order - including the function-level
+        # char trader round-trip the 1998 wider formats take,
+        # and, for a whole-sound selection, excluding the loop's
+        # one-element-past-end heap read, which no expectation can
+        # know.  No pasteboard involved in the Envelope,
+        # EchoChamber, Gate, Filter, WaveBuilder, FFT, Math or
+        # Channel cases.  The mix cases
         # use the general pasteboard for real:
         # GNUstep's client auto-launches a fresh gpbs when no
         # pasteboard server runs (filesystem name transport, no other
@@ -505,6 +527,7 @@ jobs:
           "$TOOL" Source/Modules/WaveBuilder/WaveBuilder.rmod
           "$TOOL" Source/Modules/FFT/FFT.rmod
           "$TOOL" Source/Modules/Math/Math.rmod
+          "$TOOL" Source/Modules/Channel/Channel.rmod
 
       - name: Module load probe (Phase 3)
         # The app-side half of the module load, run for real (test/
@@ -547,7 +570,12 @@ jobs:
         # Amplitude..." runs the same for the seventh gorm module:
         # the multiply panel (title "Change Amplitude") must come up
         # visible from the bundle's gorm, the "Amplitude" submenu
-        # appearing in the after-launch menu dump.
+        # appearing in the after-launch menu dump.  The third
+        # panel-less module, Channel, gets the after-launch menu
+        # assertion only ("Swap Channels" among its five leaves):
+        # all five actions need a current sound the headless
+        # launch has none of, so the 1998 modal "No Sound" alert
+        # would wait for a click that never comes - no --perform.
         # Non-fatal: a display environment can not be trusted the way
         # the build can be; the load contract above (headless) is the
         # hard gate.
@@ -571,6 +599,7 @@ jobs:
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Envelope"
           awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Echo Chamber..."
           awk '/performing Envelope/{f=1} f' "$LOG" | grep -q "window: 'Envelope 1.0' visible=1"
+          awk '/AFTER launch/{f=1} f' "$LOG" | grep -q "Swap Channels"
           LOG=$(mktemp)
           rc=0
           timeout 90 xvfb-run -a bash -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$0" "$@"' "$TOOL" Resound.app --perform "Echo Chamber..." >"$LOG" 2>&1 || rc=$?

@@ -2,16 +2,17 @@
 resoundmodule
 For the GNUstep port of Resound (gnustep-port branch)
 
-The Phase 3 load contracts for the ported modules - so far the Zero
+The Phase 3 load contracts for the ported modules - the Zero
 module (zeroSound:), the Mix module (mix:), the Envelope module
 (applyEnvelope:), the EchoChamber module (begin:/performEcho:),
 the Gate module (showNoiseGatePanel:/gateIt:), the Filter module
 (LoadFilterPanel:/Apply:/ApplyEcho:), the WaveBuilder module
 (loadSinPanel:/generateSin:/generateOthers:), the FFT module
-(showFFTPanel:/doFFT: with the bundle's real FFTController) and
-the Math module (absIt:/invertIt:/multiplyIt:/shiftIt:/maximize: /
-reverseIt: and the two lazy panel loads) - the first nine units
-from the module tree (see docs/GNUSTEP_BUILD.md).
+(showFFTPanel:/doFFT: with the bundle's real FFTController), the
+Math module (absIt:/invertIt:/multiplyIt:/shiftIt:/maximize: /
+reverseIt: and the two lazy panel loads) and the Channel module
+(swap:/stripLeft:/stripRight:/addLeft:/addRight:) - the whole
+module tree, all ten units (see docs/GNUSTEP_BUILD.md).
 
 What it does (headless: no display, no audio device):
 
@@ -25,7 +26,7 @@ What it does (headless: no display, no audio device):
      EchoChamber the echo contract, GateModule the gate contract,
      FilterModule the filter contract, WaveBuilderModule the wave
      builder contract, FFTModule the FFT contract, MathModule the
-     math contract.
+     math contract, ChannelModule the channel contract.
 
   2. Instantiates the module (the same alloc/init the app runs) and
      checks the menu tree the 1998 init builds: exactly one leaf -
@@ -332,6 +333,15 @@ Exit status: 0 when every check passes, 1 otherwise.
 - halve:sender;
 - double:sender;
 - maximize:sender;
+@end
+
+@interface ChannelModule : Module
+- init;
+- swap:sender;
+- stripLeft:sender;
+- stripRight:sender;
+- addLeft:sender;
+- addRight:sender;
 @end
 
 static int failures = 0;
@@ -2285,6 +2295,159 @@ record the two side effects (stop, soundChanged).
 - (int) soundChangedCount
     {
     return _soundChanged;
+    }
+@end
+
+/*
+A stand-in for the app's ResoundMiscSoundView for the Channel
+contract: the five actions touch only getSelection:size: (a zero
+length falls through to the whole sound in the module),
+checkForCurrentDataOnPasteboard (the app's ModuleSoundView
+category clears a stale pasteboard; a no-op here), and setSound:
+(the strip/add pair hand the freshly built sound to the view) -
+a plain NSObject with the family's fake-view shape is exact.
+*/
+@interface FakeChannelView : NSObject
+{
+    Snd *_sound;
+    unsigned int _first;
+    unsigned int _len;
+}
+- (id) initWithSound: (Snd *)sound;
+- (void) setSelection: (unsigned int)first size: (unsigned int)len;
+- (void) getSelection: (unsigned int *)firstSample size: (unsigned int *)sampleLength;
+- (void) checkForCurrentDataOnPasteboard;
+- (void) setSound: (Snd *)sound;
+- (id) sound;
+@end
+
+@implementation FakeChannelView
+- (id) initWithSound: (Snd *)sound
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _first = 0;
+        _len = (unsigned int)[_sound lengthInSampleFrames];
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [super dealloc];
+    }
+- (void) setSelection: (unsigned int)first size: (unsigned int)len
+    {
+    _first = first;
+    _len = len;
+    }
+- (void) getSelection: (unsigned int *)firstSample size: (unsigned int *)sampleLength
+    {
+    *firstSample = _first;
+    *sampleLength = _len;
+    }
+- (void) checkForCurrentDataOnPasteboard
+    {
+    /* The app's ModuleSoundView category clears a stale pasteboard; a no-op here. */
+    }
+- (void) setSound: (Snd *)sound
+    {
+    if (_sound != sound)
+        {
+        [_sound release];
+        _sound = [sound retain];
+        }
+    }
+- (id) sound
+    {
+    return _sound;
+    }
+@end
+
+/*
+A stand-in for the app's ModuleController for the Channel
+contract: the five actions read currentSound / currentSoundView
+and record the three side effects (stop, soundChanged, and the
+strip/add pair's newSound:for: hand-off, which also swaps the
+controller's current sound to the freshly built one, as the
+app's does).
+*/
+@interface FakeChannelController : NSObject
+{
+    Snd *_sound;
+    id _soundView;
+    int _stopped;
+    int _soundChanged;
+    int _newSound;
+}
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView;
+- (id) currentSound;
+- (id) currentSoundView;
+- (void) stop;
+- (void) soundChanged;
+- (id) newSound: (id)newSound for: (id)view;
+- (int) stopCount;
+- (int) soundChangedCount;
+- (int) newSoundCount;
+@end
+
+@implementation FakeChannelController
+- (id) initWithSound: (Snd *)sound soundView: (id)soundView
+    {
+    if (self = [super init])
+        {
+        _sound = [sound retain];
+        _soundView = [soundView retain];
+        _stopped = 0;
+        _soundChanged = 0;
+        _newSound = 0;
+        }
+    return self;
+    }
+- (void) dealloc
+    {
+    [_sound release];
+    [_soundView release];
+    [super dealloc];
+    }
+- (id) currentSound
+    {
+    return _sound;
+    }
+- (id) currentSoundView
+    {
+    return _soundView;
+    }
+- (void) stop
+    {
+    _stopped++;
+    }
+- (void) soundChanged
+    {
+    _soundChanged++;
+    }
+- (id) newSound: (id)newSound for: (id)view
+    {
+    _newSound++;
+    if (_sound != newSound)
+        {
+        [_sound release];
+        _sound = [newSound retain];
+        }
+    return self;
+    }
+- (int) stopCount
+    {
+    return _stopped;
+    }
+- (int) soundChangedCount
+    {
+    return _soundChanged;
+    }
+- (int) newSoundCount
+    {
+    return _newSound;
     }
 @end
 
@@ -6045,6 +6208,500 @@ static void runMath (Class principal)
     testMathReverse (module, mcIvar, SND_FORMAT_LINEAR_16, 1, 10, 50);
 }
 
+/*
+The Channel module's per-format transforms, mirrored from the
+ported 1998 arms - the same per-format pointer types, the same
+loop bounds, the same assignment order, so the expected buffer
+is exactly what the 1998-faithful module code computes on the
+same input.  swap: is the 1998 byte/sample pair swap of every
+format arm (the mu-law arm swaps the mu-law bytes directly, no
+decode); stripLeft: / stripRight: copy the odd / even samples of
+the selection into the freshly built mono sound, the 1998 loop
+bound asymmetry included (x < (first+len)*ch for the left,
+x < (first+len)*ch - 1 for the right); addLeft: / addRight:
+interleave the selection with a zero (the mu-law arm with
+SndKit's SndLinearToMuLaw(0), the 1998 SNDMulaw(0) rename).
+*/
+static void channelExpectSwap (void *buf, unsigned int first, unsigned int len,
+                               int ch, SndSampleFormat fmt)
+{
+    /* 1998: one function-level `char trader` behind all five arms.
+       The wider formats round-trip their values through that single
+       byte, so the last written element of the selection comes back
+       truncated to it and re-extended to the element width.  The
+       module keeps the quirk, and this mirror must reproduce it. */
+    char trader;
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                { trader = d[x]; d[x] = d[x + 1]; d[x + 1] = trader; }
+            } break;
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                { trader = d[x]; d[x] = d[x + 1]; d[x + 1] = trader; }
+            } break;
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                { trader = d[x]; d[x] = d[x + 1]; d[x + 1] = trader; }
+            } break;
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                { trader = d[x]; d[x] = d[x + 1]; d[x + 1] = trader; }
+            } break;
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)buf;
+            int x;
+            for (x = first * ch; x < (first + len) * ch; x++)
+                { trader = d[x]; d[x] = d[x + 1]; d[x + 1] = trader; }
+            } break;
+        default:
+            break;
+        }
+}
+
+/* The 1998 strip pair: keep the even (left) or odd (right)
+   samples of the selection in the fresh mono buffer - the rest
+   of the (whole-length) new buffer stays the initializer's zero. */
+static void channelExpectStrip (void *in, void *out, unsigned int first,
+                                unsigned int len, int ch, SndSampleFormat fmt,
+                                int keepRight)
+{
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+            {
+            char *d = (char *)in;
+            char *nd = (char *)out;
+            int y = 0;
+            int x;
+            if (keepRight)
+                for (x = first * ch + 1; x < (first + len) * ch; x += 2)
+                    { nd[y++] = d[x]; }
+            else
+                for (x = first * ch; x < (first + len) * ch - 1; x += 2)
+                    { nd[y++] = d[x]; }
+            } break;
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)in;
+            char *nd = (char *)out;
+            int y = 0;
+            int x;
+            if (keepRight)
+                for (x = first * ch + 1; x < (first + len) * ch; x += 2)
+                    { nd[y++] = d[x]; }
+            else
+                for (x = first * ch; x < (first + len) * ch - 1; x += 2)
+                    { nd[y++] = d[x]; }
+            } break;
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)in;
+            signed short *nd = (signed short *)out;
+            int y = 0;
+            int x;
+            if (keepRight)
+                for (x = first * ch + 1; x < (first + len) * ch; x += 2)
+                    { nd[y++] = d[x]; }
+            else
+                for (x = first * ch; x < (first + len) * ch - 1; x += 2)
+                    { nd[y++] = d[x]; }
+            } break;
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)in;
+            float *nd = (float *)out;
+            int y = 0;
+            int x;
+            if (keepRight)
+                for (x = first * ch + 1; x < (first + len) * ch; x += 2)
+                    { nd[y++] = d[x]; }
+            else
+                for (x = first * ch; x < (first + len) * ch - 1; x += 2)
+                    { nd[y++] = d[x]; }
+            } break;
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)in;
+            double *nd = (double *)out;
+            int y = 0;
+            int x;
+            if (keepRight)
+                for (x = first * ch + 1; x < (first + len) * ch; x += 2)
+                    { nd[y++] = d[x]; }
+            else
+                for (x = first * ch; x < (first + len) * ch - 1; x += 2)
+                    { nd[y++] = d[x]; }
+            } break;
+        default:
+            break;
+        }
+}
+
+/* The 1998 add pair: interleave the selection with a blank
+   channel - the linear arms zero the new channel, the mu-law
+   arm the mu-law code of zero (the 1998 "it's probably 127"
+   note included, through SndKit's SndLinearToMuLaw) - into the
+   freshly built stereo buffer; the frames past the selection
+   stay the initializer's zero. */
+static void channelExpectAdd (void *in, void *out, unsigned int first,
+                              unsigned int len, int ch, SndSampleFormat fmt,
+                              int blankLeft)
+{
+    switch (fmt)
+        {
+        case SND_FORMAT_MULAW_8:
+            {
+            char *d = (char *)in;
+            char *nd = (char *)out;
+            int y = 0;
+            int x;
+            if (blankLeft)
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y] = SndLinearToMuLaw (0); nd[y + 1] = d[x]; y += 2; }
+            else
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y + 1] = SndLinearToMuLaw (0); nd[y] = d[x]; y += 2; }
+            } break;
+        case SND_FORMAT_LINEAR_8:
+            {
+            char *d = (char *)in;
+            char *nd = (char *)out;
+            int y = 0;
+            int x;
+            if (blankLeft)
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y] = 0; nd[y + 1] = d[x]; y += 2; }
+            else
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y + 1] = 0; nd[y] = d[x]; y += 2; }
+            } break;
+        case SND_FORMAT_LINEAR_16:
+            {
+            signed short *d = (signed short *)in;
+            signed short *nd = (signed short *)out;
+            int y = 0;
+            int x;
+            if (blankLeft)
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y] = 0; nd[y + 1] = d[x]; y += 2; }
+            else
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y + 1] = 0; nd[y] = d[x]; y += 2; }
+            } break;
+        case SND_FORMAT_FLOAT:
+            {
+            float *d = (float *)in;
+            float *nd = (float *)out;
+            int y = 0;
+            int x;
+            if (blankLeft)
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y] = 0; nd[y + 1] = d[x]; y += 2; }
+            else
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y + 1] = 0; nd[y] = d[x]; y += 2; }
+            } break;
+        case SND_FORMAT_DOUBLE:
+            {
+            double *d = (double *)in;
+            double *nd = (double *)out;
+            int y = 0;
+            int x;
+            if (blankLeft)
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y] = 0; nd[y + 1] = d[x]; y += 2; }
+            else
+                for (x = first * ch; x < (first + len) * ch; x++)
+                    { nd[y + 1] = 0; nd[y] = d[x]; y += 2; }
+            } break;
+        default:
+            break;
+        }
+}
+
+static void testChannelSwap (id module, Ivar mcIvar, SndSampleFormat fmt,
+                             unsigned int first, unsigned int len)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== channel: swap: %s, 2 channels, selection (%u,%u)\n",
+            name, first, len);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: 2
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeChannelView *view = [[[FakeChannelView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeChannelController *mc =
+        [[[FakeChannelController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+
+    /* The 1998 fall-through: a zero-length selection becomes the
+       whole sound. */
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = [(ChannelModule *)module swap: nil];
+    
+    check (ret == module, "swap: returns self");
+    check ([mc stopCount] == 1, "swap: stopped the playback");
+    check ([mc soundChangedCount] == 1, "swap: reported the sound changed");
+    check ([mc newSoundCount] == 0, "swap: built no new sound");
+    check ([snd dataFormat] == fmt && [snd channelCount] == 2
+       && [snd lengthInSampleFrames] == 200,
+            "the sound keeps its format, channels and length");
+
+    unsigned char *expected = malloc ((size_t)size);
+    memcpy (expected, before, (size_t)size);
+    channelExpectSwap (expected, effFirst, effLen, 2, fmt);
+
+    /* The 1998 loop shifts the selection one element left; the last
+       written element comes back through the char trader, which the
+       mirror reproduces.  For a whole selection the loop additionally
+       reads one element past the buffer end, so the last in-range
+       element holds whatever the heap kept there - different between
+       the Snd buffer and this malloc'd mirror - and is excluded. */
+    long cmpSize = size;
+    if (effFirst + effLen == 200)
+        cmpSize = size - size / (200 * 2);
+    check (memcmp ([snd bytes], expected, (size_t)cmpSize) == 0,
+            "the buffer matches the 1998 swap loop");
+    free (before);
+    free (expected);
+}
+
+static void testChannelStrip (id module, Ivar mcIvar, SndSampleFormat fmt,
+                              unsigned int first, unsigned int len, int keepRight)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== channel: %s %s, 2 channels, selection (%u,%u)\n",
+            keepRight ? "stripLeft:" : "stripRight:", name, first, len);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: 2
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeChannelView *view = [[[FakeChannelView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeChannelController *mc =
+        [[[FakeChannelController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = keepRight ? [(ChannelModule *)module stripLeft: nil]
+                       : [(ChannelModule *)module stripRight: nil];
+
+    check (ret == module, "the strip returns self");
+    check ([mc stopCount] == 1, "the strip stopped the playback");
+    check ([mc soundChangedCount] == 0, "the strip leaves the old sound alone");
+    check ([mc newSoundCount] == 1, "the strip handed off the fresh sound");
+    Snd *fresh = [mc currentSound];
+    check ([[mc currentSound] isEqual: [view sound]],
+           "the view and the controller hold the same fresh sound");
+    check (fresh != nil && [fresh dataFormat] == fmt
+       && [fresh channelCount] == 1 && [fresh lengthInSampleFrames] == 200,
+            "the fresh sound is mono, whole-length, same format");
+
+    long freshSize = [fresh dataSize];
+    check (freshSize == size / 2,
+           "the fresh sound is sized for half the data");
+    unsigned char *expected = malloc ((size_t)freshSize);
+    memset (expected, 0, (size_t)freshSize);
+    channelExpectStrip (before, expected, effFirst, effLen, 2, fmt, keepRight);
+    check (memcmp ([fresh bytes], expected, (size_t)freshSize) == 0,
+            "the fresh buffer matches the 1998 strip arithmetic");
+    check (memcmp ([snd bytes], before, (size_t)size) == 0,
+            "the original sound is untouched");
+    free (before);
+    free (expected);
+}
+
+static void testChannelAdd (id module, Ivar mcIvar, SndSampleFormat fmt,
+                            unsigned int first, unsigned int len, int blankLeft)
+{
+    const char *name = [SndFormatName (fmt, NO) cStringUsingEncoding: NSASCIIStringEncoding];
+    printf ("== channel: %s %s, 1 channel, selection (%u,%u)\n",
+            blankLeft ? "addLeft:" : "addRight:", name, first, len);
+
+    Snd *snd = [[[Snd alloc] initWithFormat: fmt
+                                channelCount: 1
+                                    frames: 200
+                              samplingRate: 44100.0f] autorelease];
+    check (snd != nil && [snd lengthInSampleFrames] == 200, "in-memory Snd");
+    fillPattern (snd, 0);
+    long size = [snd dataSize];
+    unsigned char *before = malloc ((size_t)size);
+    memcpy (before, [snd bytes], (size_t)size);
+
+    FakeChannelView *view = [[[FakeChannelView alloc] initWithSound: snd] autorelease];
+    [view setSelection: first size: len];
+    FakeChannelController *mc =
+        [[[FakeChannelController alloc] initWithSound: snd soundView: view] autorelease];
+    object_setIvar (module, mcIvar, mc);
+
+    unsigned int effFirst = first, effLen = len;
+    if (effLen == 0)
+        {
+        effFirst = 0;
+        effLen = 200;
+        }
+
+    id ret = blankLeft ? [(ChannelModule *)module addLeft: nil]
+                       : [(ChannelModule *)module addRight: nil];
+
+    check (ret == module, "the add returns self");
+    check ([mc stopCount] == 1, "the add stopped the playback");
+    check ([mc soundChangedCount] == 0, "the add leaves the old sound alone");
+    check ([mc newSoundCount] == 1, "the add handed off the fresh sound");
+    Snd *fresh = [mc currentSound];
+    check ([[mc currentSound] isEqual: [view sound]],
+           "the view and the controller hold the same fresh sound");
+    check (fresh != nil && [fresh dataFormat] == fmt
+       && [fresh channelCount] == 2 && [fresh lengthInSampleFrames] == 200,
+            "the fresh sound is stereo, whole-length, same format");
+
+    long freshSize = [fresh dataSize];
+    check (freshSize == size * 2,
+           "the fresh sound is sized for twice the data");
+    unsigned char *expected = malloc ((size_t)freshSize);
+    memset (expected, 0, (size_t)freshSize);
+    channelExpectAdd (before, expected, effFirst, effLen, 1, fmt, blankLeft);
+    check (memcmp ([fresh bytes], expected, (size_t)freshSize) == 0,
+            "the fresh buffer matches the 1998 add arithmetic");
+    check (memcmp ([snd bytes], before, (size_t)size) == 0,
+            "the original sound is untouched");
+    free (before);
+    free (expected);
+}
+
+static void runChannel (Class principal)
+{
+    /* The menu tree the app's Modules menu is built from: the 1998
+       init builds a "Channel" submenu - the add/strip/swap leaves
+       in the 1998 addSubmenu order (addLeft, addRight, stripLeft,
+       stripRight, swap), every target the module itself. */
+    id module = [[principal alloc] init];
+    check (module != nil, "module instantiation");
+    id root = [module getModuleMenuNode];
+    check (root != nil, "root menu node");
+    check (root != nil && [root numSubmenus] == 1,
+           "root has exactly one child");
+    id chan = root != nil ? [root getSubmenu: 0] : nil;
+    check (chan != nil && ![chan isLeafNode]
+             && [[chan getNameAsString] isEqualToString: @"Channel"],
+           "the child is the Channel submenu");
+    check (chan != nil && [chan numSubmenus] == 5,
+           "Channel holds exactly five leaves");
+    static const char *leafNames[] = {
+        "Add a Blank Left Channel", "Add a Blank Right Channel",
+        "Delete the Left Channel", "Delete the Right Channel",
+        "Swap Channels"
+    };
+    static const char *leafTargets[] = {
+        "addLeft:", "addRight:", "stripLeft:", "stripRight:", "swap:"
+    };
+    int i;
+    for (i = 0; i < 5; i++)
+        {
+        char what[80];
+        id leaf = chan != nil ? [chan getSubmenu: i] : nil;
+        check (leaf != nil && [leaf isLeafNode], "leaf node");
+        snprintf (what, sizeof what, "Channel leaf %d is named %s", i, leafNames[i]);
+        check (leaf != nil
+                 && [[leaf getNameAsString]
+                       isEqualToString: [NSString stringWithUTF8String: leafNames[i]]],
+                what);
+        snprintf (what, sizeof what, "Channel leaf %d targets %s", i, leafTargets[i]);
+        check (leaf != nil
+                 && [NSStringFromSelector ([leaf getMessage])
+                       isEqualToString: [NSString stringWithUTF8String: leafTargets[i]]],
+                what);
+        check (leaf != nil && [leaf getReceiver] == module,
+               "Channel leaf targets the module");
+        }
+
+    /* The module has no outlets at all (the 1998 ivar block is
+       empty) - the family's second panel-less module after Zero -
+       so the contract is the menu tree and the DSP matrix only. */
+
+    Ivar mcIvar = class_getInstanceVariable ([module class], "moduleController");
+    check (mcIvar != NULL, "moduleController ivar (for the DSP cases)");
+
+    /* The DSP matrix: the five actions on real in-memory Snds,
+       whole-sound and partial selections, over the five 1998 data
+       formats, through the duck-typed controller.  swap: and the
+       strip pair need stereo (the 1998 channel-count guard), the
+       add pair mono; each case checks the return, the side
+       effects, the preserved / fresh shape, and the buffer against
+       the mirrored 1998 arithmetic (the full-buffer compare also
+       proves the untouched bytes). */
+    int c;
+    for (c = 0; c < 5; c++)
+        {
+        testChannelSwap (module, mcIvar, (SndSampleFormat)dspFormats[c], 0, 200);
+        testChannelSwap (module, mcIvar, (SndSampleFormat)dspFormats[c], 10, 50);
+        }
+    /* the 1998 zero-length fall-through, on one format */
+    testChannelSwap (module, mcIvar, SND_FORMAT_LINEAR_16, 0, 0);
+
+    for (c = 0; c < 5; c++)
+        {
+        testChannelStrip (module, mcIvar, (SndSampleFormat)dspFormats[c], 0, 200, YES);
+        testChannelStrip (module, mcIvar, (SndSampleFormat)dspFormats[c], 0, 200, NO);
+        testChannelStrip (module, mcIvar, (SndSampleFormat)dspFormats[c], 10, 50, YES);
+        testChannelStrip (module, mcIvar, (SndSampleFormat)dspFormats[c], 10, 50, NO);
+        }
+    testChannelStrip (module, mcIvar, SND_FORMAT_LINEAR_16, 0, 0, YES);
+    testChannelStrip (module, mcIvar, SND_FORMAT_LINEAR_16, 0, 0, NO);
+
+    for (c = 0; c < 5; c++)
+        {
+        testChannelAdd (module, mcIvar, (SndSampleFormat)dspFormats[c], 0, 200, YES);
+        testChannelAdd (module, mcIvar, (SndSampleFormat)dspFormats[c], 0, 200, NO);
+        testChannelAdd (module, mcIvar, (SndSampleFormat)dspFormats[c], 10, 50, YES);
+        testChannelAdd (module, mcIvar, (SndSampleFormat)dspFormats[c], 10, 50, NO);
+        }
+    testChannelAdd (module, mcIvar, SND_FORMAT_LINEAR_16, 0, 0, YES);
+    testChannelAdd (module, mcIvar, SND_FORMAT_LINEAR_16, 0, 0, NO);
+}
+
 int main (int argc, char **argv)
 {
     NSString *rmod = argc > 1
@@ -6085,6 +6742,8 @@ int main (int argc, char **argv)
         runFFT (principal);
     else if ([NSStringFromClass (principal) isEqualToString: @"MathModule"])
         runMath (principal);
+    else if ([NSStringFromClass (principal) isEqualToString: @"ChannelModule"])
+        runChannel (principal);
     else
         check (NO, "principal class is none of the ported module classes");
 
