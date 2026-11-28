@@ -315,9 +315,14 @@ workaround until the module unit restored the shipped state).
 
 - `Source/FileType.subproj/*` — Jerome Genest file readers (removed by
   decision; SndKit/libsndfile native readers instead, Phase 0 decision).
-- `Source/MiscTapper.m`, `Source/MiscVolumeLight.m` — present in `Source/`
-  but not in the original `CLASSES` list (MiscKit helpers; classified with
-  the modules).
+- `Source/MiscTapper.{h,m}` — the MiscKit tap meter, never compiled by
+  the 1998 app (not in the 1998 `CLASSES` list, no nib reference, imported
+  by nothing — verified 2026-11-28): kept for reference, not ported (plan,
+  Phase 2; the `NXSoundIn`/`NXRecordStream` meter has no SndKit counterpart
+  the port needs).
+- `Source/MiscVolumeLight.{h,m}` — present in `Source/` but not in the
+  original `CLASSES` list (a MiscKit helper, `ConsoleManager`'s dead
+  `__BUILDING_RHAPSODY` block imports it): kept for reference, not ported.
 - `Source/streams/*` — NXStream patch (Phase 4).
 - `Source/Modules/*` — the `.rmod` module frameworks (own build targets,
   Phase 3 — see the modules section below; `ResoundModules/*.rmod` are
